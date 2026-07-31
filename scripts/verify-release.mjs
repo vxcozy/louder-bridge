@@ -100,16 +100,45 @@ try {
     "--verbose=2",
     app,
   ]);
-  for (const executable of [
-    path.join(app, "Contents", "MacOS", "LouderBridge"),
-    path.join(app, "Contents", "MacOS", "node"),
-  ]) {
+  const launcher = path.join(app, "Contents", "MacOS", "LouderBridge");
+  const node = path.join(app, "Contents", "MacOS", "node");
+  for (const executable of [launcher, node]) {
     const description = run("/usr/bin/file", [executable]);
     if (!description.includes("arm64")) {
       throw new Error(
         `${path.basename(executable)} is not an arm64 executable.`,
       );
     }
+    const signature = run("/usr/bin/codesign", [
+      "-dv",
+      "--verbose=4",
+      executable,
+    ]);
+    if (!/flags=.*runtime/.test(signature)) {
+      throw new Error(
+        `${path.basename(executable)} is missing the hardened runtime.`,
+      );
+    }
+  }
+  const nodeEntitlements = run("/usr/bin/codesign", [
+    "-d",
+    "--entitlements",
+    "-",
+    node,
+  ]);
+  if (!nodeEntitlements.includes("com.apple.security.cs.allow-jit")) {
+    throw new Error(
+      "The embedded Node.js runtime is missing its JIT entitlement.",
+    );
+  }
+  if (
+    nodeEntitlements.includes(
+      "com.apple.security.cs.disable-library-validation",
+    )
+  ) {
+    throw new Error(
+      "The embedded Node.js runtime must not disable library validation.",
+    );
   }
 
   const infoPlist = path.join(app, "Contents", "Info.plist");
@@ -158,14 +187,15 @@ try {
   }
 
   if (process.env.LOUDER_REQUIRE_NOTARIZED === "1") {
-    const signature = run("/usr/bin/codesign", ["-dv", "--verbose=4", app]);
-    if (!signature.includes("Authority=Developer ID Application:")) {
+    const appSignature = run("/usr/bin/codesign", [
+      "-dv",
+      "--verbose=4",
+      app,
+    ]);
+    if (!appSignature.includes("Authority=Developer ID Application:")) {
       throw new Error(
         "The release does not have a Developer ID Application signature.",
       );
-    }
-    if (!/flags=.*runtime/.test(signature)) {
-      throw new Error("The release is missing the hardened runtime.");
     }
     run("/usr/bin/xcrun", ["stapler", "validate", app]);
     run("/usr/sbin/spctl", [

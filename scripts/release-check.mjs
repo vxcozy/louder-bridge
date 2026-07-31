@@ -102,6 +102,7 @@ function readIfPresent(relative) {
 
 const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const releaseWorkflow = readIfPresent(".github/workflows/release.yml");
+const nodeEntitlements = readIfPresent("release/node.entitlements.plist");
 if (!/node:\s*\["22\.x", "24\.x", "26\.x"\]/.test(ciWorkflow)) {
   failures.push("CI must test Node.js 22, 24, and 26.");
 }
@@ -129,6 +130,19 @@ if (
 if (!releaseWorkflow.includes("--draft")) {
   failures.push(
     "The release workflow must create a draft for physical qualification.",
+  );
+}
+if (releaseWorkflow.includes("LOUDER_SKIP_RUNTIME_AVAILABILITY_CHECK")) {
+  failures.push("The release workflow contains a removed runtime bypass.");
+}
+if (
+  !nodeEntitlements.includes("com.apple.security.cs.allow-jit") ||
+  nodeEntitlements.includes(
+    "com.apple.security.cs.disable-library-validation",
+  )
+) {
+  failures.push(
+    "Node entitlements must allow JIT without disabling library validation.",
   );
 }
 if (!/^\d+\.\d+\.\d+$/.test(metadata.version ?? "")) {

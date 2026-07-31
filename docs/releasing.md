@@ -26,8 +26,9 @@ npm run release:build
 ```
 
 The command compiles the native permission helper, builds the app, signs each
-nested executable and the outer bundle, and verifies the result. It creates an
-Apple Silicon ZIP, a SHA-256 checksum, and an SPDX SBOM.
+nested executable and the outer bundle, then starts the embedded runtime
+through the signed launcher. It creates an Apple Silicon ZIP, a SHA-256
+checksum, and an SPDX SBOM.
 
 The build rejects signing identities that are not Developer ID Application
 certificates. An unset identity produces an ad hoc build for local testing

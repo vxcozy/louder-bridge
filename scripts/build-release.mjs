@@ -42,56 +42,30 @@ compileNativeLauncher({
 });
 
 const identity = process.env.APPLE_SIGNING_IDENTITY;
-if (identity) {
-  run("/usr/bin/codesign", [
-    "--force",
-    "--options",
-    "runtime",
-    "--timestamp",
-    "--entitlements",
-    path.join(root, "release", "node.entitlements.plist"),
-    "--sign",
-    identity,
-    transaction.node,
-  ]);
-  run("/usr/bin/codesign", [
-    "--force",
-    "--options",
-    "runtime",
-    "--timestamp",
-    "--sign",
-    identity,
-    transaction.launcher,
-  ]);
-  run("/usr/bin/codesign", [
-    "--force",
-    "--options",
-    "runtime",
-    "--timestamp",
-    "--sign",
-    identity,
-    transaction.app,
-  ]);
-} else {
-  run("/usr/bin/codesign", [
-    "--force",
-    "--sign",
-    "-",
-    transaction.node,
-  ]);
-  run("/usr/bin/codesign", [
-    "--force",
-    "--sign",
-    "-",
-    transaction.launcher,
-  ]);
-  run("/usr/bin/codesign", [
-    "--force",
-    "--sign",
-    "-",
-    transaction.app,
-  ]);
-}
+const signingIdentity = identity ?? "-";
+const signingOptions = [
+  "--force",
+  "--options",
+  "runtime",
+  ...(identity ? ["--timestamp"] : []),
+  "--sign",
+  signingIdentity,
+];
+run("/usr/bin/codesign", [
+  ...signingOptions.slice(0, -2),
+  "--entitlements",
+  path.join(root, "release", "node.entitlements.plist"),
+  ...signingOptions.slice(-2),
+  transaction.node,
+]);
+run("/usr/bin/codesign", [
+  ...signingOptions,
+  transaction.launcher,
+]);
+run("/usr/bin/codesign", [
+  ...signingOptions,
+  transaction.app,
+]);
 run("/usr/bin/codesign", [
   "--verify",
   "--deep",
@@ -99,27 +73,32 @@ run("/usr/bin/codesign", [
   "--verbose=2",
   transaction.app,
 ]);
-if (identity) {
-  const signature = run("/usr/bin/codesign", [
-    "-dv",
-    "--verbose=4",
-    transaction.app,
-  ]);
-  const detail = `${signature.stdout ?? ""}${signature.stderr ?? ""}`;
-  if (
-    !detail.includes("Authority=Developer ID Application:") ||
-    !/flags=.*runtime/.test(detail)
-  ) {
-    throw new Error(
-      "APPLE_SIGNING_IDENTITY must resolve to a Developer ID Application certificate with the hardened runtime.",
-    );
-  }
+const signature = run("/usr/bin/codesign", [
+  "-dv",
+  "--verbose=4",
+  transaction.app,
+]);
+const detail = `${signature.stdout ?? ""}${signature.stderr ?? ""}`;
+if (!/flags=.*runtime/.test(detail)) {
+  throw new Error("The release app is missing the hardened runtime.");
 }
-run(transaction.launcher, ["--doctor"]);
-
+if (
+  identity &&
+  !detail.includes("Authority=Developer ID Application:")
+) {
+  throw new Error(
+    "APPLE_SIGNING_IDENTITY must resolve to a Developer ID Application certificate with the hardened runtime.",
+  );
+}
 const metadata = JSON.parse(
   fs.readFileSync(path.join(root, "package.json"), "utf8"),
 );
+const smokeTest = run(transaction.launcher, ["--version"]);
+if (smokeTest.stdout.trim() !== metadata.version) {
+  throw new Error(
+    "The signed launcher did not start the embedded Node.js runtime.",
+  );
+}
 const archive = path.join(
   dist,
   `Louder-Bridge-${metadata.version}-macOS-arm64.zip`,

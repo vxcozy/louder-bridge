@@ -55,3 +55,4 @@ have not shipped appear under "Unreleased."
   file.
 - The bridge refuses non-loopback bind addresses.
 - Hook payloads exclude prompts, responses, transcripts, and tool contents.
+- The embedded Node.js runtime keeps library validation enabled.
