@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: macos-26
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22.x", "24.x", "26.x"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm test
+      - run: npm run authorship:check
+      - run: npm run security:check
+      - run: npm run release:check
+
+  package:
+    name: Package smoke test
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+      - run: npm ci
+      - run: npm run release:build
+        env:
+          LOUDER_WORKLOUDER_SDK: ${{ github.workspace }}/fixtures/worklouder-sdk/index.cjs
+      - run: npm run release:verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-macos-arm64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/*.spdx.json
+          if-no-files-found: error

@@ -1,0 +1,12 @@
+.DS_Store
+coverage/
+dist/
+node_modules/
+*.log
+.env
+.env.*
+!.env.example
+.mcp.json
+config.json
+credentials.*
+.claude/

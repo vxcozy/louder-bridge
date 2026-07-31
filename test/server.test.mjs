@@ -1,0 +1,318 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import net from "node:net";
+import { startBridge } from "../src/server.mjs";
+
+const logger = {
+  info() {},
+  error() {},
+};
+const authToken = "test-token-that-is-at-least-thirty-two-characters";
+
+function bridgeUrl(bridge) {
+  return `http://127.0.0.1:${bridge.server.address().port}`;
+}
+
+test("refuses to listen beyond the local machine", async () => {
+  await assert.rejects(
+    startBridge({
+      host: "0.0.0.0",
+      port: 0,
+      autoConnectDevice: false,
+      authToken,
+      logger,
+    }),
+    /non-loopback/,
+  );
+});
+
+test("reports a clear error when the local port is occupied", async (context) => {
+  const occupied = net.createServer();
+  await new Promise((resolve) => occupied.listen(0, "127.0.0.1", resolve));
+  context.after(
+    () => new Promise((resolve) => occupied.close(resolve)),
+  );
+
+  await assert.rejects(
+    startBridge({
+      host: "127.0.0.1",
+      port: occupied.address().port,
+      autoConnectDevice: false,
+      authToken,
+      logger,
+    }),
+    /Port \d+ is already in use.*LOUDER_BRIDGE_PORT/,
+  );
+});
+
+test("reports service and device health", async (context) => {
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    runtimeMode: "service",
+    authToken,
+    logger,
+  });
+  context.after(() => bridge.stop());
+  bridge.setRuntimeStatus({ claudeDesktop: "open" });
+
+  const response = await fetch(`${bridgeUrl(bridge)}/health`, {
+    headers: { authorization: `Bearer ${authToken}` },
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    service: {
+      mode: "service",
+      claudeDesktop: "open",
+      inputMonitoring: "unknown",
+      accessibility: "unknown",
+      version: "0.1.0",
+      nodeVersion: process.version,
+      navigator: {
+        id: "claude-resume-url",
+        support: "experimental",
+      },
+      voice: {
+        id: "claude-accessibility-dictation",
+        support: "experimental",
+        state: "idle",
+        error: null,
+        lastActionAt: null,
+      },
+      lastHookAt: null,
+      device: { state: "inactive", error: null },
+    },
+    slots: Array.from({ length: 6 }, (_, slot) => ({
+      slot,
+      id: null,
+      state: "off",
+      selected: false,
+    })),
+  });
+});
+
+test("records the last authenticated hook even when state does not change", async (context) => {
+  const times = [
+    new Date("2026-07-31T06:00:00.000Z"),
+    new Date("2026-07-31T06:00:01.000Z"),
+  ];
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+    now: () => times.shift(),
+  });
+  context.after(() => bridge.stop());
+  const headers = {
+    authorization: `Bearer ${authToken}`,
+    "content-type": "application/json",
+  };
+  const event = {
+    session_id: "00000000-0000-4000-8000-000000000001",
+    hook_event_name: "SessionStart",
+  };
+
+  await fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(event),
+  });
+  await fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(event),
+  });
+
+  assert.equal(
+    bridge.health().service.lastHookAt,
+    "2026-07-31T06:00:01.000Z",
+  );
+});
+
+test("acknowledges Claude hooks even when device lighting fails", async (context) => {
+  let renderCalls = 0;
+  const errors = [];
+  const messages = [];
+  const device = {
+    async start() {},
+    async render() {
+      renderCalls += 1;
+      if (renderCalls > 1) throw new Error("USB write failed");
+    },
+    status() {
+      return { state: "connected", error: null };
+    },
+    async stop() {},
+  };
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    deviceFactory: () => device,
+    authToken,
+    logger: {
+      info(message) {
+        messages.push(message);
+      },
+      error(message) {
+        errors.push(message);
+      },
+    },
+  });
+  context.after(() => bridge.stop());
+
+  const response = await fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      session_id: "00000000-0000-4000-8000-000000000001",
+      cwd: "/tmp/project",
+      hook_event_name: "SessionStart",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.match(errors[0], /USB write failed/);
+  assert.equal(messages.includes("Slot 1: idle"), true);
+  assert.equal(messages.some((message) => message.includes("project")), false);
+
+  const healthResponse = await fetch(`${bridgeUrl(bridge)}/health`, {
+    headers: { authorization: `Bearer ${authToken}` },
+  });
+  const health = await healthResponse.json();
+  assert.match(health.service.lastHookAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test("rejects requests without the private bearer token", async (context) => {
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+  });
+  context.after(() => bridge.stop());
+
+  const response = await fetch(`${bridgeUrl(bridge)}/health`);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { ok: false });
+});
+
+test("rejects oversized and non-JSON hook requests", async (context) => {
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+  });
+  context.after(() => bridge.stop());
+  const headers = { authorization: `Bearer ${authToken}` };
+
+  const unsupported = await fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "text/plain" },
+    body: "{}",
+  });
+  assert.equal(unsupported.status, 415);
+
+  const oversized = await fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ value: "x".repeat(70 * 1024) }),
+  });
+  assert.equal(oversized.status, 413);
+});
+
+test("records empty Agent Key presses without exposing session data", async (context) => {
+  const messages = [];
+  let press;
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger: {
+      info(message) {
+        messages.push(message);
+      },
+      error() {},
+    },
+    deviceFactory({ onAgentKey }) {
+      press = onAgentKey;
+      return {
+        async start() {},
+        async render() {},
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+
+  await press(2);
+  assert.equal(
+    messages.includes("Agent Key 3 has no assigned Claude session."),
+    true,
+  );
+});
+
+test("serializes Micro voice press and release into Claude dictation", async (context) => {
+  const actions = [];
+  let voiceButton;
+  const voice = {
+    metadata() {
+      return {
+        id: "test-voice",
+        support: "test",
+      };
+    },
+    status() {
+      return {
+        ...this.metadata(),
+        state: actions.at(-1) === "start" ? "recording" : "idle",
+        error: null,
+        lastActionAt: null,
+      };
+    },
+    async start() {
+      actions.push("start");
+    },
+    async stop() {
+      actions.push("stop");
+    },
+  };
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger,
+    voice,
+    deviceFactory({ onVoiceButton }) {
+      voiceButton = onVoiceButton;
+      return {
+        async start() {},
+        async render() {},
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+
+  const press = voiceButton("press");
+  const release = voiceButton("release");
+  await Promise.all([press, release]);
+  assert.deepEqual(actions, ["start", "stop"]);
+  assert.equal(bridge.health().service.voice.state, "idle");
+});

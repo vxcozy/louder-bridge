@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest a change to Louder Bridge
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the workflow that is difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain what the Micro and Claude Desktop should do.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include any shortcut or Work Louder Input mapping you already tried.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This request concerns a local Claude Code workspace on Apple Silicon.
+          required: true
+        - label: I searched for an existing request.
+          required: true

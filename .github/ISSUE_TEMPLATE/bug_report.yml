@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a reproducible problem with Louder Bridge
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. For security problems, use the private reporting link instead of this public form.
+  - type: input
+    id: bridge-version
+    attributes:
+      label: Louder Bridge version
+      description: Run `npm run status` for a source install, or use the version from the release filename.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: System and component versions
+      description: Include the Mac model, macOS, Claude Desktop, ChatGPT, and Work Louder runtime versions.
+      placeholder: |
+        Mac:
+        macOS:
+        Claude Desktop:
+        ChatGPT:
+        Work Louder runtime:
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Micro connection
+      options:
+        - USB-C
+        - Bluetooth
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give the shortest sequence that causes the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste relevant `npm run doctor` or `npm run status` output. Remove usernames, project paths, session IDs, tokens, prompts, and transcripts first.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched for an existing report of this problem.
+          required: true
+        - label: I removed private or identifying information from the report.
+          required: true

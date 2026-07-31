@@ -1,0 +1,51 @@
+# Changelog
+
+This project follows [Semantic Versioning](https://semver.org/). Changes that
+have not shipped appear under "Unreleased."
+
+## Unreleased
+
+### Added
+
+- A self-contained per-user macOS application bundle with an embedded Node.js
+  runtime.
+- Automatic Claude Desktop detection, Micro connection, and device release.
+- Claude Code lifecycle hooks, six stable session slots, lighting states, and
+  Agent Key session navigation.
+- Authenticated loopback HTTP endpoints, private rotating logs, diagnostics,
+  transactional setup, and rollback.
+- Automated tests, security and release checks, a Node compatibility matrix,
+  and a physical-hardware acceptance checklist.
+- Native Input Monitoring onboarding with automatic agent recovery after
+  permission changes.
+- Device and Claude navigation adapters that report whether their interfaces
+  are experimental or supported.
+- Versioned health diagnostics with permission state, runtime provenance, and
+  recent hook and device timestamps.
+- GitHub Actions workflows for native arm64 testing, signed releases,
+  notarization, checksums, and SPDX SBOM files.
+- Repository checks for automated authorship credit.
+- Micro push-to-talk that starts Claude's own dictation on press and stops it
+  on release.
+- Accessibility permission onboarding and voice-adapter diagnostics.
+- CLI help and version commands, strict release metadata checks, and clearer
+  local port-conflict errors.
+- Embedded Node version and accurate last-hook timing in authenticated
+  diagnostics.
+
+### Changed
+
+- Logs no longer include project names or session identifiers.
+- Empty Agent Key presses now produce a diagnostic log entry.
+- Stable v1 release checks now reject experimental device or navigation
+  adapters and the experimental Claude voice interface.
+- The login agent now starts through the signed app executable.
+- GitHub release automation now creates a draft for hardware qualification and
+  maintainer review instead of publishing immediately.
+
+### Security
+
+- Loopback requests now require a random bearer token stored in a mode-0600
+  file.
+- The bridge refuses non-loopback bind addresses.
+- Hook payloads exclude prompts, responses, transcripts, and tool contents.
