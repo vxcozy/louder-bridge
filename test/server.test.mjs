@@ -311,6 +311,7 @@ test("serializes Micro voice press and release into Claude dictation", async (co
   context.after(() => bridge.stop());
 
   const press = voiceButton("press");
+  await new Promise((resolve) => setTimeout(resolve, 375));
   const release = voiceButton("release");
   await Promise.all([press, release]);
   assert.deepEqual(actions, ["start", "stop"]);

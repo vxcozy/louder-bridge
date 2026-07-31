@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { BRIDGE_HOST, BRIDGE_PORT } from "./config.mjs";
 import { createClaudeNavigator } from "./claude/navigator.mjs";
 import { createClaudeVoice } from "./claude/voice.mjs";
+import { createPushToTalk } from "./device/push-to-talk.mjs";
 import { WorkLouderDevice, MockDevice } from "./device/worklouder.mjs";
 import { applicationMetadata } from "./runtime/metadata.mjs";
 import { SessionStore } from "./state/session-store.mjs";
@@ -135,20 +136,28 @@ export async function startBridge({
     logger.info(`Opened Claude session in slot ${slot + 1}.`);
   };
 
-  const onVoiceButton = (action) => {
-    const operation = action === "press" ? "start" : "stop";
+  const runVoiceAction = (operation) => {
     voiceQueue = voiceQueue
       .catch(() => {})
       .then(async () => {
         await voice[operation]();
         logger.info(
-          action === "press"
+          operation === "start"
             ? "Claude voice input started."
             : "Claude voice input stopped.",
         );
       });
     return voiceQueue;
   };
+  const pushToTalk = createPushToTalk({
+    onAction: runVoiceAction,
+    onError(error) {
+      logger.error(
+        `Voice input action failed: ${error?.message ?? String(error)}`,
+      );
+    },
+  });
+  const onVoiceButton = (action) => pushToTalk.handle(action);
 
   const createDevice =
     deviceFactory ??
@@ -180,6 +189,7 @@ export async function startBridge({
     const currentDevice = device;
     device = null;
     await currentDevice?.stop();
+    await pushToTalk.reset();
   }
 
   function health() {

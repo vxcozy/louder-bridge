@@ -67,15 +67,19 @@ information.
    composer.
 5. Confirm the bridge did not submit the prompt, open another session, place
    text in Codex, or create a quick-entry window.
-6. Repeat the press-and-release cycle ten times. Each press should start one
+6. Repeat the hold-and-release cycle ten times. Each hold should start one
    recording and each release should stop it.
-7. Tap MIC too briefly to speak. Confirm dictation returns to idle without
-   becoming stuck.
-8. Disconnect or power off the Micro while MIC is held. Confirm dictation
-   stops.
-9. Restart Claude, restart the bridge, and power-cycle the Micro. Repeat the
+7. Tap MIC once. Confirm dictation returns to idle after the short
+   double-press window without becoming stuck.
+8. Double-tap MIC within 350 ms. Confirm dictation stays active after the
+   second release, then press MIC once and confirm it stops.
+9. Confirm a latched recording still writes to the same composer and does not
+   submit the prompt.
+10. Disconnect or power off the Micro while MIC is held or latched. Confirm
+   dictation stops.
+11. Restart Claude, restart the bridge, and power-cycle the Micro. Repeat the
    test after each restart.
-10. Run the complete test once over USB-C and once over Bluetooth.
+12. Run the complete test once over USB-C and once over Bluetooth.
 
 Do not infer transcript success from bridge logs. The logs prove only that MIC
 edges arrived and Claude's dictation control changed state. A tester must

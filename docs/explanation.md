@@ -40,9 +40,11 @@ The bridge updates its session store and sends color data for all six slots.
 The device reports Agent Key presses back to the bridge. A press selects the
 assigned session and asks Claude Desktop to resume it.
 
-MIC reports separate press and release events. The bridge serializes those
-events, starts Claude's own dictation on press, and stops it on release. It also
-stops dictation if the Micro disconnects while MIC is held.
+MIC reports separate press and release events. The bridge applies the same
+350 ms gesture window as Codex. Holding MIC starts Claude's dictation and
+releasing it stops. A quick double-tap latches dictation until the next press.
+The bridge also stops dictation if the Micro disconnects while MIC is held or
+latched.
 
 ## Why run a background agent
 
@@ -141,10 +143,11 @@ in Claude. It does not replace Claude's speech recognition or send audio to a
 separate service. Instead, a small native adapter finds the dictation control
 inside the frontmost Claude Code window through macOS Accessibility.
 
-On press, the adapter activates Claude and clicks the discovered dictation
-control. On release, it invokes the stop action on that same control. The
+On the first press, the adapter activates Claude and clicks the discovered
+dictation control. A release after the 350 ms gesture window stops recording.
+A quick double-tap keeps recording active, and the next press stops it. The
 adapter checks the control's role and surrounding structure rather than using
-screen coordinates. Press and release are idempotent, which prevents repeated
+screen coordinates. Start and stop are idempotent, which prevents repeated
 device events from toggling dictation in the wrong direction.
 
 The bridge observes only the Micro control edge and whether Claude's dictation

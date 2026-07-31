@@ -2,7 +2,8 @@
 
 After this tutorial, one Agent Key will show the state of a local Claude Code
 session and open that session when pressed. Holding MIC will start dictation in
-the active Code composer; releasing it will stop.
+the active Code composer; releasing it will stop. A quick double-tap keeps
+dictation running until you press MIC again.
 
 ## What you need
 
@@ -130,6 +131,10 @@ sentence. Release MIC.
 The sentence should appear in the same composer. It should not be sent
 automatically, open another session, or appear in Codex. Claude may ask for
 microphone permission the first time.
+
+Double-tap MIC quickly. Claude should keep listening after the second release.
+Speak another short sentence, then press MIC once to stop. The second sentence
+should stay in the same composer without being sent.
 
 ## 9. Return to Codex
 

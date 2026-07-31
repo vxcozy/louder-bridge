@@ -8,8 +8,10 @@ shows whether Claude is working, finished, waiting for input, or stopped by an
 error. Press the key to open its session in Claude Desktop.
 
 Hold the Micro's MIC control to dictate into the active Claude Code composer.
-Release it to stop. Louder Bridge uses Claude's own dictation control, so the
-transcript stays in the session you are already using.
+Release it to stop, or double-tap MIC to keep recording without holding it.
+Press MIC again to stop a latched recording. Louder Bridge uses Claude's own
+dictation control, so the transcript stays in the session you are already
+using.
 
 Louder Bridge reads Claude Code lifecycle hooks and sends the resulting state
 to the Micro. The bridge itself runs on your Mac and does not modify either

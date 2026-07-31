@@ -206,7 +206,8 @@ not forwarded by the hook process.
 - Pressing an assigned Agent Key selects its slot and opens its Claude session.
 - Holding MIC starts dictation in the active Claude Code composer.
 - Releasing MIC stops dictation without submitting the composer.
-- A device disconnect while MIC is held stops dictation.
+- Double-tapping MIC within 350 ms latches dictation until the next press.
+- A device disconnect while MIC is held or latched stops dictation.
 
 ## Source layout
 
@@ -218,6 +219,7 @@ not forwarded by the hook process.
 | `src/hook.mjs` | Claude hook client and payload filtering |
 | `src/state/session-store.mjs` | Six-slot allocation and lifecycle state |
 | `src/device/worklouder.mjs` | Device discovery, connection, and Agent Keys |
+| `src/device/push-to-talk.mjs` | MIC hold and double-tap gesture state |
 | `src/device/provider.mjs` | Supported and experimental device provider boundary |
 | `src/device/palette.mjs` | State-to-lighting mapping |
 | `src/runtime/asar-require.mjs` | In-place loading from ChatGPT's ASAR |
