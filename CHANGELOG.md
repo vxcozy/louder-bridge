@@ -46,6 +46,8 @@ have not shipped appear under "Unreleased."
 - GitHub release automation now creates a draft for hardware qualification and
   maintainer review instead of publishing immediately.
 - ChatGPT is no longer required for Codex Micro access.
+- Source setup now waits for both macOS permissions before starting the
+  background agent.
 
 ### Security
 

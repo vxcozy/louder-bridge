@@ -34,6 +34,10 @@ import {
   signLocalApplication,
 } from "./setup/native-launcher.mjs";
 import {
+  needsPermissionOnboarding,
+  openOnboardingApplication,
+} from "./setup/permission-onboarding.mjs";
+import {
   installLaunchAgent,
   launchAgentIsRunning,
   launchAgentPaths,
@@ -170,6 +174,7 @@ if (command === "help" || command === "--help" || command === "-h") {
   let authentication;
   let file;
   let agent;
+  let needsOnboarding = false;
   try {
     authentication = ensureAuthToken();
     application = installApplicationBundle({
@@ -190,7 +195,21 @@ if (command === "help" || command === "--help" || command === "-h") {
         hookPath: application.hook,
       }),
     });
-    agent = installLaunchAgent();
+    const inputMonitoring = inputMonitoringStatus({
+      launcher: application.launcher,
+    });
+    const accessibility = accessibilityStatus({
+      launcher: application.launcher,
+    });
+    needsOnboarding = needsPermissionOnboarding({
+      inputMonitoring,
+      accessibility,
+    });
+    if (needsOnboarding) {
+      agent = removeLaunchAgent();
+    } else {
+      agent = installLaunchAgent({ runtime: application });
+    }
   } catch (error) {
     restoreClaudeSettings(settingsSnapshot);
     if (application) rollbackApplicationBundle(application);
@@ -206,8 +225,18 @@ if (command === "help" || command === "--help" || command === "-h") {
   }
   console.log(`Application installed in ${application.app}.`);
   console.log(`Claude Code hooks installed in ${file}.`);
-  console.log(`Background agent installed in ${agent.plist}.`);
-  console.log("Louder Bridge will connect when Claude Desktop opens.");
+  if (needsOnboarding) {
+    openOnboardingApplication(application.app);
+    console.log(
+      "Louder Bridge is waiting for Input Monitoring and Accessibility approval.",
+    );
+    console.log(
+      "The background agent will start automatically after both permissions are granted.",
+    );
+  } else {
+    console.log(`Background agent installed in ${agent.plist}.`);
+    console.log("Louder Bridge will connect when Claude Desktop opens.");
+  }
 } else if (command === "activate") {
   const runtime = applicationBundlePathsForCli(fileURLToPath(import.meta.url));
   const permission = inputMonitoringStatus({ launcher: runtime.launcher });

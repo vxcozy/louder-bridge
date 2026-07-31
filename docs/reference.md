@@ -72,7 +72,7 @@ Setup creates a per-user launch agent with these properties:
 | Property | Value |
 |---|---|
 | Label | `app.louder-bridge.agent` |
-| Start policy | At login, with automatic restart |
+| Start policy | After permission approval, then at login with automatic restart |
 | Device policy | Connect while Claude Desktop is open |
 | Hook server | Always available on the configured loopback address |
 | Standard log | `~/Library/Logs/LouderBridge/bridge.log` |
@@ -233,6 +233,7 @@ not forwarded by the hook process.
 | `src/setup/claude-hooks.mjs` | Settings merge and removal |
 | `src/setup/launch-agent.mjs` | macOS launch agent installation |
 | `src/setup/application-bundle.mjs` | Self-contained app installation and rollback |
+| `src/setup/permission-onboarding.mjs` | Permission gate and first-launch handoff |
 | `src/setup/auth-token.mjs` | Local authentication-token lifecycle |
 | `src/logging.mjs` | Private bounded log files |
 
