@@ -91,6 +91,15 @@ if (
 if (!ciWorkflow.includes("npm ci") || !releaseWorkflow.includes("npm ci")) {
   failures.push("CI and release jobs must install from package-lock.json.");
 }
+if (
+  !ciWorkflow.includes("actions/checkout@v6") ||
+  !ciWorkflow.includes("actions/setup-node@v6") ||
+  !ciWorkflow.includes("actions/upload-artifact@v6") ||
+  !releaseWorkflow.includes("actions/checkout@v6") ||
+  !releaseWorkflow.includes("actions/setup-node@v6")
+) {
+  failures.push("GitHub workflows must use the Node 24-based action releases.");
+}
 if (!releaseWorkflow.includes("--draft")) {
   failures.push(
     "The release workflow must create a draft for physical qualification.",
