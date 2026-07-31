@@ -83,19 +83,37 @@ export function compileNativeLauncherAtomically({
 export function signLocalApplication({
   app,
   launcher,
+  node,
+  entitlements,
   run = spawnSync,
 } = {}) {
-  if (!app || !launcher) {
-    throw new Error("Local signing requires an app and launcher path.");
+  if (!app || !launcher || !node || !entitlements) {
+    throw new Error(
+      "Local signing requires app, launcher, Node.js, and entitlement paths.",
+    );
   }
   runChecked(
     "/usr/bin/codesign",
-    ["--force", "--sign", "-", launcher],
+    [
+      "--force",
+      "--options",
+      "runtime",
+      "--entitlements",
+      entitlements,
+      "--sign",
+      "-",
+      node,
+    ],
     run,
   );
   runChecked(
     "/usr/bin/codesign",
-    ["--force", "--sign", "-", app],
+    ["--force", "--options", "runtime", "--sign", "-", launcher],
+    run,
+  );
+  runChecked(
+    "/usr/bin/codesign",
+    ["--force", "--options", "runtime", "--sign", "-", app],
     run,
   );
   runChecked(

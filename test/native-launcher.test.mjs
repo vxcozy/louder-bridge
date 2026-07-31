@@ -53,6 +53,8 @@ test("ad hoc signs and verifies a local application", () => {
   signLocalApplication({
     app: "/Applications/Louder Bridge.app",
     launcher: "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
+    node: "/Applications/Louder Bridge.app/Contents/MacOS/node",
+    entitlements: "/source/release/node.entitlements.plist",
     run(command, args) {
       calls.push([command, ...args]);
       return { status: 0, stdout: "", stderr: "" };
@@ -60,11 +62,45 @@ test("ad hoc signs and verifies a local application", () => {
   });
 
   assert.deepEqual(
-    calls.map((call) => call.slice(0, 4)),
+    calls,
     [
-      ["/usr/bin/codesign", "--force", "--sign", "-"],
-      ["/usr/bin/codesign", "--force", "--sign", "-"],
-      ["/usr/bin/codesign", "--verify", "--deep", "--strict"],
+      [
+        "/usr/bin/codesign",
+        "--force",
+        "--options",
+        "runtime",
+        "--entitlements",
+        "/source/release/node.entitlements.plist",
+        "--sign",
+        "-",
+        "/Applications/Louder Bridge.app/Contents/MacOS/node",
+      ],
+      [
+        "/usr/bin/codesign",
+        "--force",
+        "--options",
+        "runtime",
+        "--sign",
+        "-",
+        "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
+      ],
+      [
+        "/usr/bin/codesign",
+        "--force",
+        "--options",
+        "runtime",
+        "--sign",
+        "-",
+        "/Applications/Louder Bridge.app",
+      ],
+      [
+        "/usr/bin/codesign",
+        "--verify",
+        "--deep",
+        "--strict",
+        "--verbose=2",
+        "/Applications/Louder Bridge.app",
+      ],
     ],
   );
 });

@@ -179,14 +179,22 @@ if (command === "help" || command === "--help" || command === "-h") {
     authentication = ensureAuthToken();
     application = installApplicationBundle({
       prepare(staged) {
+        const sourceRoot = path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "..",
+        );
         compileNativeLauncherAtomically({
-          sourceRoot: path.resolve(
-            path.dirname(fileURLToPath(import.meta.url)),
-            "..",
-          ),
+          sourceRoot,
           output: staged.launcher,
         });
-        signLocalApplication(staged);
+        signLocalApplication({
+          ...staged,
+          entitlements: path.join(
+            sourceRoot,
+            "release",
+            "node.entitlements.plist",
+          ),
+        });
       },
     });
     file = updateClaudeSettings({

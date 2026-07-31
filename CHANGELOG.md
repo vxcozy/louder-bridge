@@ -56,3 +56,5 @@ have not shipped appear under "Unreleased."
 - The bridge refuses non-loopback bind addresses.
 - Hook payloads exclude prompts, responses, transcripts, and tool contents.
 - The embedded Node.js runtime keeps library validation enabled.
+- Source-installed test builds now use the same hardened runtime and Node.js
+  entitlements as release builds.
