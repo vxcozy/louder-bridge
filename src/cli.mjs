@@ -195,21 +195,8 @@ if (command === "help" || command === "--help" || command === "-h") {
         hookPath: application.hook,
       }),
     });
-    const inputMonitoring = inputMonitoringStatus({
-      launcher: application.launcher,
-    });
-    const accessibility = accessibilityStatus({
-      launcher: application.launcher,
-    });
-    needsOnboarding = needsPermissionOnboarding({
-      inputMonitoring,
-      accessibility,
-    });
-    if (needsOnboarding) {
-      agent = removeLaunchAgent();
-    } else {
-      agent = installLaunchAgent({ runtime: application });
-    }
+    agent = removeLaunchAgent();
+    needsOnboarding = true;
   } catch (error) {
     restoreClaudeSettings(settingsSnapshot);
     if (application) rollbackApplicationBundle(application);
@@ -253,10 +240,13 @@ if (command === "help" || command === "--help" || command === "-h") {
         hookPath: runtime.hook,
       }),
     });
-    if (permission === "granted" && accessibility === "granted") {
-      agent = installLaunchAgent({ runtime });
-    } else {
+    if (needsPermissionOnboarding({
+      inputMonitoring: permission,
+      accessibility,
+    })) {
       removeLaunchAgent();
+    } else {
+      agent = installLaunchAgent({ runtime });
     }
   } catch (error) {
     restoreClaudeSettings(settingsSnapshot);

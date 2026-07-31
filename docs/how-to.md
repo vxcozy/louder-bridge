@@ -22,6 +22,10 @@ A source build does not have a stable Developer ID signature. Reinstalling it
 can make macOS ask for permission again. Signed release builds keep the same
 identity across upgrades.
 
+Permission status from `npm run status` is authoritative because it comes from
+the background app. A permission check run directly from a terminal can belong
+to the terminal instead.
+
 ## Troubleshoot startup
 
 Start with the compatibility check:
