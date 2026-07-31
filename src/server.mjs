@@ -161,15 +161,20 @@ export async function startBridge({
 
   const createDevice =
     deviceFactory ??
-    (() =>
+    ((options) =>
       mockDevice
-        ? new MockDevice({ logger, onAgentKey, onVoiceButton })
-        : new WorkLouderDevice({ logger, onAgentKey, onVoiceButton }));
+        ? new MockDevice(options)
+        : new WorkLouderDevice(options));
 
   async function connectDevice() {
     deviceRequested = true;
     if (device) return device;
-    const nextDevice = createDevice({ logger, onAgentKey, onVoiceButton });
+    const nextDevice = createDevice({
+      logger,
+      onAgentKey,
+      onVoiceButton,
+      onDeviceDisconnect: () => pushToTalk.reset(),
+    });
     device = nextDevice;
     try {
       await nextDevice.start();

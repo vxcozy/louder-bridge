@@ -91,6 +91,9 @@ if (
 if (!ciWorkflow.includes("npm ci") || !releaseWorkflow.includes("npm ci")) {
   failures.push("CI and release jobs must install from package-lock.json.");
 }
+if ((ciWorkflow.match(/fetch-depth:\s*0/g) ?? []).length < 2) {
+  failures.push("CI jobs must fetch full history for attribution checks.");
+}
 if (
   !ciWorkflow.includes("actions/checkout@v6") ||
   !ciWorkflow.includes("actions/setup-node@v6") ||

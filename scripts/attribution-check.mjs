@@ -36,7 +36,7 @@ for (const filename of projectFiles(root)) {
 
 const history = spawnSync(
   "/usr/bin/git",
-  ["-C", root, "log", "--format=%H%n%B%n--END-COMMIT--"],
+  ["-C", root, "log", "--all", "--format=%H%n%B%n--END-COMMIT--"],
   { encoding: "utf8" },
 );
 if (history.status === 0) {

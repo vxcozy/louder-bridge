@@ -337,14 +337,20 @@ static void find_dictation_elements(
 ) {
   if (found->remaining <= 0) return;
   found->remaining -= 1;
-  if (
-    found->dictation_group == NULL &&
-    is_dictation_group(element)
-  ) {
-    found->dictation_group = (AXUIElementRef)CFRetain(element);
+  if (is_dictation_group(element)) {
     int toggle_budget = 128;
-    found->stop_toggle = find_toggle_descendant(element, &toggle_budget);
-    return;
+    AXUIElementRef toggle = find_toggle_descendant(element, &toggle_budget);
+    if (toggle != NULL) {
+      if (found->dictation_group != NULL) {
+        CFRelease(found->dictation_group);
+      }
+      found->dictation_group = (AXUIElementRef)CFRetain(element);
+      found->stop_toggle = toggle;
+      return;
+    }
+    if (found->dictation_group == NULL) {
+      found->dictation_group = (AXUIElementRef)CFRetain(element);
+    }
   }
 
   CFTypeRef children_value = NULL;
@@ -370,7 +376,7 @@ static void find_dictation_elements(
       (AXUIElementRef)CFArrayGetValueAtIndex(children, index),
       found
     );
-    if (found->dictation_group != NULL) break;
+    if (found->stop_toggle != NULL) break;
   }
   CFRelease(children_value);
 }
@@ -396,7 +402,7 @@ static Boolean activate_claude(void) {
   }
 }
 
-static DictationElements inspect_claude_dictation(void) {
+static DictationElements inspect_claude_dictation(Boolean focused_only) {
   DictationElements found = {
     .dictation_group = NULL,
     .stop_toggle = NULL,
@@ -407,7 +413,24 @@ static DictationElements inspect_claude_dictation(void) {
   AXUIElementRef application = AXUIElementCreateApplication(
     process_identifier
   );
-  find_dictation_elements(application, &found);
+  AXUIElementRef root = application;
+  CFTypeRef focused_window = NULL;
+  if (
+    focused_only &&
+    AXUIElementCopyAttributeValue(
+      application,
+      kAXFocusedWindowAttribute,
+      &focused_window
+    ) == kAXErrorSuccess &&
+    focused_window != NULL &&
+    CFGetTypeID(focused_window) == AXUIElementGetTypeID()
+  ) {
+    root = (AXUIElementRef)focused_window;
+  }
+  if (!focused_only || root != application) {
+    find_dictation_elements(root, &found);
+  }
+  if (focused_window != NULL) CFRelease(focused_window);
   CFRelease(application);
   return found;
 }
@@ -484,11 +507,13 @@ static int start_claude_dictation(void) {
     return 4;
   }
   usleep(150000);
-  DictationElements found = inspect_claude_dictation();
+  DictationElements found = inspect_claude_dictation(false);
   if (found.stop_toggle != NULL) {
     release_dictation_elements(&found);
     return 0;
   }
+  release_dictation_elements(&found);
+  found = inspect_claude_dictation(true);
   if (found.dictation_group == NULL) {
     fputs(
       "The active Claude Code composer does not expose dictation.\n",
@@ -506,7 +531,7 @@ static int start_claude_dictation(void) {
 
   for (int attempt = 0; attempt < 30; attempt += 1) {
     usleep(100000);
-    found = inspect_claude_dictation();
+    found = inspect_claude_dictation(true);
     Boolean recording = found.stop_toggle != NULL;
     release_dictation_elements(&found);
     if (recording) return 0;
@@ -523,7 +548,7 @@ static int stop_claude_dictation(void) {
     fputs("Louder Bridge needs Accessibility permission.\n", stderr);
     return 3;
   }
-  DictationElements found = inspect_claude_dictation();
+  DictationElements found = inspect_claude_dictation(false);
   if (found.stop_toggle == NULL) {
     release_dictation_elements(&found);
     return 0;
@@ -539,7 +564,7 @@ static int stop_claude_dictation(void) {
   }
   for (int attempt = 0; attempt < 30; attempt += 1) {
     usleep(100000);
-    found = inspect_claude_dictation();
+    found = inspect_claude_dictation(false);
     Boolean stopped = found.stop_toggle == NULL;
     release_dictation_elements(&found);
     if (stopped) return 0;

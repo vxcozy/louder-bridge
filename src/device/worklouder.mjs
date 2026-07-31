@@ -7,11 +7,13 @@ export class WorkLouderDevice {
     logger = console,
     onAgentKey = () => {},
     onVoiceButton = () => {},
+    onDeviceDisconnect = () => {},
   } = {}) {
     this.provider = provider;
     this.logger = logger;
     this.onAgentKey = onAgentKey;
     this.onVoiceButton = onVoiceButton;
+    this.onDeviceDisconnect = onDeviceDisconnect;
     this.comm = null;
     this.api = null;
     this.unsubscribeHid = null;
@@ -201,6 +203,7 @@ export class WorkLouderDevice {
 
   async disconnect(expectedComm = this.comm) {
     if (expectedComm && this.comm !== expectedComm) return false;
+    const wasConnected = Boolean(this.comm);
     this.unsubscribeHid?.();
     this.unsubscribeHid = null;
     this.unsubscribeConnection?.();
@@ -210,6 +213,13 @@ export class WorkLouderDevice {
       await Promise.resolve(this.onVoiceButton("release")).catch((error) => {
         this.logger.error(
           `Voice input release failed: ${error?.message ?? String(error)}`,
+        );
+      });
+    }
+    if (wasConnected) {
+      await Promise.resolve(this.onDeviceDisconnect()).catch((error) => {
+        this.logger.error(
+          `Could not stop voice input after Codex Micro disconnected: ${error?.message ?? String(error)}`,
         );
       });
     }
@@ -264,10 +274,12 @@ export class MockDevice {
     logger = console,
     onAgentKey = () => {},
     onVoiceButton = () => {},
+    onDeviceDisconnect = () => {},
   } = {}) {
     this.logger = logger;
     this.onAgentKey = onAgentKey;
     this.onVoiceButton = onVoiceButton;
+    this.onDeviceDisconnect = onDeviceDisconnect;
     this.started = false;
   }
   async start() {
@@ -284,6 +296,7 @@ export class MockDevice {
     return true;
   }
   async stop() {
+    if (this.started) await this.onDeviceDisconnect();
     this.started = false;
   }
 }

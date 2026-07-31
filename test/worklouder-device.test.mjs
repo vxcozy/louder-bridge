@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { setImmediate as waitForImmediate } from "node:timers/promises";
+import { createPushToTalk } from "../src/device/push-to-talk.mjs";
 import { WorkLouderDevice } from "../src/device/worklouder.mjs";
 
 function deferred() {
@@ -161,6 +162,42 @@ test("releases voice input if the Micro disconnects while held", async () => {
   state.connectionHandler({ type: "disconnected" });
   await waitForImmediate();
   assert.deepEqual(actions, ["press", "release"]);
+  await device.stop();
+});
+
+test("stops latched voice input if the Micro disconnects", async () => {
+  const actions = [];
+  const { kit, state } = testKit();
+  const pushToTalk = createPushToTalk({
+    onAction(action) {
+      actions.push(action);
+    },
+  });
+  const device = new TestDevice(kit, {
+    logger: { info() {}, error() {} },
+    onVoiceButton(action) {
+      return pushToTalk.handle(action);
+    },
+    onDeviceDisconnect() {
+      return pushToTalk.reset();
+    },
+  });
+
+  await device.start();
+  state.hidHandler({ key: "ACT10", act: 1 });
+  await waitForImmediate();
+  state.hidHandler({ key: "ACT10", act: 0 });
+  await waitForImmediate();
+  state.hidHandler({ key: "ACT10", act: 1 });
+  await waitForImmediate();
+  state.hidHandler({ key: "ACT10", act: 0 });
+  await waitForImmediate();
+  assert.equal(pushToTalk.status(), "latched");
+
+  state.connectionHandler({ type: "disconnected" });
+  await waitForImmediate();
+  assert.deepEqual(actions, ["start", "stop"]);
+  assert.equal(pushToTalk.status(), "idle");
   await device.stop();
 });
 
