@@ -5,6 +5,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { bundledComponentIds } from "./spdx-sbom.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -67,6 +68,33 @@ if (
   throw new Error(
     "The release SBOM does not identify the package name and version.",
   );
+}
+for (const [label, identifier] of Object.entries(bundledComponentIds)) {
+  if (!sbom.packages.some((entry) => entry.SPDXID === identifier)) {
+    throw new Error(`The release SBOM does not identify the ${label} component.`);
+  }
+}
+const rootSpdxId = sbom.packages.find(
+  (entry) =>
+    entry.name === metadata.name &&
+    entry.versionInfo === metadata.version,
+)?.SPDXID;
+for (const [identifier, relationshipType] of [
+  [bundledComponentIds.node, "CONTAINS"],
+  [bundledComponentIds.protocol, "OTHER"],
+]) {
+  if (
+    !sbom.relationships?.some(
+      (entry) =>
+        entry.spdxElementId === rootSpdxId &&
+        entry.relatedSpdxElement === identifier &&
+        entry.relationshipType === relationshipType,
+    )
+  ) {
+    throw new Error(
+      `The release SBOM does not relate ${identifier} to the app.`,
+    );
+  }
 }
 
 const extracted = fs.mkdtempSync(

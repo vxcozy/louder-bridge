@@ -162,6 +162,18 @@ if (metadata.engines?.node !== ">=22") {
 if (metadata.louderBridge?.deviceProvider?.id !== "native-iokit-protocol") {
   failures.push("The bundled Codex Micro driver must be selected.");
 }
+const protocolReference =
+  metadata.louderBridge?.deviceProvider?.protocolReference;
+if (
+  !protocolReference ||
+  !/^[a-f0-9]{40}$/.test(protocolReference.revision ?? "") ||
+  protocolReference.license !== "MIT" ||
+  !URL.canParse(protocolReference.url ?? "")
+) {
+  failures.push(
+    "The Codex Micro protocol reference must include an MIT-licensed revision.",
+  );
+}
 for (const [label, adapter] of [
   ["Codex Micro device driver", metadata.louderBridge?.deviceProvider],
   ["Claude session navigator", metadata.louderBridge?.claudeNavigator],

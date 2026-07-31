@@ -12,6 +12,7 @@
 | Voice account | Claude.ai account with voice allowed by organization policy |
 | Permissions | Input Monitoring and Accessibility for Louder Bridge; Microphone for Claude Desktop |
 | Device driver | Bundled native IOKit driver; vendor-supported interface required for v1 |
+| Protocol reference | FreeMicro revision `64258eb6cc3312a43f9f9f86d87e55e0b609ccc5` (MIT) |
 
 Claude Desktop and Codex Micro firmware change over time. Run `npm run doctor`
 to check the current installation.

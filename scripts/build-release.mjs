@@ -9,6 +9,7 @@ import {
   installApplicationBundle,
 } from "../src/setup/application-bundle.mjs";
 import { compileNativeLauncher } from "../src/setup/native-launcher.mjs";
+import { addBundledComponents } from "./spdx-sbom.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -118,7 +119,7 @@ const digest = createHash("sha256")
 fs.writeFileSync(`${archive}.sha256`, `${digest}  ${path.basename(archive)}\n`, {
   mode: 0o644,
 });
-const sbom = run("/usr/bin/env", [
+const generatedSbom = run("/usr/bin/env", [
   "npm",
   "sbom",
   "--sbom-format",
@@ -130,7 +131,13 @@ const sbomFile = path.join(
   dist,
   `Louder-Bridge-${metadata.version}.spdx.json`,
 );
-fs.writeFileSync(sbomFile, sbom.stdout, { mode: 0o644 });
+const sbom = addBundledComponents(JSON.parse(generatedSbom.stdout), {
+  metadata,
+  nodeVersion: process.version,
+});
+fs.writeFileSync(sbomFile, `${JSON.stringify(sbom, null, 2)}\n`, {
+  mode: 0o644,
+});
 console.log(`Built ${path.relative(root, archive)}`);
 console.log(`Built ${path.relative(root, sbomFile)}`);
 console.log(identity ? "Developer ID signature applied." : "Ad hoc signature applied.");

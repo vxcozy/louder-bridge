@@ -58,3 +58,5 @@ have not shipped appear under "Unreleased."
 - The embedded Node.js runtime keeps library validation enabled.
 - Source-installed test builds now use the same hardened runtime and Node.js
   entitlements as release builds.
+- SPDX SBOMs now identify the embedded Node.js runtime and the exact licensed
+  protocol reference.

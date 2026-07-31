@@ -33,7 +33,13 @@
   "louderBridge": {
     "deviceProvider": {
       "id": "native-iokit-protocol",
-      "support": "experimental"
+      "support": "experimental",
+      "protocolReference": {
+        "name": "FreeMicro",
+        "revision": "64258eb6cc3312a43f9f9f86d87e55e0b609ccc5",
+        "license": "MIT",
+        "url": "https://github.com/eliBenven/freemicro"
+      }
     },
     "claudeNavigator": {
       "id": "claude-resume-url",
