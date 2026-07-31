@@ -14,6 +14,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "micro_device.h"
+
 extern char **environ;
 
 static volatile sig_atomic_t runtime_process = 0;
@@ -636,6 +638,21 @@ int main(int argc, char *argv[]) {
   if (argc > 1 && strcmp(argv[1], "--claude-dictation-stop") == 0) {
     return stop_claude_dictation();
   }
+  if (argc > 1 && strcmp(argv[1], "--micro-device") == 0) {
+    return run_micro_device();
+  }
+  if (
+    argc == 4 &&
+    strcmp(argv[1], "--test-micro-frame") == 0
+  ) {
+    return print_micro_frames(argv[2], argv[3]);
+  }
+  if (
+    argc == 3 &&
+    strcmp(argv[1], "--test-micro-command") == 0
+  ) {
+    return validate_micro_command(argv[2]);
+  }
   if (argc > 1 && strcmp(argv[1], "--input-monitoring-status-code") == 0) {
     IOHIDAccessType access =
       IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
@@ -681,6 +698,7 @@ int main(int argc, char *argv[]) {
     fputs("Louder Bridge application path is too long.\n", stderr);
     return 1;
   }
+  setenv("LOUDER_BRIDGE_LAUNCHER", resolved, 1);
 
   const char *command = "activate";
   if (argc > 1) {

@@ -32,7 +32,7 @@
   },
   "louderBridge": {
     "deviceProvider": {
-      "id": "chatgpt-asar",
+      "id": "native-iokit-protocol",
       "support": "experimental"
     },
     "claudeNavigator": {

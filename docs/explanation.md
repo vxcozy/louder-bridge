@@ -107,23 +107,23 @@ solid.
 When you select an Agent Key, the bridge also applies that slot's color to the
 other keys and ambient ring. The other five status lights do not change.
 
-## Device provider boundary
+## Device driver boundary
 
-Device access goes through a small provider interface. The provider reports its
-name, version, availability, and support level. The rest of the bridge only
-depends on the operations it needs: discovery, lighting, Agent Key events, and
-disconnect.
+Device access runs in a small native child process. The Node service sees a
+narrow transport with four jobs: report availability, send lighting, receive
+Agent Key and MIC events, and close the connection.
 
-The preview provider reads Work Louder's Codex Micro library from the installed
-ChatGPT application. It does not copy or extract the package. The ASAR loader
-reads JavaScript in place and sends native-addon paths to ChatGPT's adjacent
-unpacked directory. ChatGPT stays signed and unmodified, and this repository
-does not redistribute Work Louder's code.
+The child process opens the Micro non-exclusively through IOKit. It frames JSON
+messages for USB-C or Bluetooth, requests `device.status`, and waits for a real
+reply before reporting a connection. Host commands are limited to status,
+lighting configuration, and thread-status lighting. Firmware, filesystem, and
+bootloader methods are rejected.
 
-That provider is experimental. A ChatGPT update can break it, so the release
-check will not allow a stable v1 while it remains selected. An official or
-explicitly licensed Work Louder SDK can replace it without changing session or
-lighting code.
+The framing and message names come from an independently documented,
+MIT-licensed implementation. The bridge includes that license notice and does
+not depend on ChatGPT or copy code from its application bundle. The protocol is
+still experimental because Work Louder does not support it as a public
+interface. Stable v1 remains blocked until that changes.
 
 ## Claude session navigation
 
@@ -180,10 +180,9 @@ is no cloud service in the bridge and no account credential is required.
 
 ## Coexisting with Codex
 
-The Work Louder library opens the device in non-exclusive mode. This lets
-ChatGPT and Louder Bridge both connect, but it does not coordinate their
-lighting writes. If Codex and Claude update at the same time, the last write
-wins.
+The native driver opens the device in non-exclusive mode. This lets Codex and
+Louder Bridge connect at the same time, but it does not coordinate their
+lighting writes. If both update the Micro at once, the last write wins.
 
 To avoid conflicting RGB updates, keep one desktop app active at a time:
 
@@ -196,6 +195,7 @@ quits. The next Codex update can then restore Codex's state.
 ## Related projects and documentation
 
 - [Work Louder Codex Micro](https://worklouder.cc/codex-micro)
+- [FreeMicro protocol implementation](https://github.com/eliBenven/freemicro)
 - [Claude Code Desktop](https://code.claude.com/docs/en/desktop)
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 - [Claude Code voice dictation](https://code.claude.com/docs/en/voice-dictation)

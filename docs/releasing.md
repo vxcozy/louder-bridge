@@ -14,8 +14,8 @@ npm run release:check
 ```
 
 The release check compares a release tag with the package version. It also
-refuses a stable version while the device provider, session navigator, or
-voice interface is experimental.
+refuses a stable version while the device driver, session navigator, or voice
+interface is experimental.
 
 ## Build and sign
 

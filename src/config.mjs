@@ -6,13 +6,6 @@ export const BRIDGE_PORT = Number(process.env.LOUDER_BRIDGE_PORT ?? 47831);
 export const BRIDGE_URL = `http://${BRIDGE_HOST}:${BRIDGE_PORT}`;
 export const SLOT_COUNT = 6;
 
-export function legacyChatGptAsar() {
-  if (process.platform === "darwin") {
-    return "/Applications/ChatGPT.app/Contents/Resources/app.asar";
-  }
-  return "";
-}
-
 export function claudeSettingsPath() {
   return process.env.CLAUDE_CONFIG_DIR
     ? path.join(process.env.CLAUDE_CONFIG_DIR, "settings.json")

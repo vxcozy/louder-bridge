@@ -72,22 +72,24 @@ newer.
 The bridge tracks local Claude Code sessions. It cannot track cloud or SSH
 sessions because their hooks run on another machine.
 
-ChatGPT and Louder Bridge can both connect to the Micro, but their RGB writes
-are not coordinated. Quit Claude Desktop before returning to active Codex work.
-The background agent will release the device.
+ChatGPT is not required. Louder Bridge talks to the Micro through a bundled
+native macOS driver. If ChatGPT is open at the same time, both apps can write
+to the same lights. Quit Claude Desktop before returning to active Codex work;
+the background agent will release the device.
 
 ## Project status
 
-This is a pre-1.0 project. The hardware, hooks, background agent, lighting, and
-session navigation have passed a physical test on a Codex Micro. Micro-triggered
-dictation is implemented and covered by automated tests, but it is not part of
-the physical baseline until the USB-C and Bluetooth checklist passes.
+This is a pre-1.0 project. The hooks, background agent, lighting, and session
+navigation have passed a physical test on a Codex Micro. The new direct device
+driver has completed a status round trip with a USB-connected unit running
+firmware v0.4.1. Its key, lighting, Bluetooth, and recovery matrix still needs
+to pass before it replaces the earlier hardware baseline.
 
-The current preview uses three private integration points: the Work Louder
-runtime installed with ChatGPT, Claude's local resume URL, and Claude's
-Accessibility surface for dictation. They sit behind adapters, but neither
-vendor documents them as public interfaces. A stable v1 will require supported
-replacements. Until then, signed builds must be published as prereleases.
+The preview still relies on three unsupported integration points: the
+independently documented Codex Micro protocol, Claude's local resume URL, and
+Claude's Accessibility surface for dictation. Each sits behind a small adapter.
+A stable v1 requires vendor-supported interfaces, so releases remain marked as
+prereleases until those are available and verified.
 
 Run the tests and local compatibility check with:
 

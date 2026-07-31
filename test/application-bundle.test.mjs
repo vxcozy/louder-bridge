@@ -25,6 +25,11 @@ function fixture() {
     JSON.stringify({ version: "1.2.3" }),
   );
   fs.writeFileSync(path.join(source, "LICENSE"), "project license");
+  fs.mkdirSync(path.join(source, "THIRD_PARTY_LICENSES"));
+  fs.writeFileSync(
+    path.join(source, "THIRD_PARTY_LICENSES", "Protocol-LICENSE"),
+    "protocol license",
+  );
   fs.writeFileSync(node, "node fixture");
   fs.writeFileSync(path.join(root, "LICENSE"), "node license");
   return { root, home, source, node };
@@ -57,6 +62,17 @@ test("installs a self-contained application bundle", () => {
       "utf8",
     ),
     "node license",
+  );
+  assert.equal(
+    fs.readFileSync(
+      path.join(
+        transaction.resources,
+        "THIRD_PARTY_LICENSES",
+        "Protocol-LICENSE",
+      ),
+      "utf8",
+    ),
+    "protocol license",
   );
   const infoPlist = fs.readFileSync(transaction.infoPlist, "utf8");
   assert.match(infoPlist, /1\.2\.3/);

@@ -11,7 +11,6 @@ dictation running until you press MIC again.
 - Node.js 22 or newer
 - Claude Desktop with the Code tab
 - a Codex Micro connected over USB-C or Bluetooth
-- ChatGPT for macOS while the preview device adapter is still in use
 
 Run the commands below from the Louder Bridge directory.
 

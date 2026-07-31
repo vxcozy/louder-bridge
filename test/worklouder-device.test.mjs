@@ -12,78 +12,71 @@ function deferred() {
   return { promise, resolve };
 }
 
-function testKit({ devices = [{}], connectGate } = {}) {
-  const state = {
-    connectCalls: 0,
-    disconnectCalls: 0,
-    hidHandler: null,
-    comms: [],
-  };
-  class Discovery {
-    findWLDevices() {
-      return devices;
-    }
+class FakeTransport {
+  constructor({ connectGate, connectError } = {}) {
+    this.connectGate = connectGate;
+    this.connectError = connectError;
+    this.connectCalls = 0;
+    this.closeCalls = 0;
+    this.messages = [];
+    this.callbacks = null;
   }
-  class Comm {
-    constructor() {
-      this.disconnectCalls = 0;
-      state.comms.push(this);
-    }
-    onConnectionEvent(handler) {
-      this.connectionHandler = handler;
-      state.connectionHandler = handler;
-      return () => {
-        if (state.connectionHandler === handler) {
-          state.connectionHandler = null;
-        }
-      };
-    }
-    async connect() {
-      state.connectCalls += 1;
-      if (connectGate) await connectGate.promise;
-    }
-    async disconnect() {
-      this.disconnectCalls += 1;
-      state.disconnectCalls += 1;
-    }
+
+  metadata() {
+    return {
+      id: "test-native",
+      support: "test",
+      version: "v0.4.1",
+      transport: "USB",
+    };
   }
-  class Api {
-    onHidReceived(handler) {
-      state.hidHandler = handler;
-      return () => {
-        state.hidHandler = null;
-      };
-    }
-    async sendThreadsLighting() {
-      return true;
-    }
+
+  async connect(callbacks) {
+    this.connectCalls += 1;
+    this.callbacks = callbacks;
+    if (this.connectGate) await this.connectGate.promise;
+    if (this.connectError) throw this.connectError;
+    return this.metadata();
   }
-  return {
-    kit: {
-      DeviceType: { CodexMicro: 1 },
-      ConnectionEventType: { DISCONNECTED: "disconnected", ERROR: "error" },
-      WLDeviceDiscovery: Discovery,
-      WLDeviceCommImpl: Comm,
-      RPCApiOAI: Api,
-    },
-    state,
-  };
+
+  async send(message) {
+    this.messages.push(message);
+  }
+
+  async close() {
+    this.closeCalls += 1;
+  }
+
+  event(key, act) {
+    this.callbacks.onEvent({ key, act });
+  }
+
+  disconnected(error = null) {
+    return this.callbacks.onDisconnect(error);
+  }
 }
 
-class TestDevice extends WorkLouderDevice {
-  constructor(kit, options = {}) {
-    super(options);
-    this.testKit = kit;
-  }
-  loadLibrary() {
-    return this.testKit;
-  }
+function testDevice(transports, options = {}) {
+  let index = 0;
+  return new WorkLouderDevice({
+    ...options,
+    runtime: {
+      id: "test-native",
+      support: "test",
+      version: null,
+      available: true,
+      error: null,
+    },
+    transportFactory() {
+      return transports[Math.min(index++, transports.length - 1)];
+    },
+  });
 }
 
 test("serializes overlapping device connection attempts", async () => {
   const gate = deferred();
-  const { kit, state } = testKit({ connectGate: gate });
-  const device = new TestDevice(kit, {
+  const transport = new FakeTransport({ connectGate: gate });
+  const device = testDevice([transport], {
     logger: { info() {}, error() {} },
   });
 
@@ -91,21 +84,22 @@ test("serializes overlapping device connection attempts", async () => {
   await waitForImmediate();
   const concurrent = device.connect();
   await waitForImmediate();
-  assert.equal(state.connectCalls, 1);
+  assert.equal(transport.connectCalls, 1);
 
   gate.resolve();
   await Promise.all([start, concurrent]);
   assert.equal(device.status().state, "connected");
   assert.equal(device.status().error, null);
   assert.equal(device.status().lastEventAt !== null, true);
+  assert.equal(device.status().runtime.version, "v0.4.1");
   await device.stop();
   assert.equal(device.status().state, "stopped");
 });
 
 test("contains asynchronous Agent Key handler failures", async () => {
   const errors = [];
-  const { kit, state } = testKit();
-  const device = new TestDevice(kit, {
+  const transport = new FakeTransport();
+  const device = testDevice([transport], {
     logger: {
       info() {},
       error(message) {
@@ -118,7 +112,7 @@ test("contains asynchronous Agent Key handler failures", async () => {
   });
 
   await device.start();
-  state.hidHandler({ key: "AG03", act: 1 });
+  transport.event("AG03", 1);
   await waitForImmediate();
   assert.deepEqual(errors, ["Agent Key action failed: navigation failed"]);
   await device.stop();
@@ -126,8 +120,8 @@ test("contains asynchronous Agent Key handler failures", async () => {
 
 test("routes the MIC key as press and release without duplicate edges", async () => {
   const actions = [];
-  const { kit, state } = testKit();
-  const device = new TestDevice(kit, {
+  const transport = new FakeTransport();
+  const device = testDevice([transport], {
     logger: { info() {}, error() {} },
     async onVoiceButton(action) {
       actions.push(action);
@@ -135,10 +129,12 @@ test("routes the MIC key as press and release without duplicate edges", async ()
   });
 
   await device.start();
-  state.hidHandler({ key: "ACT10", act: 1 });
-  state.hidHandler({ key: "ACT10", act: 1 });
-  state.hidHandler({ key: "ACT10", act: 0 });
-  state.hidHandler({ key: "ACT10", act: 0 });
+  transport.event("ACT10", 1);
+  transport.event("ACT10", 1);
+  transport.event("ACT11", 1);
+  transport.event("ACT10", 0);
+  transport.event("ACT10", 0);
+  transport.event("ACT11", 0);
   await waitForImmediate();
   assert.deepEqual(actions, ["press", "release"]);
   assert.deepEqual(device.status().lastEvent.type, "voice");
@@ -148,8 +144,8 @@ test("routes the MIC key as press and release without duplicate edges", async ()
 
 test("releases voice input if the Micro disconnects while held", async () => {
   const actions = [];
-  const { kit, state } = testKit();
-  const device = new TestDevice(kit, {
+  const transport = new FakeTransport();
+  const device = testDevice([transport], {
     logger: { info() {}, error() {} },
     async onVoiceButton(action) {
       actions.push(action);
@@ -157,23 +153,45 @@ test("releases voice input if the Micro disconnects while held", async () => {
   });
 
   await device.start();
-  state.hidHandler({ key: "ACT10", act: 1 });
+  transport.event("ACT10", 1);
   await waitForImmediate();
-  state.connectionHandler({ type: "disconnected" });
+  transport.disconnected();
   await waitForImmediate();
   assert.deepEqual(actions, ["press", "release"]);
   await device.stop();
 });
 
+test("reports a native driver crash after connecting", async () => {
+  const errors = [];
+  const transport = new FakeTransport();
+  const device = testDevice([transport], {
+    logger: {
+      info() {},
+      error(message) {
+        errors.push(message);
+      },
+    },
+  });
+
+  await device.start();
+  transport.disconnected(new Error("native driver crashed"));
+  await waitForImmediate();
+
+  assert.equal(device.status().state, "error");
+  assert.equal(device.status().error, "native driver crashed");
+  assert.match(errors[0], /native driver crashed/);
+  await device.stop();
+});
+
 test("stops latched voice input if the Micro disconnects", async () => {
   const actions = [];
-  const { kit, state } = testKit();
+  const transport = new FakeTransport();
   const pushToTalk = createPushToTalk({
     onAction(action) {
       actions.push(action);
     },
   });
-  const device = new TestDevice(kit, {
+  const device = testDevice([transport], {
     logger: { info() {}, error() {} },
     onVoiceButton(action) {
       return pushToTalk.handle(action);
@@ -184,17 +202,17 @@ test("stops latched voice input if the Micro disconnects", async () => {
   });
 
   await device.start();
-  state.hidHandler({ key: "ACT10", act: 1 });
+  transport.event("ACT10", 1);
   await waitForImmediate();
-  state.hidHandler({ key: "ACT10", act: 0 });
+  transport.event("ACT10", 0);
   await waitForImmediate();
-  state.hidHandler({ key: "ACT10", act: 1 });
+  transport.event("ACT10", 1);
   await waitForImmediate();
-  state.hidHandler({ key: "ACT10", act: 0 });
+  transport.event("ACT10", 0);
   await waitForImmediate();
   assert.equal(pushToTalk.status(), "latched");
 
-  state.connectionHandler({ type: "disconnected" });
+  transport.disconnected();
   await waitForImmediate();
   assert.deepEqual(actions, ["start", "stop"]);
   assert.equal(pushToTalk.status(), "idle");
@@ -203,8 +221,10 @@ test("stops latched voice input if the Micro disconnects", async () => {
 
 test("logs a missing device only once while retrying", async () => {
   const messages = [];
-  const { kit } = testKit({ devices: [] });
-  const device = new TestDevice(kit, {
+  const missing = new Error("Codex Micro was not found.");
+  const first = new FakeTransport({ connectError: missing });
+  const second = new FakeTransport({ connectError: missing });
+  const device = testDevice([first, second], {
     logger: {
       info(message) {
         messages.push(message);
@@ -214,8 +234,7 @@ test("logs a missing device only once while retrying", async () => {
   });
 
   await device.start();
-  await device.connect();
-  await device.connect();
+  await device.connect().catch((error) => device.reportConnectionError(error));
   assert.equal(
     messages.filter((message) => message.includes("not detected")).length,
     1,
@@ -226,66 +245,61 @@ test("logs a missing device only once while retrying", async () => {
 
 test("does not publish a connection that ended while opening", async () => {
   const gate = deferred();
-  const { kit, state } = testKit({ connectGate: gate });
-  const device = new TestDevice(kit, {
+  const transport = new FakeTransport({ connectGate: gate });
+  const device = testDevice([transport], {
     logger: { info() {}, error() {} },
   });
 
   const start = device.start();
   await waitForImmediate();
-  state.connectionHandler({ type: "disconnected" });
+  transport.disconnected();
   gate.resolve();
   await start;
 
   assert.equal(device.status().state, "waiting");
-  assert.equal(device.api, null);
+  assert.equal(device.transport, null);
+  assert.equal(transport.closeCalls > 0, true);
   await device.stop();
 });
 
 test("ignores a stale disconnect from an older connection", async () => {
-  const { kit, state } = testKit();
-  const device = new TestDevice(kit, {
+  const first = new FakeTransport();
+  const second = new FakeTransport();
+  const device = testDevice([first, second], {
     logger: { info() {}, error() {} },
   });
 
   await device.start();
-  const firstComm = state.comms[0];
-  const staleHandler = firstComm.connectionHandler;
-  staleHandler({ type: "disconnected" });
+  first.disconnected();
   await waitForImmediate();
   await device.connect();
-  const secondComm = state.comms[1];
+  assert.equal(device.transport, second);
 
-  staleHandler({ type: "disconnected" });
+  first.disconnected();
   await waitForImmediate();
-  assert.equal(device.status().state, "connected");
-  assert.equal(secondComm.disconnectCalls, 0);
+  assert.equal(device.transport, second);
+  assert.equal(second.closeCalls, 0);
   await device.stop();
 });
 
-test("closes a partially loaded archive after startup failure", async () => {
-  let closed = false;
-  class FailingDevice extends WorkLouderDevice {
-    loadLibrary() {
-      throw new Error("package load failed");
-    }
-  }
-  const device = new FailingDevice({
-    provider: {
-      metadata: () => ({
-        id: "test",
-        support: "test",
-        version: null,
-      }),
-      close() {
-        closed = true;
+test("reports a driver startup failure and closes its process", async () => {
+  const transport = new FakeTransport({
+    connectError: new Error("driver failed"),
+  });
+  const errors = [];
+  const device = testDevice([transport], {
+    logger: {
+      info() {},
+      error(message) {
+        errors.push(message);
       },
     },
-    logger: { info() {}, error() {} },
   });
 
-  await assert.rejects(device.start(), /package load failed/);
+  await device.start();
+  assert.equal(device.status().state, "error");
+  assert.match(errors[0], /driver failed/);
+  assert.equal(transport.closeCalls, 1);
   await device.stop();
-  assert.equal(closed, true);
   assert.equal(device.status().state, "stopped");
 });

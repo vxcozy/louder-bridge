@@ -79,6 +79,19 @@ try {
   if (!fs.existsSync(app)) {
     throw new Error("The release archive does not contain Louder Bridge.app.");
   }
+  const protocolLicense = path.join(
+    app,
+    "Contents",
+    "Resources",
+    "app",
+    "THIRD_PARTY_LICENSES",
+    "FreeMicro-LICENSE",
+  );
+  if (!fs.existsSync(protocolLicense)) {
+    throw new Error(
+      "The release archive does not contain the Codex Micro protocol license.",
+    );
+  }
 
   run("/usr/bin/codesign", [
     "--verify",

@@ -20,13 +20,13 @@ body:
     id: versions
     attributes:
       label: System and component versions
-      description: Include the Mac model, macOS, Claude Desktop, ChatGPT, and Work Louder runtime versions.
+      description: Include the Mac model, macOS, Claude Desktop, Codex Micro firmware, and connection type.
       placeholder: |
         Mac:
         macOS:
         Claude Desktop:
-        ChatGPT:
-        Work Louder runtime:
+        Codex Micro firmware:
+        Connection:
     validations:
       required: true
   - type: dropdown

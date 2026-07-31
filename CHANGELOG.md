@@ -32,6 +32,9 @@ have not shipped appear under "Unreleased."
   local port-conflict errors.
 - Embedded Node version and accurate last-hook timing in authenticated
   diagnostics.
+- A bundled native IOKit driver for USB-C and Bluetooth Codex Micro
+  communication, with a verified device-status handshake and strict command
+  allowlist.
 
 ### Changed
 
@@ -42,6 +45,7 @@ have not shipped appear under "Unreleased."
 - The login agent now starts through the signed app executable.
 - GitHub release automation now creates a draft for hardware qualification and
   maintainer review instead of publishing immediately.
+- ChatGPT is no longer required for Codex Micro access.
 
 ### Security
 

@@ -16,4 +16,4 @@ Describe the result a user will notice.
 
 ## Compatibility
 
-List the macOS, Claude Desktop, Louder Bridge, and Work Louder runtime versions used for testing.
+List the macOS, Claude Desktop, Louder Bridge, Codex Micro firmware, and connection type used for testing.

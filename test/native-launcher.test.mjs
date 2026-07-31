@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   compileNativeLauncher,
   compileNativeLauncherAtomically,
@@ -31,7 +33,9 @@ test("compiles the launcher for the supported deployment target", () => {
       "arm64",
       "-mmacosx-version-min=15.0",
       "-Os",
+      "-fobjc-arc",
       "/source/native/launcher.m",
+      "/source/native/micro_device.m",
       "-framework",
       "AppKit",
       "-framework",
@@ -131,4 +135,80 @@ test("keeps the existing launcher when compilation fails", (context) => {
   );
   assert.equal(fs.readFileSync(output, "utf8"), "old launcher");
   assert.deepEqual(fs.readdirSync(directory), ["LouderBridge"]);
+});
+
+test("frames Codex Micro reports for USB and Bluetooth", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("The native Codex Micro driver requires Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-protocol-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  compileNativeLauncher({ sourceRoot, output });
+
+  const payload = '{"m":"x"}';
+  const usb = spawnSync(
+    output,
+    ["--test-micro-frame", "usb", payload],
+    { encoding: "utf8" },
+  );
+  const bluetooth = spawnSync(
+    output,
+    ["--test-micro-frame", "bluetooth", payload],
+    { encoding: "utf8" },
+  );
+  assert.equal(usb.status, 0);
+  assert.equal(bluetooth.status, 0);
+  assert.equal(usb.stdout.trim().length, 63 * 2);
+  assert.equal(bluetooth.stdout.trim().length, 64 * 2);
+  assert.match(usb.stdout, /^020b7b226d223a2278227d0d0a/);
+  assert.match(bluetooth.stdout, /^06020b7b226d223a2278227d0d0a/);
+});
+
+test("allows only the Codex Micro methods used by the bridge", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("The native Codex Micro driver requires Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-allowlist-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  compileNativeLauncher({ sourceRoot, output });
+
+  for (const method of [
+    "device.status",
+    "v.oai.rgbcfg",
+    "v.oai.thstatus",
+  ]) {
+    const result = spawnSync(
+      output,
+      ["--test-micro-command", JSON.stringify({ m: method })],
+    );
+    assert.equal(result.status, 0, method);
+  }
+  for (const payload of [
+    '{"m":"fs.write"}',
+    '{"m":"device.bootloader"}',
+    '{"m":"firmware.update"}',
+    "not-json",
+  ]) {
+    const result = spawnSync(
+      output,
+      ["--test-micro-command", payload],
+    );
+    assert.equal(result.status, 2, payload);
+  }
 });

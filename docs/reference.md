@@ -11,17 +11,17 @@
 | Agent surface | Local sessions in Claude Desktop's Code tab |
 | Voice account | Claude.ai account with voice allowed by organization policy |
 | Permissions | Input Monitoring and Accessibility for Louder Bridge; Microphone for Claude Desktop |
-| Work Louder runtime | Experimental preview adapter; supported SDK required for v1 |
+| Device driver | Bundled native IOKit driver; vendor-supported interface required for v1 |
 
-ChatGPT, Claude Desktop, and the Work Louder runtime change with desktop-app
-updates. Run `npm run doctor` to check the current installation.
+Claude Desktop and Codex Micro firmware change over time. Run `npm run doctor`
+to check the current installation.
 
 ## Package commands
 
 | Command | Purpose |
 |---|---|
 | `npm test` | Run the automated test suite |
-| `npm run doctor` | Check Node, ChatGPT, and the Work Louder runtime |
+| `npm run doctor` | Check Node, macOS, permissions, and the bundled Micro driver |
 | `npm run setup` | Install hooks and the macOS background agent |
 | `npm run status` | Check the background agent and hook server |
 | `npm start` | Run the bridge manually for development |
@@ -149,9 +149,10 @@ Returns bridge status and the six current slots:
       "state": "connected",
       "error": null,
       "runtime": {
-        "id": "chatgpt-asar",
+        "id": "native-iokit-protocol",
         "support": "experimental",
-        "version": "0.1.11"
+        "version": "v0.4.1",
+        "transport": "USB"
       },
       "lastEventAt": "2026-07-31T05:20:18.204Z",
       "lastEvent": {
@@ -219,16 +220,16 @@ not forwarded by the hook process.
 | `src/hook.mjs` | Claude hook client and payload filtering |
 | `src/state/session-store.mjs` | Six-slot allocation and lifecycle state |
 | `src/device/worklouder.mjs` | Device discovery, connection, and Agent Keys |
+| `src/device/native-transport.mjs` | Native-driver process and protocol messages |
 | `src/device/push-to-talk.mjs` | MIC hold and double-tap gesture state |
-| `src/device/provider.mjs` | Supported and experimental device provider boundary |
 | `src/device/palette.mjs` | State-to-lighting mapping |
-| `src/runtime/asar-require.mjs` | In-place loading from ChatGPT's ASAR |
 | `src/claude/navigator.mjs` | Claude navigation adapter |
 | `src/claude/open-session.mjs` | Experimental Claude resume URL |
 | `src/claude/voice.mjs` | Experimental Claude dictation adapter |
 | `src/macos/input-monitoring.mjs` | Native permission status checks |
 | `src/macos/accessibility.mjs` | Native Accessibility permission status checks |
 | `native/launcher.m` | App launcher, permission onboarding, and Claude dictation control |
+| `native/micro_device.m` | IOKit device discovery, framing, and input reports |
 | `src/setup/claude-hooks.mjs` | Settings merge and removal |
 | `src/setup/launch-agent.mjs` | macOS launch agent installation |
 | `src/setup/application-bundle.mjs` | Self-contained app installation and rollback |
@@ -242,8 +243,8 @@ not forwarded by the hook process.
 - macOS on Apple Silicon is the tested target.
 - Source builds do not have a stable Developer ID identity, so macOS may ask
   for Input Monitoring or Accessibility again after an upgrade.
-- The preview device provider depends on a private runtime installed with
-  ChatGPT. Stable v1 requires an approved Work Louder SDK.
+- The native driver uses an independently documented, MIT-licensed protocol
+  implementation. Stable v1 requires a vendor-supported Work Louder interface.
 - RGB writes can race while Claude Desktop and ChatGPT are both open.
 - Claude's resume URL is not part of Anthropic's public interface. Stable v1
   requires a supported navigation route.

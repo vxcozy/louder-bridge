@@ -62,21 +62,22 @@ To inspect recent errors:
 tail -n 50 ~/Library/Logs/LouderBridge/bridge-error.log
 ```
 
-### The Work Louder runtime is not found
+### The bundled Micro driver is unavailable
 
-The current preview adapter reads the Codex Micro runtime from the standard
-ChatGPT installation. Install the current ChatGPT macOS app in Applications,
-then run `npm run doctor` again.
+`npm run doctor` checks that the installed app contains its native Codex Micro
+driver. If the check fails, reinstall the app with `npm run setup`. If it still
+fails, save the full diagnostic output and open a bug report.
 
-This dependency is temporary. Stable v1 releases are blocked until the project
-has an official or explicitly licensed Work Louder SDK.
+The bundled driver uses an independently documented, MIT-licensed protocol
+implementation. It does not require ChatGPT. The interface remains
+experimental until Work Louder supports it.
 
 ### The Micro is detected but cannot be opened
 
 Grant Input Monitoring permission to Louder Bridge. If the error remains:
 
 1. Confirm `npm run status` reports Input Monitoring as granted.
-2. Quit ChatGPT if it is open.
+2. Quit any other app that is actively controlling the Micro.
 3. Disconnect and reconnect the Micro.
 4. Quit and reopen Claude Desktop.
 

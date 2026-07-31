@@ -119,6 +119,10 @@ export function installApplicationBundle({
     throw new Error("Node.js license was not found beside its executable.");
   }
   const metadata = JSON.parse(fs.readFileSync(packageFile, "utf8"));
+  const projectThirdPartyLicenses = path.join(
+    sourceRoot,
+    "THIRD_PARTY_LICENSES",
+  );
   const parent = path.dirname(paths.app);
   const staging = path.join(parent, `.${APP_NAME}.${randomUUID()}.tmp`);
   const backup = path.join(parent, `.${APP_NAME}.${randomUUID()}.previous`);
@@ -142,7 +146,13 @@ export function installApplicationBundle({
       staged.resources,
       "THIRD_PARTY_LICENSES",
     );
-    fs.mkdirSync(thirdPartyLicenses, { recursive: true });
+    if (fs.existsSync(projectThirdPartyLicenses)) {
+      fs.cpSync(projectThirdPartyLicenses, thirdPartyLicenses, {
+        recursive: true,
+      });
+    } else {
+      fs.mkdirSync(thirdPartyLicenses, { recursive: true });
+    }
     fs.copyFileSync(
       nodeLicense,
       path.join(thirdPartyLicenses, "Node.js-LICENSE"),

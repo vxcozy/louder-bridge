@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRIDGE_URL } from "./config.mjs";
-import { createDeviceProvider } from "./device/provider.mjs";
+import { inspectNativeMicroRuntime } from "./device/native-transport.mjs";
 import { inputMonitoringStatus } from "./macos/input-monitoring.mjs";
 import { applicationMetadata } from "./runtime/metadata.mjs";
 import { startBridge } from "./server.mjs";
@@ -64,8 +64,7 @@ async function doctor() {
   let ready = true;
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   const metadata = applicationMetadata();
-  const provider = createDeviceProvider();
-  const providerStatus = provider.inspect();
+  const driver = inspectNativeMicroRuntime();
   const permission = inputMonitoringStatus();
   const accessibility = accessibilityStatus();
   const platform = platformSupport();
@@ -86,19 +85,12 @@ async function doctor() {
       `Platform check: ready${platform.version ? ` (macOS ${platform.version})` : ""}.`,
     );
   }
-  console.log(
-    `Work Louder runtime: ${providerStatus.id} ${providerStatus.version ?? "(version unavailable)"}`,
-  );
-  console.log(`Work Louder support: ${providerStatus.support}.`);
-  if (!providerStatus.available) {
-    console.log(`Work Louder check: ${providerStatus.error}`);
-    if (process.env.LOUDER_SKIP_RUNTIME_AVAILABILITY_CHECK !== "1") {
-      ready = false;
-    } else {
-      console.log("Work Louder availability check: deferred to hardware testing.");
-    }
+  console.log(`Codex Micro driver: ${driver.id} (${driver.support}).`);
+  if (!driver.available) {
+    console.log(`Codex Micro driver check: ${driver.error}`);
+    ready = false;
   } else {
-    console.log("Work Louder check: ready.");
+    console.log("Codex Micro driver check: ready.");
   }
   console.log(`Input Monitoring: ${permission}.`);
   if (permission === "denied") ready = false;
@@ -321,9 +313,11 @@ if (command === "help" || command === "--help" || command === "-h") {
     );
     const runtime = health.service?.device?.runtime;
     if (runtime) {
-      console.log(
-        `Work Louder runtime: ${runtime.id} ${runtime.version ?? "(version unavailable)"} (${runtime.support})`,
-      );
+      console.log(`Codex Micro driver: ${runtime.id} (${runtime.support})`);
+      console.log(`Codex Micro firmware: ${runtime.version ?? "unavailable"}`);
+      if (runtime.transport) {
+        console.log(`Micro connection: ${runtime.transport}`);
+      }
     }
     console.log(
       `Last Claude hook: ${health.service?.lastHookAt ?? "none received"}`,

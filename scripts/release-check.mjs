@@ -12,6 +12,7 @@ const requiredFiles = [
   "LICENSE",
   "README.md",
   "SECURITY.md",
+  "THIRD_PARTY_LICENSES/FreeMicro-LICENSE",
   ".github/CODEOWNERS",
   ".github/ISSUE_TEMPLATE/bug_report.yml",
   ".github/ISSUE_TEMPLATE/config.yml",
@@ -69,6 +70,28 @@ for (const filename of files.filter((file) => /\.(md|json|yml)$/.test(file))) {
   }
 }
 
+for (const [relative, pattern] of [
+  ["src", /LOUDER_CHATGPT_ASAR|app\.asar|chatgpt-asar/i],
+  ["native", /LOUDER_CHATGPT_ASAR|app\.asar|chatgpt-asar/i],
+]) {
+  for (const filename of sourceFiles(path.join(root, relative))) {
+    const contents = fs.readFileSync(filename, "utf8");
+    if (pattern.test(contents)) {
+      failures.push(
+        `Removed ChatGPT runtime dependency found: ${path.relative(root, filename)}`,
+      );
+    }
+  }
+}
+for (const relative of [
+  "src/device/provider.mjs",
+  "src/runtime/asar-require.mjs",
+]) {
+  if (fs.existsSync(path.join(root, relative))) {
+    failures.push(`Removed runtime adapter still exists: ${relative}`);
+  }
+}
+
 const metadata = JSON.parse(
   fs.readFileSync(path.join(root, "package.json"), "utf8"),
 );
@@ -122,8 +145,11 @@ if (
 if (metadata.engines?.node !== ">=22") {
   failures.push("package.json must require the supported Node baseline (>=22).");
 }
+if (metadata.louderBridge?.deviceProvider?.id !== "native-iokit-protocol") {
+  failures.push("The bundled Codex Micro driver must be selected.");
+}
 for (const [label, adapter] of [
-  ["Work Louder device provider", metadata.louderBridge?.deviceProvider],
+  ["Codex Micro device driver", metadata.louderBridge?.deviceProvider],
   ["Claude session navigator", metadata.louderBridge?.claudeNavigator],
   ["Claude voice interface", metadata.louderBridge?.claudeVoice],
 ]) {
@@ -141,7 +167,7 @@ const majorVersion = Number(metadata.version.split(".")[0]);
 if (majorVersion >= 1) {
   if (metadata.louderBridge?.deviceProvider?.support !== "official") {
     failures.push(
-      "v1 requires an official or explicitly licensed Work Louder device provider.",
+      "v1 requires a vendor-supported Codex Micro interface.",
     );
   }
   if (metadata.louderBridge?.claudeNavigator?.support !== "official") {

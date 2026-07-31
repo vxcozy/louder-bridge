@@ -1,8 +1,8 @@
 # Hardware acceptance testing
 
-Use this checklist before publishing a release or marking a new ChatGPT or
-Claude Desktop version as compatible. Run it on a Mac that matches the
-[supported baseline](compatibility.md).
+Use this checklist before publishing a release or marking new Codex Micro
+firmware or a Claude Desktop version as compatible. Run it on a Mac that
+matches the [supported baseline](compatibility.md).
 
 ## Prepare the Mac
 
@@ -14,8 +14,8 @@ Claude Desktop version as compatible. Run it on a Mac that matches the
 3. Run `npm run doctor`, `npm test`, and `npm run status`.
 4. Confirm the background agent and hook server are ready.
 
-Record the macOS, Node.js, device provider, Work Louder runtime, Claude
-Desktop, and Louder Bridge versions in the release notes.
+Record the macOS, Node.js, Codex Micro firmware, connection type, device
+driver, Claude Desktop, and Louder Bridge versions in the release notes.
 
 ## Check automatic ownership
 
@@ -94,9 +94,11 @@ sessions do not qualify.
 1. Disconnect the Micro while a session is active. Claude hooks must continue
    to succeed.
 2. Reconnect the Micro. Its lighting should recover without restarting Claude.
-3. Make the configured device provider unavailable and restart the service.
-   Confirm `npm run status` reports the provider name and error.
-4. Restore the provider and confirm the next clean agent start succeeds.
+3. Replace the native driver with a deliberately invalid test fixture and
+   restart the service. Confirm `npm run status` reports the driver name and
+   error. Do this only in a disposable test bundle.
+4. Restore the original bundle and confirm the next clean agent start
+   succeeds.
 5. Send a hook request without the private bearer token and confirm the local
    server returns HTTP 401.
 6. Grow each log past 1 MiB and confirm no more than three rotated backups are
