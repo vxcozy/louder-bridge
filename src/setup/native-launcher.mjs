@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -44,6 +47,34 @@ export function compileNativeLauncher({
     ],
     run,
   );
+  return output;
+}
+
+export function compileNativeLauncherAtomically({
+  output,
+  ...options
+} = {}) {
+  if (!output) {
+    throw new Error("The native launcher requires an output path.");
+  }
+  const identifier = randomUUID();
+  const compiled = path.join(
+    os.tmpdir(),
+    `${path.basename(output)}.${identifier}.tmp`,
+  );
+  const staged = path.join(
+    path.dirname(output),
+    `.${path.basename(output)}.${identifier}.tmp`,
+  );
+  try {
+    compileNativeLauncher({ ...options, output: compiled });
+    fs.copyFileSync(compiled, staged);
+    fs.chmodSync(staged, fs.statSync(compiled).mode & 0o777);
+    fs.renameSync(staged, output);
+  } finally {
+    fs.rmSync(compiled, { force: true });
+    fs.rmSync(staged, { force: true });
+  }
   return output;
 }
 

@@ -6,6 +6,7 @@
 #include <libgen.h>
 #include <limits.h>
 #include <mach-o/dyld.h>
+#include <signal.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,56 @@
 #include <unistd.h>
 
 extern char **environ;
+
+static volatile sig_atomic_t runtime_process = 0;
+
+static void forward_signal(int signal_number) {
+  pid_t process = (pid_t)runtime_process;
+  if (process > 0) kill(process, signal_number);
+}
+
+static int run_runtime(
+  const char *node,
+  const char *cli,
+  const char *command
+) {
+  char *const arguments[] = {
+    (char *)node,
+    (char *)cli,
+    (char *)command,
+    NULL
+  };
+  pid_t process;
+  int spawn_error = posix_spawn(
+    &process,
+    node,
+    NULL,
+    NULL,
+    arguments,
+    environ
+  );
+  if (spawn_error != 0) {
+    errno = spawn_error;
+    perror("Louder Bridge could not start its embedded runtime");
+    return 1;
+  }
+
+  runtime_process = process;
+  signal(SIGINT, forward_signal);
+  signal(SIGTERM, forward_signal);
+
+  int status;
+  while (waitpid(process, &status, 0) < 0) {
+    if (errno != EINTR) {
+      perror("Louder Bridge could not wait for its embedded runtime");
+      return 1;
+    }
+  }
+  runtime_process = 0;
+  if (WIFEXITED(status)) return WEXITSTATUS(status);
+  if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+  return 1;
+}
 
 static int fresh_status_code(
   const char *executable,
@@ -637,7 +688,5 @@ int main(int argc, char *argv[]) {
     );
   }
 
-  execl(node, node, cli, command, (char *)NULL);
-  perror("Louder Bridge could not start its embedded runtime");
-  return 1;
+  return run_runtime(node, cli, command);
 }

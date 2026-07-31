@@ -111,6 +111,50 @@ test("can roll back or commit an application update", () => {
   fs.rmSync(root, { recursive: true });
 });
 
+test("prepares the complete bundle before replacing the installed app", () => {
+  const { root, home, source, node } = fixture();
+  const installed = installApplicationBundle({
+    homeDirectory: home,
+    sourceRoot: source,
+    nodePath: node,
+  });
+  commitApplicationBundle(installed);
+  const originalPackage = fs.readFileSync(
+    path.join(installed.resources, "package.json"),
+    "utf8",
+  );
+
+  assert.throws(
+    () =>
+      installApplicationBundle({
+        homeDirectory: home,
+        sourceRoot: source,
+        nodePath: node,
+        prepare(staged) {
+          assert.notEqual(staged.app, installed.app);
+          assert.equal(fs.existsSync(installed.app), true);
+          throw new Error("preparation failed");
+        },
+      }),
+    /preparation failed/,
+  );
+
+  assert.equal(
+    fs.readFileSync(
+      path.join(installed.resources, "package.json"),
+      "utf8",
+    ),
+    originalPackage,
+  );
+  assert.deepEqual(
+    fs
+      .readdirSync(path.join(home, "Applications"))
+      .filter((name) => name.includes(".tmp")),
+    [],
+  );
+  fs.rmSync(root, { recursive: true });
+});
+
 test("stages application removal so it can be restored", () => {
   const { root, home } = fixture();
   const paths = applicationBundlePaths(home);

@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   compileNativeLauncher,
+  compileNativeLauncherAtomically,
   signLocalApplication,
 } from "../src/setup/native-launcher.mjs";
 
@@ -77,4 +81,54 @@ test("reports compiler failures with their diagnostic", () => {
       }),
     /xcrun failed: compiler unavailable/,
   );
+});
+
+test("atomically replaces an existing launcher after compilation", (context) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-launcher-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  fs.writeFileSync(output, "old launcher");
+
+  compileNativeLauncherAtomically({
+    sourceRoot: "/source",
+    output,
+    platform: "darwin",
+    arch: "arm64",
+    run(command, args) {
+      fs.writeFileSync(args.at(-1), "new launcher");
+      return { status: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(fs.readFileSync(output, "utf8"), "new launcher");
+  assert.deepEqual(fs.readdirSync(directory), ["LouderBridge"]);
+});
+
+test("keeps the existing launcher when compilation fails", (context) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-launcher-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  fs.writeFileSync(output, "old launcher");
+
+  assert.throws(
+    () =>
+      compileNativeLauncherAtomically({
+        sourceRoot: "/source",
+        output,
+        platform: "darwin",
+        arch: "arm64",
+        run: () => ({
+          status: 1,
+          stdout: "",
+          stderr: "compiler unavailable",
+        }),
+      }),
+    /xcrun failed: compiler unavailable/,
+  );
+  assert.equal(fs.readFileSync(output, "utf8"), "old launcher");
+  assert.deepEqual(fs.readdirSync(directory), ["LouderBridge"]);
 });

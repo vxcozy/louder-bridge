@@ -30,7 +30,7 @@ import {
   removeAuthToken,
 } from "./setup/auth-token.mjs";
 import {
-  compileNativeLauncher,
+  compileNativeLauncherAtomically,
   signLocalApplication,
 } from "./setup/native-launcher.mjs";
 import {
@@ -180,15 +180,18 @@ if (command === "help" || command === "--help" || command === "-h") {
   let agent;
   try {
     authentication = ensureAuthToken();
-    application = installApplicationBundle();
-    compileNativeLauncher({
-      sourceRoot: path.resolve(
-        path.dirname(fileURLToPath(import.meta.url)),
-        "..",
-      ),
-      output: application.launcher,
+    application = installApplicationBundle({
+      prepare(staged) {
+        compileNativeLauncherAtomically({
+          sourceRoot: path.resolve(
+            path.dirname(fileURLToPath(import.meta.url)),
+            "..",
+          ),
+          output: staged.launcher,
+        });
+        signLocalApplication(staged);
+      },
     });
-    signLocalApplication(application);
     file = updateClaudeSettings({
       command: bridgeHookCommand({
         nodePath: application.node,
