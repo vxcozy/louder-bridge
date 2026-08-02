@@ -41,6 +41,13 @@ Then check the background agent:
 npm run status
 ```
 
+### Louder Bridge asks to be moved
+
+Quit Louder Bridge, move the app into Applications with Finder, then open it
+again. First launch stops in Downloads or a temporary Gatekeeper location. The
+login agent needs a stable app path. If you use a symlink, its target must be
+inside Applications.
+
 ## Troubleshoot the background agent
 
 `npm run status` reports the launch agent, authenticated hook server, Claude

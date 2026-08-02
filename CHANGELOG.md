@@ -57,6 +57,9 @@ have not shipped appear under "Unreleased."
   health check.
 - App activation checks the running service mode and version before reporting
   success. If the check fails, it restores the previous launch agent.
+- First launch now checks the resolved bundle path before permission prompts or
+  configuration changes. It accepts the system and per-user Applications
+  directories and rejects Downloads or App Translocation.
 - Interrupting source setup with SIGINT or SIGTERM now cancels permission
   onboarding and rolls back the app, hooks, agent, and token changes.
 - Failed or interrupted source setup now stops the replacement onboarding app

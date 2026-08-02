@@ -7,12 +7,15 @@ matches the [supported baseline](compatibility.md).
 ## Prepare the Mac
 
 1. Install the release candidate by the same route users will receive it. For a
-   source candidate, run `npm run setup`. For a packaged candidate, move the
-   app into Applications and open it once.
-2. Open the packaged app and approve Input Monitoring and Accessibility.
-   Confirm the background agent starts without reopening Louder Bridge.
-3. Run `npm run doctor`, `npm test`, and `npm run status`.
-4. Confirm the background agent and hook server are ready.
+   source candidate, run `npm run setup`.
+2. For a packaged candidate, open the extracted app from Downloads before
+   moving it. Confirm Louder Bridge asks to be moved and does not request
+   permission, add hooks, or install a login agent.
+3. Move the packaged app into Applications and open it again. Approve Input
+   Monitoring and Accessibility, then confirm the background agent starts
+   without reopening Louder Bridge.
+4. Run `npm run doctor`, `npm test`, and `npm run status`.
+5. Confirm the background agent and hook server are ready.
 
 Record the macOS, Node.js, Codex Micro firmware, connection type, device
 driver, Claude Desktop, and Louder Bridge versions in the release notes.

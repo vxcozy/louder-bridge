@@ -114,6 +114,11 @@ Source setup installs a self-contained application in the current user's
 Applications directory. A packaged release can run from the system Applications
 directory. The generated property list points to that installed bundle, not to
 the source checkout. Each log is capped at 1 MiB and retains three backups.
+Before first launch asks for permission or changes Claude settings, it resolves
+the app bundle's real path. The path must be inside the system or current user's
+Applications directory. The preflight rejects Downloads, App Translocation
+mounts, and symlinks to other directories.
+
 Before setup replaces or removes the app, it checks the bundle identifier and
 executable name. It also records the bundle's filesystem identity for rollback
 and backup cleanup. If a path changes during the transaction, setup stops and

@@ -29,6 +29,9 @@ Download the signed macOS archive from this repository's Releases page:
 4. Approve microphone access if macOS asks when you first use dictation.
 5. Open Claude Desktop and turn on the Micro.
 
+Louder Bridge checks its location before requesting permissions. If you open it
+from Downloads, it asks you to move the app and exits without changing Claude.
+
 Louder Bridge starts at login and connects whenever Claude Desktop is open.
 Node.js and a source checkout are not required after installation.
 

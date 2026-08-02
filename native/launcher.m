@@ -60,17 +60,22 @@ static int run_runtime(
   }
 
   runtime_process = process;
-  signal(SIGINT, forward_signal);
-  signal(SIGTERM, forward_signal);
+  void (*previous_interrupt)(int) = signal(SIGINT, forward_signal);
+  void (*previous_termination)(int) = signal(SIGTERM, forward_signal);
 
   int status;
+  int wait_error = 0;
   while (waitpid(process, &status, 0) < 0) {
     if (errno != EINTR) {
       perror("Louder Bridge could not wait for its embedded runtime");
-      return 1;
+      wait_error = 1;
+      break;
     }
   }
   runtime_process = 0;
+  if (previous_interrupt != SIG_ERR) signal(SIGINT, previous_interrupt);
+  if (previous_termination != SIG_ERR) signal(SIGTERM, previous_termination);
+  if (wait_error) return 1;
   if (WIFEXITED(status)) return WEXITSTATUS(status);
   if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
   return 1;
@@ -954,6 +959,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (argc == 1) {
+    int preflight_status = run_runtime(node, cli, "preflight");
+    if (preflight_status != 0) return preflight_status;
     IOHIDAccessType access = request_input_monitoring(resolved);
     setenv("LOUDER_INPUT_MONITORING_STATUS", access_name(access), 1);
     Boolean accessibility = request_accessibility(resolved);

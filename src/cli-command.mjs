@@ -29,6 +29,9 @@ import {
   stageApplicationBundleRemoval,
 } from "./setup/application-bundle.mjs";
 import {
+  requireSupportedApplicationLocation,
+} from "./setup/application-location.mjs";
+import {
   commitAuthTokenRemoval,
   ensureAuthToken,
   readAuthToken,
@@ -167,6 +170,17 @@ if (command === "help" || command === "--help" || command === "-h") {
   command === "-V"
 ) {
   console.log(applicationMetadata().version);
+} else if (command === "preflight") {
+  try {
+    const runtime = applicationBundlePathsForCli(
+      fileURLToPath(import.meta.url),
+    );
+    requireSupportedApplicationLocation(runtime.app);
+  } catch (error) {
+    console.error(error.message);
+    activationDialog(error.message, { error: true });
+    process.exitCode = 1;
+  }
 } else if (command === "start") {
   const bridge = await startBridge({
     mockDevice: process.argv.includes("--mock-device"),
