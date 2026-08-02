@@ -90,6 +90,8 @@ have not shipped appear under "Unreleased."
 - Claude settings writes now check the target again immediately before
   replacement. If another process creates or edits the file, setup retries
   from the latest settings up to five times instead of overwriting them.
+- Setup now rejects Claude settings files that are hard linked, owned by
+  another user, or contain a JSON root other than an object.
 - Release automation uses reviewed notes supplied by the maintainer instead of
   generated release copy.
 - Ended Claude sessions now release their Agent Key slot and in-memory session

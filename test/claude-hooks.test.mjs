@@ -133,6 +133,31 @@ test("retries an update after another process replaces Claude settings", () => {
   fs.rmSync(directory, { recursive: true });
 });
 
+test("retries when Claude settings change immediately after replacement", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  fs.writeFileSync(settingsFile, '{"theme":"light"}\n');
+
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/node' '/hook.mjs' # louder-bridge",
+    afterWrite({ attempt }) {
+      if (attempt === 1) {
+        writeFileAtomic(settingsFile, '{"theme":"dark"}\n');
+      }
+    },
+  });
+
+  const updated = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  assert.equal(updated.theme, "dark");
+  assert.equal(
+    updated.hooks.Stop[0].hooks[0].command.includes("hook.mjs"),
+    true,
+  );
+  assert.equal(transaction.existed, true);
+  fs.rmSync(directory, { recursive: true });
+});
+
 test("does not overwrite a settings file created during first setup", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
   const settingsFile = path.join(directory, "settings.json");
@@ -194,6 +219,58 @@ test("rejects a broken Claude settings symlink", () => {
   );
   assert.equal(fs.lstatSync(settingsFile).isSymbolicLink(), true);
   fs.rmSync(directory, { recursive: true });
+});
+
+test("rejects multiply linked Claude settings", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const linkedFile = path.join(directory, "linked-settings.json");
+  fs.writeFileSync(settingsFile, '{"theme":"dark"}\n');
+  fs.linkSync(settingsFile, linkedFile);
+
+  assert.throws(
+    () => updateClaudeSettings({ settingsFile, command: "bridge hook" }),
+    /owned by the current user.*must not be hard linked/,
+  );
+  assert.equal(fs.readFileSync(settingsFile, "utf8"), '{"theme":"dark"}\n');
+  assert.equal(fs.readFileSync(linkedFile, "utf8"), '{"theme":"dark"}\n');
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rejects Claude settings not owned by the expected user", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  fs.writeFileSync(settingsFile, '{"theme":"dark"}\n');
+  const owner = fs.statSync(settingsFile).uid;
+
+  assert.throws(
+    () =>
+      beginClaudeSettingsUpdate({
+        settingsFile,
+        command: "bridge hook",
+        expectedUserId: owner + 1,
+      }),
+    /owned by the current user.*must not be hard linked/,
+  );
+  assert.equal(fs.readFileSync(settingsFile, "utf8"), '{"theme":"dark"}\n');
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rejects Claude settings whose JSON root is not an object", () => {
+  for (const contents of ["[]\n", "null\n", '"value"\n']) {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "louder-settings-"),
+    );
+    const settingsFile = path.join(directory, "settings.json");
+    fs.writeFileSync(settingsFile, contents);
+
+    assert.throws(
+      () => updateClaudeSettings({ settingsFile, command: "bridge hook" }),
+      /must contain a JSON object/,
+    );
+    assert.equal(fs.readFileSync(settingsFile, "utf8"), contents);
+    fs.rmSync(directory, { recursive: true });
+  }
 });
 
 test("rollback preserves Claude settings added during setup", () => {

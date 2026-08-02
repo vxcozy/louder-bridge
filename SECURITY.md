@@ -27,6 +27,7 @@ Louder Bridge:
 - binds only to a loopback address;
 - authenticates every HTTP request with a private local token;
 - stores that token and its logs with user-only permissions;
+- refuses foreign-owned or hard-linked Claude settings files;
 - allowlists hook fields and omits conversation and tool content; and
 - does not send data to a Louder Bridge cloud service.
 

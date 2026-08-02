@@ -43,6 +43,10 @@ function sameFile(expected, actual) {
   );
 }
 
+function currentUserId() {
+  return typeof process.getuid === "function" ? process.getuid() : null;
+}
+
 function pathEntry(filename) {
   try {
     return fs.lstatSync(filename);
@@ -182,7 +186,7 @@ function restoreBridgeHookGroups(settings, groupsByEvent) {
   return output;
 }
 
-function readSettings(target) {
+function readSettings(target, expectedUserId) {
   if (!target.existed) {
     return { settings: {}, contents: null, identity: null };
   }
@@ -196,16 +200,27 @@ function readSettings(target) {
     const current = pathEntry(target.file);
     if (
       !metadata.isFile() ||
+      metadata.nlink !== 1 ||
+      (expectedUserId !== null && metadata.uid !== expectedUserId) ||
       !current?.isFile() ||
       !sameFile(fileIdentity(metadata), fileIdentity(current))
     ) {
       throw new Error(
-        "Claude settings changed while Louder Bridge was reading it.",
+        "Claude settings must be a regular file owned by the current user " +
+          "and must not be hard linked.",
       );
     }
     const contents = fs.readFileSync(descriptor, "utf8");
+    const settings = JSON.parse(contents);
+    if (
+      settings === null ||
+      typeof settings !== "object" ||
+      Array.isArray(settings)
+    ) {
+      throw new Error("Claude settings must contain a JSON object.");
+    }
     return {
-      settings: JSON.parse(contents),
+      settings,
       contents,
       identity: fileIdentity(metadata),
     };
@@ -214,7 +229,12 @@ function readSettings(target) {
   }
 }
 
-function requireUnchangedSettings(settingsFile, target, expected) {
+function requireUnchangedSettings(
+  settingsFile,
+  target,
+  expected,
+  expectedUserId,
+) {
   let currentTarget;
   let current;
   try {
@@ -224,7 +244,7 @@ function requireUnchangedSettings(settingsFile, target, expected) {
         "Claude settings changed location while Louder Bridge was updating it.",
       );
     }
-    current = readSettings(currentTarget);
+    current = readSettings(currentTarget, expectedUserId);
   } catch (error) {
     if (error?.code === SETTINGS_CONFLICT) throw error;
     throw settingsConflict(
@@ -242,7 +262,14 @@ function requireUnchangedSettings(settingsFile, target, expected) {
   }
 }
 
-function writeSettings(settingsFile, target, expected, settings) {
+function writeSettings(
+  settingsFile,
+  target,
+  expected,
+  settings,
+  expectedUserId,
+  afterWrite = () => {},
+) {
   const contents = `${JSON.stringify(settings, null, 2)}\n`;
   if (!target.existed) {
     const created = writeFileAtomicIfAbsent(target.file, contents, {
@@ -257,15 +284,42 @@ function writeSettings(settingsFile, target, expected, settings) {
     writeFileAtomic(target.file, contents, {
       mode: target.mode,
       beforeRename() {
-        requireUnchangedSettings(settingsFile, target, expected);
+        requireUnchangedSettings(
+          settingsFile,
+          target,
+          expected,
+          expectedUserId,
+        );
       },
     });
   }
-  const installed = pathEntry(target.file);
-  if (!installed?.isFile() || installed.isSymbolicLink()) {
-    throw new Error("Claude settings changed before setup could finish.");
+  afterWrite();
+  let installedTarget;
+  let installed;
+  try {
+    installedTarget = resolveSettingsTarget(settingsFile);
+    if (
+      !installedTarget.existed ||
+      installedTarget.file !== target.file
+    ) {
+      throw settingsConflict(
+        "Claude settings changed location before setup could finish.",
+      );
+    }
+    installed = readSettings(installedTarget, expectedUserId);
+  } catch (error) {
+    if (error?.code === SETTINGS_CONFLICT) throw error;
+    throw settingsConflict(
+      "Claude settings changed before setup could finish.",
+      error,
+    );
   }
-  return fileIdentity(installed);
+  if (installed.contents !== contents) {
+    throw settingsConflict(
+      "Claude settings changed before setup could finish.",
+    );
+  }
+  return installed.identity;
 }
 
 export function beginClaudeSettingsUpdate({
@@ -273,10 +327,12 @@ export function beginClaudeSettingsUpdate({
   command,
   settingsFile = claudeSettingsPath(),
   beforeWrite = () => {},
+  afterWrite = () => {},
+  expectedUserId = currentUserId(),
 } = {}) {
   for (let attempt = 1; attempt <= SETTINGS_WRITE_ATTEMPTS; attempt += 1) {
     const target = resolveSettingsTarget(settingsFile);
-    const snapshot = readSettings(target);
+    const snapshot = readSettings(target, expectedUserId);
     const updated = remove
       ? removeBridgeHooks(snapshot.settings)
       : addBridgeHooks(snapshot.settings, command);
@@ -287,6 +343,8 @@ export function beginClaudeSettingsUpdate({
         target,
         snapshot,
         updated,
+        expectedUserId,
+        () => afterWrite({ attempt, target, updated }),
       );
       return {
         settingsFile,
@@ -295,6 +353,7 @@ export function beginClaudeSettingsUpdate({
         previousBridgeHooks: bridgeHookGroups(snapshot.settings),
         installedBridgeHooks: bridgeHookGroups(updated),
         installedIdentity,
+        expectedUserId,
       };
     } catch (error) {
       if (
@@ -316,7 +375,8 @@ export function rollbackClaudeSettingsUpdate(transaction) {
       "Claude settings changed location during the operation. Louder Bridge left the newer file untouched.",
     );
   }
-  const currentState = readSettings(target);
+  const expectedUserId = transaction.expectedUserId ?? currentUserId();
+  const currentState = readSettings(target, expectedUserId);
   const current = currentState.settings;
   const restored = restoreBridgeHookGroups(
     removeBridgeHooks(current),
@@ -349,6 +409,7 @@ export function rollbackClaudeSettingsUpdate(transaction) {
     target,
     currentState,
     restored,
+    expectedUserId,
   );
 }
 
