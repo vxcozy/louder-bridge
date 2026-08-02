@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bundledComponentIds } from "./spdx-sbom.mjs";
+import { assertBundledLicense } from "./bundled-license.mjs";
 import {
   requireCleanSignedSource,
   sourceRevision,
@@ -139,19 +140,28 @@ try {
   if (!fs.existsSync(app)) {
     throw new Error("The release archive does not contain Louder Bridge.app.");
   }
-  const protocolLicense = path.join(
-    app,
-    "Contents",
-    "Resources",
-    "app",
-    "THIRD_PARTY_LICENSES",
-    "FreeMicro-LICENSE",
+  const resources = path.join(app, "Contents", "Resources", "app");
+  assertBundledLicense(path.join(resources, "LICENSE"), {
+    expectedContents: fs.readFileSync(path.join(root, "LICENSE"), "utf8"),
+    label: "project license",
+  });
+  assertBundledLicense(
+    path.join(resources, "THIRD_PARTY_LICENSES", "FreeMicro-LICENSE"),
+    {
+      expectedContents: fs.readFileSync(
+        path.join(root, "THIRD_PARTY_LICENSES", "FreeMicro-LICENSE"),
+        "utf8",
+      ),
+      label: "Codex Micro protocol license",
+    },
   );
-  if (!fs.existsSync(protocolLicense)) {
-    throw new Error(
-      "The release archive does not contain the Codex Micro protocol license.",
-    );
-  }
+  assertBundledLicense(
+    path.join(resources, "THIRD_PARTY_LICENSES", "Node.js-LICENSE"),
+    {
+      label: "Node.js license",
+      minimumBytes: 512,
+    },
+  );
 
   run("/usr/bin/codesign", [
     "--verify",
