@@ -117,41 +117,97 @@ export function removeBridgeHooks(settings) {
   return output;
 }
 
-export function updateClaudeSettings({
+function bridgeHookGroups(settings) {
+  const groupsByEvent = {};
+  if (!settings?.hooks || typeof settings.hooks !== "object") {
+    return groupsByEvent;
+  }
+  for (const [event, groups] of Object.entries(settings.hooks)) {
+    if (!Array.isArray(groups)) continue;
+    const bridgeGroups = groups
+      .filter((group) => group && typeof group === "object")
+      .map((group) => ({
+        ...group,
+        hooks: Array.isArray(group.hooks)
+          ? group.hooks.filter(isBridgeHook)
+          : [],
+      }))
+      .filter((group) => group.hooks.length);
+    if (bridgeGroups.length) groupsByEvent[event] = bridgeGroups;
+  }
+  return groupsByEvent;
+}
+
+function restoreBridgeHookGroups(settings, groupsByEvent) {
+  const output = structuredClone(settings ?? {});
+  for (const [event, groups] of Object.entries(groupsByEvent)) {
+    output.hooks ??= {};
+    const current = Array.isArray(output.hooks[event])
+      ? output.hooks[event]
+      : [];
+    output.hooks[event] = [...current, ...structuredClone(groups)];
+  }
+  return output;
+}
+
+function readSettings(target) {
+  return target.existed
+    ? JSON.parse(fs.readFileSync(target.file, "utf8"))
+    : {};
+}
+
+function writeSettings(target, settings) {
+  writeFileAtomic(
+    target.file,
+    `${JSON.stringify(settings, null, 2)}\n`,
+    { mode: target.mode },
+  );
+}
+
+export function beginClaudeSettingsUpdate({
   remove = false,
   command,
   settingsFile = claudeSettingsPath(),
 } = {}) {
   const target = resolveSettingsTarget(settingsFile);
-  let settings = {};
-  if (target.existed) {
-    settings = JSON.parse(fs.readFileSync(target.file, "utf8"));
-  }
+  const settings = readSettings(target);
   const updated = remove
     ? removeBridgeHooks(settings)
     : addBridgeHooks(settings, command);
-  writeFileAtomic(
-    target.file,
-    `${JSON.stringify(updated, null, 2)}\n`,
-    { mode: target.mode },
-  );
-  return settingsFile;
-}
-
-export function snapshotClaudeSettings(settingsFile = claudeSettingsPath()) {
-  const target = resolveSettingsTarget(settingsFile);
+  writeSettings(target, updated);
   return {
-    file: target.file,
+    settingsFile,
+    targetFile: target.file,
     existed: target.existed,
-    contents: target.existed ? fs.readFileSync(target.file, "utf8") : null,
-    mode: target.mode,
+    previousBridgeHooks: bridgeHookGroups(settings),
   };
 }
 
-export function restoreClaudeSettings(snapshot) {
-  if (snapshot.existed) {
-    writeFileAtomic(snapshot.file, snapshot.contents, { mode: snapshot.mode });
-  } else if (fs.existsSync(snapshot.file)) {
-    fs.unlinkSync(snapshot.file);
+export function rollbackClaudeSettingsUpdate(transaction) {
+  if (!transaction) return;
+  const target = resolveSettingsTarget(transaction.settingsFile);
+  if (!target.existed || target.file !== transaction.targetFile) {
+    throw new Error(
+      "Claude settings changed location during the operation. Louder Bridge left the newer file untouched.",
+    );
   }
+  const current = readSettings(target);
+  const restored = restoreBridgeHookGroups(
+    removeBridgeHooks(current),
+    transaction.previousBridgeHooks,
+  );
+  if (!transaction.existed && Object.keys(restored).length === 0) {
+    fs.unlinkSync(target.file);
+    return;
+  }
+  writeSettings(target, restored);
+}
+
+export function updateClaudeSettings({
+  remove = false,
+  command,
+  settingsFile = claudeSettingsPath(),
+} = {}) {
+  return beginClaudeSettingsUpdate({ remove, command, settingsFile })
+    .settingsFile;
 }

@@ -15,10 +15,9 @@ import {
 import { accessibilityStatus } from "./macos/accessibility.mjs";
 import { platformSupport } from "./macos/platform.mjs";
 import {
+  beginClaudeSettingsUpdate,
   bridgeHookCommand,
-  restoreClaudeSettings,
-  snapshotClaudeSettings,
-  updateClaudeSettings,
+  rollbackClaudeSettingsUpdate,
 } from "./setup/claude-hooks.mjs";
 import {
   commitApplicationBundle,
@@ -190,11 +189,11 @@ if (command === "help" || command === "--help" || command === "-h") {
   const platform = platformSupport();
   if (!platform.supported) throw new Error(platform.error);
   prepareRotatingLogs(launchAgentPaths());
-  const settingsSnapshot = snapshotClaudeSettings();
   const installedApp = applicationBundlePaths().app;
   let application;
   let authentication;
   let file;
+  let settingsTransaction;
   let agent;
   let stoppedOnboarding = false;
   let needsOnboarding = false;
@@ -223,19 +222,22 @@ if (command === "help" || command === "--help" || command === "-h") {
         });
       },
     });
-    file = updateClaudeSettings({
+    settingsTransaction = beginClaudeSettingsUpdate({
       command: bridgeHookCommand({
         nodePath: application.node,
         hookPath: application.hook,
       }),
     });
+    file = settingsTransaction.settingsFile;
     agent = removeLaunchAgent();
     await openOnboardingApplication(application.app);
     needsOnboarding = true;
   } catch (error) {
-    attemptRollback(error, "Claude settings could not be restored", () => {
-      restoreClaudeSettings(settingsSnapshot);
-    });
+    if (settingsTransaction) {
+      attemptRollback(error, "Claude settings could not be restored", () => {
+        rollbackClaudeSettingsUpdate(settingsTransaction);
+      });
+    }
     if (application) {
       attemptRollback(error, "The previous app could not be restored", () => {
         rollbackApplicationBundle(application);
@@ -288,19 +290,20 @@ if (command === "help" || command === "--help" || command === "-h") {
   const runtime = applicationBundlePathsForCli(fileURLToPath(import.meta.url));
   const permission = inputMonitoringStatus({ launcher: runtime.launcher });
   const accessibility = accessibilityStatus({ launcher: runtime.launcher });
-  const settingsSnapshot = snapshotClaudeSettings();
   let authentication;
   let file;
   let agent;
+  let settingsTransaction;
   try {
     prepareRotatingLogs(launchAgentPaths());
     authentication = ensureAuthToken();
-    file = updateClaudeSettings({
+    settingsTransaction = beginClaudeSettingsUpdate({
       command: bridgeHookCommand({
         nodePath: runtime.node,
         hookPath: runtime.hook,
       }),
     });
+    file = settingsTransaction.settingsFile;
     if (needsPermissionOnboarding({
       inputMonitoring: permission,
       accessibility,
@@ -310,7 +313,11 @@ if (command === "help" || command === "--help" || command === "-h") {
       agent = installLaunchAgent({ runtime });
     }
   } catch (error) {
-    restoreClaudeSettings(settingsSnapshot);
+    if (settingsTransaction) {
+      attemptRollback(error, "Claude settings could not be restored", () => {
+        rollbackClaudeSettingsUpdate(settingsTransaction);
+      });
+    }
     if (authentication?.created) removeAuthToken();
     activationDialog(`Setup failed: ${error.message}`, { error: true });
     process.exitCode = 1;
@@ -337,7 +344,6 @@ if (command === "help" || command === "--help" || command === "-h") {
     }
   }
 } else if (command === "uninstall") {
-  const settingsSnapshot = snapshotClaudeSettings();
   let currentApp;
   try {
     currentApp = applicationBundlePathsForCli(
@@ -347,6 +353,7 @@ if (command === "help" || command === "--help" || command === "-h") {
   const installedApp = currentApp ?? applicationBundlePaths().app;
   let application;
   let authentication;
+  let settingsTransaction;
   let stoppedOnboarding = false;
   try {
     stoppedOnboarding = stopOnboardingApplication({
@@ -381,12 +388,15 @@ if (command === "help" || command === "--help" || command === "-h") {
   let file;
   let agent;
   try {
-    file = updateClaudeSettings({ remove: true });
+    settingsTransaction = beginClaudeSettingsUpdate({ remove: true });
+    file = settingsTransaction.settingsFile;
     agent = removeLaunchAgent();
   } catch (error) {
-    attemptRollback(error, "Claude settings could not be restored", () => {
-      restoreClaudeSettings(settingsSnapshot);
-    });
+    if (settingsTransaction) {
+      attemptRollback(error, "Claude settings could not be restored", () => {
+        rollbackClaudeSettingsUpdate(settingsTransaction);
+      });
+    }
     attemptRollback(error, "The app could not be restored", () => {
       rollbackApplicationBundle(application);
     });

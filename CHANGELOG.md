@@ -60,6 +60,8 @@ have not shipped appear under "Unreleased."
   Claude settings, and IPv6 loopback URLs are formatted correctly.
 - Status now distinguishes permission onboarding from a stopped background
   agent.
+- Setup, activation, and uninstall rollback only their own Claude hooks. They
+  preserve unrelated settings written while the operation is running.
 
 ### Security
 

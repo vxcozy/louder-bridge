@@ -5,10 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import {
   addBridgeHooks,
+  beginClaudeSettingsUpdate,
   bridgeHookCommand,
   removeBridgeHooks,
-  restoreClaudeSettings,
-  snapshotClaudeSettings,
+  rollbackClaudeSettingsUpdate,
   updateClaudeSettings,
 } from "../src/setup/claude-hooks.mjs";
 
@@ -88,22 +88,6 @@ test("updates a symlinked settings file without replacing the symlink", () => {
   fs.rmSync(directory, { recursive: true });
 });
 
-test("restores Claude settings contents and permissions", () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
-  const settingsFile = path.join(directory, "settings.json");
-  const original = '{"theme":"dark"}\n';
-  fs.writeFileSync(settingsFile, original, { mode: 0o640 });
-  const snapshot = snapshotClaudeSettings(settingsFile);
-
-  updateClaudeSettings({ settingsFile, command: "bridge hook" });
-  fs.chmodSync(settingsFile, 0o600);
-  restoreClaudeSettings(snapshot);
-
-  assert.equal(fs.readFileSync(settingsFile, "utf8"), original);
-  assert.equal(fs.statSync(settingsFile).mode & 0o777, 0o640);
-  fs.rmSync(directory, { recursive: true });
-});
-
 test("rejects a broken Claude settings symlink", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
   const settingsFile = path.join(directory, "settings.json");
@@ -114,5 +98,143 @@ test("rejects a broken Claude settings symlink", () => {
     /points to a missing file/,
   );
   assert.equal(fs.lstatSync(settingsFile).isSymbolicLink(), true);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rollback preserves Claude settings added during setup", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const previousCommand =
+    "'/old/node' '/old/hook.mjs' # louder-bridge";
+  fs.writeFileSync(
+    settingsFile,
+    `${JSON.stringify({
+      permissions: { allow: ["Bash(git status)"] },
+      hooks: {
+        Stop: [
+          { hooks: [{ type: "command", command: "keep-before" }] },
+          {
+            hooks: [
+              { type: "command", command: previousCommand, timeout: 2 },
+            ],
+          },
+        ],
+      },
+    })}\n`,
+    { mode: 0o640 },
+  );
+
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/new/node' '/new/hook.mjs' # louder-bridge",
+  });
+  const concurrent = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  concurrent.theme = "dark";
+  concurrent.hooks.Stop.unshift({
+    hooks: [{ type: "command", command: "added-during-setup" }],
+  });
+  fs.writeFileSync(settingsFile, `${JSON.stringify(concurrent, null, 2)}\n`, {
+    mode: 0o640,
+  });
+
+  rollbackClaudeSettingsUpdate(transaction);
+
+  const restored = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  assert.equal(restored.theme, "dark");
+  assert.deepEqual(restored.permissions, {
+    allow: ["Bash(git status)"],
+  });
+  const commands = restored.hooks.Stop.flatMap((group) =>
+    group.hooks.map((hook) => hook.command),
+  );
+  assert.deepEqual(commands, [
+    "added-during-setup",
+    "keep-before",
+    previousCommand,
+  ]);
+  assert.equal(fs.statSync(settingsFile).mode & 0o777, 0o640);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rollback removes a settings file created only for bridge hooks", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/new/node' '/new/hook.mjs' # louder-bridge",
+  });
+
+  rollbackClaudeSettingsUpdate(transaction);
+
+  assert.equal(fs.existsSync(settingsFile), false);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rollback keeps a new settings file when another setting was added", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/new/node' '/new/hook.mjs' # louder-bridge",
+  });
+  const concurrent = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  concurrent.theme = "dark";
+  fs.writeFileSync(settingsFile, `${JSON.stringify(concurrent, null, 2)}\n`);
+
+  rollbackClaudeSettingsUpdate(transaction);
+
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, "utf8")), {
+    theme: "dark",
+  });
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("uninstall rollback restores bridge hooks without removing newer settings", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const command = "'/node' '/hook.mjs' # louder-bridge";
+  fs.writeFileSync(
+    settingsFile,
+    `${JSON.stringify(addBridgeHooks({ theme: "light" }, command))}\n`,
+  );
+
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    remove: true,
+  });
+  const concurrent = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  concurrent.theme = "dark";
+  fs.writeFileSync(settingsFile, `${JSON.stringify(concurrent, null, 2)}\n`);
+
+  rollbackClaudeSettingsUpdate(transaction);
+
+  const restored = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  assert.equal(restored.theme, "dark");
+  assert.equal(restored.hooks.Stop[0].hooks[0].command, command);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rollback does not follow a settings symlink that changed targets", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const original = path.join(directory, "original.json");
+  const replacement = path.join(directory, "replacement.json");
+  const settingsFile = path.join(directory, "settings.json");
+  fs.writeFileSync(original, '{}\n');
+  fs.writeFileSync(replacement, '{"theme":"dark"}\n');
+  fs.symlinkSync(original, settingsFile);
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/node' '/hook.mjs' # louder-bridge",
+  });
+  fs.unlinkSync(settingsFile);
+  fs.symlinkSync(replacement, settingsFile);
+
+  assert.throws(
+    () => rollbackClaudeSettingsUpdate(transaction),
+    /left the newer file untouched/,
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(replacement, "utf8")), {
+    theme: "dark",
+  });
   fs.rmSync(directory, { recursive: true });
 });
