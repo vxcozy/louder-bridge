@@ -22,9 +22,10 @@ A source build does not have a stable Developer ID signature. Reinstalling it
 can make macOS ask for permission again. Signed release builds keep the same
 identity across upgrades.
 
-Permission status from `npm run status` is authoritative because it comes from
-the background app. A permission check run directly from a terminal can belong
-to the terminal instead.
+With the hook server running, `npm run status` gets permission state from the
+background app. If the server is down, it launches a fresh app probe through
+LaunchServices. A direct check from a terminal can report the terminal's
+permission instead.
 
 ## Troubleshoot startup
 
@@ -43,8 +44,9 @@ npm run status
 ## Troubleshoot the background agent
 
 `npm run status` reports the launch agent, authenticated hook server, Claude
-Desktop, and the Micro. If the agent or server is unavailable, reinstall and
-restart it:
+Desktop, and the Micro. When the server is down, it reads the installed app
+version and asks a fresh app process for both macOS permission states. If the
+agent or server is unavailable, reinstall and restart it:
 
 ```bash
 npm run setup

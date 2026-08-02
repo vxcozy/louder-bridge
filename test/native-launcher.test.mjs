@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
@@ -345,4 +346,41 @@ test("uses complete clicks for toggle dictation controls", (context) => {
   assert.equal(hold.stdout.trim(), "mouse-down mouse-up");
   assert.equal(toggle.status, 0);
   assert.equal(toggle.stdout.trim(), "click click");
+});
+
+test("writes permission probes only to private single-link files", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("The native permission helper requires Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-permission-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  compileNativeLauncher({ sourceRoot, output });
+
+  const identifier = `${process.pid}.${randomUUID()}`;
+  const probe = `/tmp/app.louder-bridge.permission.${identifier}`;
+  fs.writeFileSync(probe, "", { flag: "wx", mode: 0o600 });
+  context.after(() => fs.rmSync(probe, { force: true }));
+  const result = spawnSync(output, ["--permission-probe", probe], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(fs.readFileSync(probe, "utf8"), /^\d+ [01]\n$/);
+
+  const target = `/tmp/louder-permission-target.${identifier}`;
+  const hardlink = `/tmp/app.louder-bridge.permission.link.${identifier}`;
+  fs.writeFileSync(target, "keep this", { flag: "wx", mode: 0o600 });
+  fs.linkSync(target, hardlink);
+  context.after(() => fs.rmSync(target, { force: true }));
+  context.after(() => fs.rmSync(hardlink, { force: true }));
+  const rejected = spawnSync(output, ["--permission-probe", hardlink]);
+  assert.equal(rejected.status, 1);
+  assert.equal(fs.readFileSync(target, "utf8"), "keep this");
 });

@@ -24,7 +24,7 @@ to check the current installation.
 | `npm test` | Run the automated test suite |
 | `npm run doctor` | Check Node, macOS, permissions, and the bundled Micro driver |
 | `npm run setup` | Install hooks and the macOS background agent |
-| `npm run status` | Check the background agent and hook server |
+| `npm run status` | Check the agent, hook server, installed version, and macOS permissions |
 | `npm start` | Run the bridge manually for development |
 | `npm run uninstall` | Remove the background agent and Louder Bridge hooks |
 | `npm run authorship:check` | Reject automated authorship credit in files and commits |
@@ -229,12 +229,14 @@ names, tool data, or transcripts. The health response omits session IDs.
 | `src/claude/submit.mjs` | Claude composer and approval submit adapter |
 | `src/macos/input-monitoring.mjs` | Native permission status checks |
 | `src/macos/accessibility.mjs` | Native Accessibility permission status checks |
+| `src/macos/native-executable.mjs` | Mach-O validation shared by native helpers |
 | `native/launcher.m` | App launcher, permission onboarding, and Claude dictation control |
 | `native/micro_device.m` | IOKit device discovery, framing, and input reports |
 | `src/setup/claude-hooks.mjs` | Settings merge and removal |
 | `src/setup/launch-agent.mjs` | macOS launch agent installation |
 | `src/setup/application-bundle.mjs` | Self-contained app installation and rollback |
 | `src/setup/permission-onboarding.mjs` | Permission gate and first-launch handoff |
+| `src/setup/installed-status.mjs` | Offline app version and permission diagnostics |
 | `src/setup/auth-token.mjs` | Local authentication-token lifecycle |
 | `src/logging.mjs` | Private bounded log files |
 

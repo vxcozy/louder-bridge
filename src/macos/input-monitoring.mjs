@@ -1,32 +1,7 @@
-import fs from "node:fs";
 import { spawnSync } from "node:child_process";
+import { isNativeExecutable } from "./native-executable.mjs";
 
 const VALID_STATES = new Set(["granted", "denied", "unknown"]);
-const MACHO_MAGICS = new Set([
-  "cafebabe",
-  "cafebabf",
-  "cefaedfe",
-  "cffaedfe",
-  "feedface",
-  "feedfacf",
-]);
-
-function isNativeExecutable(filename) {
-  try {
-    const descriptor = fs.openSync(filename, "r");
-    try {
-      const prefix = Buffer.alloc(4);
-      if (fs.readSync(descriptor, prefix, 0, prefix.length, 0) !== 4) {
-        return false;
-      }
-      return MACHO_MAGICS.has(prefix.toString("hex"));
-    } finally {
-      fs.closeSync(descriptor);
-    }
-  } catch {
-    return false;
-  }
-}
 
 export function inputMonitoringStatus({
   launcher = process.env.LOUDER_BRIDGE_LAUNCHER,

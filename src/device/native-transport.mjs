@@ -1,36 +1,11 @@
-import fs from "node:fs";
 import { spawn } from "node:child_process";
+import { isNativeExecutable } from "../macos/native-executable.mjs";
 
 const MAX_LINE_BYTES = 64 * 1024;
 const STARTUP_TIMEOUT_MS = 3000;
 const CLOSE_TIMEOUT_MS = 1000;
 const RUNTIME_ID = "native-iokit-protocol";
 const RUNTIME_SUPPORT = "experimental";
-
-function isNativeExecutable(filename) {
-  if (!filename) return false;
-  try {
-    const descriptor = fs.openSync(filename, "r");
-    try {
-      const prefix = Buffer.alloc(4);
-      if (fs.readSync(descriptor, prefix, 0, prefix.length, 0) !== 4) {
-        return false;
-      }
-      return new Set([
-        "cafebabe",
-        "cafebabf",
-        "cefaedfe",
-        "cffaedfe",
-        "feedface",
-        "feedfacf",
-      ]).has(prefix.toString("hex"));
-    } finally {
-      fs.closeSync(descriptor);
-    }
-  } catch {
-    return false;
-  }
-}
 
 export function inspectNativeMicroRuntime({
   launcher = process.env.LOUDER_BRIDGE_LAUNCHER,

@@ -66,6 +66,10 @@ have not shipped appear under "Unreleased."
   Claude settings, and IPv6 loopback URLs are formatted correctly.
 - Status now distinguishes permission onboarding from a stopped background
   agent.
+- Status now reports the installed app version and both macOS permission states
+  while the hook server is unavailable.
+- Permission onboarding now checks TCC state through a fresh LaunchServices app
+  probe instead of inheriting a stale decision from the requesting process.
 - The source compatibility check now verifies the compiler and macOS SDK before
   setup. Installed-app checks still verify the bundled driver itself.
 - Setup, activation, and uninstall rollback only their own Claude hooks. They

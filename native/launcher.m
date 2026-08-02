@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -75,81 +76,8 @@ static int run_runtime(
   return 1;
 }
 
-static int fresh_status_code(
-  const char *executable,
-  const char *argument
-) {
-  posix_spawn_file_actions_t actions;
-  if (posix_spawn_file_actions_init(&actions) != 0) return 5;
-  int null_output = open("/dev/null", O_WRONLY);
-  if (null_output >= 0) {
-    posix_spawn_file_actions_adddup2(
-      &actions,
-      null_output,
-      STDOUT_FILENO
-    );
-    posix_spawn_file_actions_adddup2(
-      &actions,
-      null_output,
-      STDERR_FILENO
-    );
-    posix_spawn_file_actions_addclose(&actions, null_output);
-  }
-  char *const arguments[] = {
-    (char *)executable,
-    (char *)argument,
-    NULL
-  };
-  pid_t child;
-  int spawn_error = posix_spawn(
-    &child,
-    executable,
-    &actions,
-    NULL,
-    arguments,
-    environ
-  );
-  posix_spawn_file_actions_destroy(&actions);
-  if (null_output >= 0) close(null_output);
-  if (spawn_error != 0) return 5;
-
-  int status;
-  while (waitpid(child, &status, 0) < 0) {
-    if (errno != EINTR) return 5;
-  }
-  return WIFEXITED(status) ? WEXITSTATUS(status) : 5;
-}
-
 static const char *accessibility_name(Boolean trusted) {
   return trusted ? "granted" : "denied";
-}
-
-static Boolean check_accessibility_fresh(const char *executable) {
-  return fresh_status_code(
-    executable,
-    "--accessibility-status-code"
-  ) == 0;
-}
-
-static Boolean request_accessibility(const char *executable) {
-  if (AXIsProcessTrusted()) return true;
-  const void *keys[] = { kAXTrustedCheckOptionPrompt };
-  const void *values[] = { kCFBooleanTrue };
-  CFDictionaryRef options = CFDictionaryCreate(
-    kCFAllocatorDefault,
-    keys,
-    values,
-    1,
-    &kCFTypeDictionaryKeyCallBacks,
-    &kCFTypeDictionaryValueCallBacks
-  );
-  AXIsProcessTrustedWithOptions(options);
-  CFRelease(options);
-
-  for (;;) {
-    if (check_accessibility_fresh(executable)) return true;
-    usleep(500000);
-  }
 }
 
 static Boolean copy_string_attribute(
@@ -701,14 +629,160 @@ static int resolve_executable(char resolved[PATH_MAX]) {
   return 0;
 }
 
-static IOHIDAccessType check_access_fresh(const char *executable) {
-  int status = fresh_status_code(
-    executable,
-    "--input-monitoring-status-code"
+typedef struct {
+  IOHIDAccessType input_monitoring;
+  Boolean accessibility;
+} PermissionProbe;
+
+static Boolean permission_probe_path_is_safe(const char *path) {
+  static const char prefix[] = "/tmp/app.louder-bridge.permission.";
+  if (path == NULL || strncmp(path, prefix, strlen(prefix)) != 0) {
+    return false;
+  }
+  const char *suffix = path + strlen(prefix);
+  return suffix[0] != '\0' && strchr(suffix, '/') == NULL;
+}
+
+static int write_permission_probe(const char *path) {
+  if (!permission_probe_path_is_safe(path)) return 2;
+  int descriptor = open(path, O_WRONLY | O_NOFOLLOW);
+  if (descriptor < 0) return 1;
+  struct stat entry;
+  if (
+    fstat(descriptor, &entry) != 0 ||
+    !S_ISREG(entry.st_mode) ||
+    entry.st_uid != getuid() ||
+    entry.st_nlink != 1 ||
+    (entry.st_mode & 0777) != 0600 ||
+    ftruncate(descriptor, 0) != 0
+  ) {
+    close(descriptor);
+    return 1;
+  }
+  int input = (int)IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
+  int accessibility = AXIsProcessTrusted() ? 1 : 0;
+  int written = dprintf(descriptor, "%d %d\n", input, accessibility);
+  Boolean success = written > 0 && fsync(descriptor) == 0;
+  if (close(descriptor) != 0) success = false;
+  return success ? 0 : 1;
+}
+
+static Boolean application_path(
+  const char *executable,
+  char output[PATH_MAX]
+) {
+  if (strlen(executable) >= PATH_MAX) return false;
+  char copy[PATH_MAX];
+  strcpy(copy, executable);
+  for (int level = 0; level < 3; level += 1) {
+    char *directory = dirname(copy);
+    if (directory != copy) memmove(copy, directory, strlen(directory) + 1);
+  }
+  size_t length = strlen(copy);
+  if (length <= 4 || strcmp(copy + length - 4, ".app") != 0) {
+    return false;
+  }
+  strcpy(output, copy);
+  return true;
+}
+
+static Boolean read_permission_probe(
+  int descriptor,
+  PermissionProbe *probe
+) {
+  char contents[64];
+  if (lseek(descriptor, 0, SEEK_SET) < 0) return false;
+  ssize_t count = read(descriptor, contents, sizeof(contents) - 1);
+  if (count <= 0) return false;
+  contents[count] = '\0';
+  int input;
+  int accessibility;
+  if (sscanf(contents, "%d %d", &input, &accessibility) != 2) return false;
+  if (
+    input != (int)kIOHIDAccessTypeGranted &&
+    input != (int)kIOHIDAccessTypeDenied &&
+    input != (int)kIOHIDAccessTypeUnknown
+  ) {
+    return false;
+  }
+  if (accessibility != 0 && accessibility != 1) return false;
+  probe->input_monitoring = (IOHIDAccessType)input;
+  probe->accessibility = accessibility == 1;
+  return true;
+}
+
+static Boolean wait_for_probe_launcher(pid_t child, int *status) {
+  for (int attempt = 0; attempt < 50; attempt += 1) {
+    pid_t waited = waitpid(child, status, WNOHANG);
+    if (waited == child) return true;
+    if (waited < 0 && errno != EINTR) return false;
+    usleep(100000);
+  }
+  kill(child, SIGTERM);
+  for (int attempt = 0; attempt < 10; attempt += 1) {
+    pid_t waited = waitpid(child, status, WNOHANG);
+    if (waited == child) return false;
+    if (waited < 0 && errno != EINTR) return false;
+    usleep(100000);
+  }
+  kill(child, SIGKILL);
+  while (waitpid(child, status, 0) < 0 && errno == EINTR) {}
+  return false;
+}
+
+static Boolean probe_permissions_fresh(
+  const char *executable,
+  PermissionProbe *probe
+) {
+  char app[PATH_MAX];
+  if (!application_path(executable, app)) return false;
+  char probe_path[] = "/tmp/app.louder-bridge.permission.XXXXXX";
+  int descriptor = mkstemp(probe_path);
+  if (descriptor < 0) return false;
+  if (fchmod(descriptor, 0600) != 0) {
+    close(descriptor);
+    unlink(probe_path);
+    return false;
+  }
+
+  char *const arguments[] = {
+    "/usr/bin/open",
+    "-n",
+    app,
+    "--args",
+    "--permission-probe",
+    probe_path,
+    NULL
+  };
+  pid_t child;
+  int spawn_error = posix_spawn(
+    &child,
+    "/usr/bin/open",
+    NULL,
+    NULL,
+    arguments,
+    environ
   );
-  if (status == 0) return kIOHIDAccessTypeGranted;
-  if (status == 3) return kIOHIDAccessTypeDenied;
-  return kIOHIDAccessTypeUnknown;
+  Boolean success = false;
+  if (spawn_error == 0) {
+    int status;
+    if (
+      wait_for_probe_launcher(child, &status) &&
+      WIFEXITED(status) &&
+      WEXITSTATUS(status) == 0
+    ) {
+      for (int attempt = 0; attempt < 50; attempt += 1) {
+        if (read_permission_probe(descriptor, probe)) {
+          success = true;
+          break;
+        }
+        usleep(100000);
+      }
+    }
+  }
+  close(descriptor);
+  unlink(probe_path);
+  return success;
 }
 
 static IOHIDAccessType request_input_monitoring(const char *executable) {
@@ -717,13 +791,60 @@ static IOHIDAccessType request_input_monitoring(const char *executable) {
 
   IOHIDRequestAccess(kIOHIDRequestTypeListenEvent);
   for (;;) {
-    access = check_access_fresh(executable);
-    if (access == kIOHIDAccessTypeGranted) return access;
+    PermissionProbe probe;
+    if (
+      probe_permissions_fresh(executable, &probe) &&
+      probe.input_monitoring == kIOHIDAccessTypeGranted
+    ) {
+      return probe.input_monitoring;
+    }
+    usleep(500000);
+  }
+}
+
+static Boolean request_accessibility(const char *executable) {
+  if (AXIsProcessTrusted()) return true;
+  const void *keys[] = { kAXTrustedCheckOptionPrompt };
+  const void *values[] = { kCFBooleanTrue };
+  CFDictionaryRef options = CFDictionaryCreate(
+    kCFAllocatorDefault,
+    keys,
+    values,
+    1,
+    &kCFTypeDictionaryKeyCallBacks,
+    &kCFTypeDictionaryValueCallBacks
+  );
+  AXIsProcessTrustedWithOptions(options);
+  CFRelease(options);
+
+  for (;;) {
+    PermissionProbe probe;
+    if (
+      probe_permissions_fresh(executable, &probe) &&
+      probe.accessibility
+    ) {
+      return true;
+    }
     usleep(500000);
   }
 }
 
 int main(int argc, char *argv[]) {
+  if (argc == 3 && strcmp(argv[1], "--permission-probe") == 0) {
+    return write_permission_probe(argv[2]);
+  }
+  if (argc > 1 && strcmp(argv[1], "--permission-status-fresh") == 0) {
+    char executable[PATH_MAX];
+    if (resolve_executable(executable) != 0) return 1;
+    PermissionProbe probe;
+    if (!probe_permissions_fresh(executable, &probe)) return 5;
+    printf(
+      "%s %s\n",
+      access_name(probe.input_monitoring),
+      accessibility_name(probe.accessibility)
+    );
+    return 0;
+  }
   if (argc > 1 && strcmp(argv[1], "--accessibility-status-code") == 0) {
     return AXIsProcessTrusted() ? 0 : 3;
   }

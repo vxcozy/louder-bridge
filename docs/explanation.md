@@ -59,6 +59,13 @@ The service checks whether Claude Desktop is running. It connects to the Micro
 when Claude opens and disconnects when Claude quits. This keeps startup
 automatic without holding the device while the user works in Codex.
 
+macOS can cache a privacy decision in the process that requested it. A child
+process may also inherit the parent's privacy identity, which makes a direct
+status check misleading. During onboarding, Louder Bridge launches a short app
+probe through LaunchServices. The probe writes only the two permission states
+to a private temporary file, then exits. The onboarding process deletes that
+file and starts the background agent as soon as both permissions are granted.
+
 ## Why use Claude Code hooks
 
 Claude Code hooks report lifecycle events directly: session start, prompt

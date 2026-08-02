@@ -45,6 +45,7 @@ import {
   needsPermissionOnboarding,
   openOnboardingApplication,
 } from "./setup/permission-onboarding.mjs";
+import { installedApplicationStatus } from "./setup/installed-status.mjs";
 import {
   onboardingApplicationIsRunning,
   stopOnboardingApplication,
@@ -498,6 +499,12 @@ if (command === "help" || command === "--help" || command === "-h") {
     }
   } catch (error) {
     console.log(`Hook server: unavailable (${error.message})`);
+    const installed = installedApplicationStatus();
+    console.log(
+      `Louder Bridge: ${installed.version ?? (installed.available ? "unknown" : "not installed")}`,
+    );
+    console.log(`Input Monitoring: ${installed.inputMonitoring}`);
+    console.log(`Accessibility: ${installed.accessibility}`);
   }
   console.log(`Log: ${paths.stdout}`);
   console.log(`Error log: ${paths.stderr}`);
