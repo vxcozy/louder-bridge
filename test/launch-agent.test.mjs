@@ -10,6 +10,7 @@ import {
   launchAgentPlist,
   removeLaunchAgent,
   restoreRemovedLaunchAgent,
+  waitForLaunchAgent,
 } from "../src/setup/launch-agent.mjs";
 
 test("builds a launch agent for the background service", () => {
@@ -84,6 +85,56 @@ test("reports only a running launch agent as active", () => {
   });
   assert.equal(launchAgentIsRunning({ userId: 501, run: running }), true);
   assert.equal(launchAgentIsRunning({ userId: 501, run: waiting }), false);
+});
+
+test("waits briefly for the replacement launch agent to start", () => {
+  let checks = 0;
+  let sleeps = 0;
+  const run = (command) => {
+    if (command === "/bin/sleep") {
+      sleeps += 1;
+      return { status: 0, stdout: "", stderr: "" };
+    }
+    checks += 1;
+    return {
+      status: 0,
+      stdout: checks === 3 ? "state = running\n" : "state = waiting\n",
+      stderr: "",
+    };
+  };
+
+  assert.equal(
+    waitForLaunchAgent({ userId: 501, run, attempts: 4 }),
+    true,
+  );
+  assert.equal(checks, 3);
+  assert.equal(sleeps, 2);
+});
+
+test("reports when the replacement launch agent never starts", () => {
+  const calls = [];
+  const run = (command, args) => {
+    calls.push([command, ...args]);
+    if (command === "/bin/sleep") {
+      return { status: 0, stdout: "", stderr: "" };
+    }
+    return { status: 0, stdout: "state = waiting\n", stderr: "" };
+  };
+
+  assert.equal(
+    waitForLaunchAgent({ userId: 501, run, attempts: 3 }),
+    false,
+  );
+  assert.deepEqual(
+    calls.map((call) => call[0]),
+    [
+      "/bin/launchctl",
+      "/bin/sleep",
+      "/bin/launchctl",
+      "/bin/sleep",
+      "/bin/launchctl",
+    ],
+  );
 });
 
 test("retries bootstrap while the previous agent is unloading", () => {

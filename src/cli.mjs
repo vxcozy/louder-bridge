@@ -55,6 +55,7 @@ import {
   launchAgentPaths,
   removeLaunchAgent,
   restoreRemovedLaunchAgent,
+  waitForLaunchAgent,
 } from "./setup/launch-agent.mjs";
 
 const command = process.argv[2] ?? "start";
@@ -194,7 +195,6 @@ if (command === "help" || command === "--help" || command === "-h") {
   let settingsTransaction;
   let agent;
   let stoppedOnboarding = false;
-  let needsOnboarding = false;
   try {
     authentication = ensureAuthToken();
     application = installApplicationBundle({
@@ -228,8 +228,12 @@ if (command === "help" || command === "--help" || command === "-h") {
     });
     file = settingsTransaction.settingsFile;
     agent = removeLaunchAgent();
-    await openOnboardingApplication(application.app);
-    needsOnboarding = true;
+    await openOnboardingApplication(application.app, { waitForExit: true });
+    if (!waitForLaunchAgent()) {
+      throw new Error(
+        "Louder Bridge closed before the background agent was ready.",
+      );
+    }
   } catch (error) {
     if (settingsTransaction) {
       attemptRollback(error, "Claude settings could not be restored", () => {
@@ -273,17 +277,8 @@ if (command === "help" || command === "--help" || command === "-h") {
   }
   console.log(`Application installed in ${application.app}.`);
   console.log(`Claude Code hooks installed in ${file}.`);
-  if (needsOnboarding) {
-    console.log(
-      "Louder Bridge is waiting for Input Monitoring and Accessibility approval.",
-    );
-    console.log(
-      "The background agent will start automatically after both permissions are granted.",
-    );
-  } else {
-    console.log(`Background agent installed in ${agent.plist}.`);
-    console.log("Louder Bridge will connect when Claude Desktop opens.");
-  }
+  console.log(`Background agent installed in ${launchAgentPaths().plist}.`);
+  console.log("Louder Bridge will connect when Claude Desktop opens.");
 } else if (command === "activate") {
   const runtime = applicationBundlePathsForCli(fileURLToPath(import.meta.url));
   const permission = inputMonitoringStatus({ launcher: runtime.launcher });

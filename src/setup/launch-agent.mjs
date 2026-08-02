@@ -256,3 +256,21 @@ export function launchAgentIsRunning({
   );
   return result.status === 0 && /\bstate = running\b/.test(result.stdout ?? "");
 }
+
+export function waitForLaunchAgent({
+  userId = process.getuid(),
+  run = spawnSync,
+  attempts = 20,
+} = {}) {
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error("Launch agent wait attempts must be a positive integer.");
+  }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (launchAgentIsRunning({ userId, run })) return true;
+    if (attempt + 1 < attempts) {
+      const waited = run("/bin/sleep", ["0.1"], { encoding: "utf8" });
+      if (waited.status !== 0) throw commandError("sleep", waited);
+    }
+  }
+  return false;
+}

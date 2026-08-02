@@ -50,6 +50,10 @@ restart it:
 npm run setup
 ```
 
+Keep the command open until the app finishes permission onboarding. Setup
+commits the upgrade after the replacement background agent starts. If that
+step fails, it restores the previous installation.
+
 The service writes logs to:
 
 ```text

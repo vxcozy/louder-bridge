@@ -12,10 +12,12 @@ export function needsPermissionOnboarding({
 
 export async function openOnboardingApplication(
   app,
-  { run = execFileAsync } = {},
+  { run = execFileAsync, waitForExit = false } = {},
 ) {
+  const args = waitForExit ? ["-W", "-n", app] : ["-n", app];
+  const options = waitForExit ? {} : { timeout: 5000 };
   try {
-    await run("/usr/bin/open", ["-n", app], { timeout: 5000 });
+    await run("/usr/bin/open", args, options);
   } catch (error) {
     const detail = error?.stderr?.trim() || error?.message || String(error);
     throw new Error(`Louder Bridge could not open for setup: ${detail}`);

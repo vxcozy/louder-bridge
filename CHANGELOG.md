@@ -52,6 +52,8 @@ have not shipped appear under "Unreleased."
 - ChatGPT is no longer required for Codex Micro access.
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.
+- Source setup keeps the previous app backup until permission onboarding
+  finishes and the replacement background agent is running.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of

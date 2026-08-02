@@ -50,6 +50,10 @@ Run:
 npm run setup
 ```
 
+Keep the command open while macOS asks for Input Monitoring and Accessibility.
+Setup finishes after the background agent starts. If the app closes early or
+activation fails, setup restores the previous installation.
+
 The command performs the one-time setup:
 
 - It creates a self-contained **Louder Bridge.app** with an embedded Node.js
@@ -61,7 +65,8 @@ The command performs the one-time setup:
 - It creates a private authentication token for the local hook server.
 - It opens the installed app for permission approval.
 
-You do not need to keep a terminal open or run `npm start`.
+After setup finishes, you do not need to keep a terminal open or run
+`npm start`.
 
 ## 4. Grant macOS permissions
 
