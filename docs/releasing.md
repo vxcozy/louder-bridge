@@ -57,6 +57,10 @@ The build rejects signing identities that are not Developer ID Application
 certificates. An unset identity produces an ad hoc build for local testing
 only. Do not publish it.
 
+Final verification checks the app, launcher, and embedded Node.js runtime
+separately. All three must use the same Developer ID team, carry hardened
+runtime signatures, and include secure timestamps.
+
 ## Notarize
 
 Create a `notarytool` keychain profile outside the repository and set

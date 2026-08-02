@@ -96,6 +96,8 @@ have not shipped appear under "Unreleased."
 - SPDX SBOMs now identify the embedded Node.js runtime and the exact licensed
   protocol reference. The runtime entry includes the SHA-256 of the binary in
   the release archive.
+- Notarized release verification now requires the app, launcher, and embedded
+  runtime to share one Developer ID team and secure signing timestamps.
 - Native release builds fail on compiler warnings.
 - Release tags must point to commits on the protected default branch, and CI
   audits production dependencies before packaging.

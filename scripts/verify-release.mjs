@@ -6,6 +6,10 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bundledComponentIds } from "./spdx-sbom.mjs";
+import {
+  requireDeveloperIdSignature,
+  requireHardenedRuntime,
+} from "./code-signature.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -137,6 +141,12 @@ try {
     "--verbose=2",
     app,
   ]);
+  const appSignature = run("/usr/bin/codesign", [
+    "-dv",
+    "--verbose=4",
+    app,
+  ]);
+  requireHardenedRuntime(appSignature, "Louder Bridge app");
   const launcher = path.join(app, "Contents", "MacOS", "LouderBridge");
   const node = path.join(app, "Contents", "MacOS", "node");
   const extractedNodeChecksum = createHash("sha256")
@@ -145,6 +155,7 @@ try {
   if (extractedNodeChecksum !== nodeChecksum) {
     throw new Error("The embedded Node.js runtime does not match the SBOM.");
   }
+  const executableSignatures = new Map();
   for (const executable of [launcher, node]) {
     const description = run("/usr/bin/file", [executable]);
     if (!description.includes("arm64")) {
@@ -157,11 +168,11 @@ try {
       "--verbose=4",
       executable,
     ]);
-    if (!/flags=.*runtime/.test(signature)) {
-      throw new Error(
-        `${path.basename(executable)} is missing the hardened runtime.`,
-      );
-    }
+    const label = path.basename(executable) === "node"
+      ? "Embedded Node.js runtime"
+      : "Louder Bridge launcher";
+    requireHardenedRuntime(signature, label);
+    executableSignatures.set(executable, { detail: signature, label });
   }
   const nodeEntitlements = run("/usr/bin/codesign", [
     "-d",
@@ -230,15 +241,14 @@ try {
   }
 
   if (process.env.LOUDER_REQUIRE_NOTARIZED === "1") {
-    const appSignature = run("/usr/bin/codesign", [
-      "-dv",
-      "--verbose=4",
-      app,
-    ]);
-    if (!appSignature.includes("Authority=Developer ID Application:")) {
-      throw new Error(
-        "The release does not have a Developer ID Application signature.",
-      );
+    const appMetadata = requireDeveloperIdSignature(appSignature, {
+      label: "Louder Bridge app",
+    });
+    for (const { detail, label } of executableSignatures.values()) {
+      requireDeveloperIdSignature(detail, {
+        expectedTeamIdentifier: appMetadata.teamIdentifier,
+        label,
+      });
     }
     run("/usr/bin/xcrun", ["stapler", "validate", app]);
     run("/usr/sbin/spctl", [

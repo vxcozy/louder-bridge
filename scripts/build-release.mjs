@@ -10,6 +10,10 @@ import {
 } from "../src/setup/application-bundle.mjs";
 import { compileNativeLauncher } from "../src/setup/native-launcher.mjs";
 import { addBundledComponents } from "./spdx-sbom.mjs";
+import {
+  requireDeveloperIdSignature,
+  requireHardenedRuntime,
+} from "./code-signature.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -80,16 +84,10 @@ const signature = run("/usr/bin/codesign", [
   transaction.app,
 ]);
 const detail = `${signature.stdout ?? ""}${signature.stderr ?? ""}`;
-if (!/flags=.*runtime/.test(detail)) {
-  throw new Error("The release app is missing the hardened runtime.");
-}
-if (
-  identity &&
-  !detail.includes("Authority=Developer ID Application:")
-) {
-  throw new Error(
-    "APPLE_SIGNING_IDENTITY must resolve to a Developer ID Application certificate with the hardened runtime.",
-  );
+if (identity) {
+  requireDeveloperIdSignature(detail, { label: "Louder Bridge app" });
+} else {
+  requireHardenedRuntime(detail, "Louder Bridge app");
 }
 const metadata = JSON.parse(
   fs.readFileSync(path.join(root, "package.json"), "utf8"),
