@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 const START_TIMEOUT_MS = 5000;
 const STOP_TIMEOUT_MS = 5000;
+const CLEANUP_TIMEOUT_MS = 1000;
 
 function childFailure(stderr, fallback) {
   return stderr.trim() || fallback;
@@ -15,17 +16,50 @@ function withTimeout(promise, milliseconds, message) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+function exitsWithin(exitPromise, milliseconds) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), milliseconds);
+  });
+  return Promise.race([
+    exitPromise.then(
+      () => true,
+      () => true,
+    ),
+    timeout,
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function terminateVoiceChild(
+  child,
+  exitPromise,
+  { timeoutMs, endInput = true },
+) {
+  if (await exitsWithin(exitPromise, 0)) return;
+  if (endInput && !child.stdin.destroyed && !child.stdin.writableEnded) {
+    child.stdin.end();
+    if (await exitsWithin(exitPromise, timeoutMs)) return;
+  }
+  child.kill("SIGTERM");
+  if (await exitsWithin(exitPromise, timeoutMs)) return;
+  child.kill("SIGKILL");
+  if (await exitsWithin(exitPromise, timeoutMs)) return;
+  throw new Error("Louder Bridge could not stop its dictation helper.");
+}
+
 export class ClaudeAccessibilityVoice {
   constructor({
     launcher = process.env.LOUDER_BRIDGE_LAUNCHER,
     spawnProcess = spawn,
     startTimeoutMs = START_TIMEOUT_MS,
     stopTimeoutMs = STOP_TIMEOUT_MS,
+    cleanupTimeoutMs = CLEANUP_TIMEOUT_MS,
   } = {}) {
     this.launcher = launcher;
     this.spawnProcess = spawnProcess;
     this.startTimeoutMs = startTimeoutMs;
     this.stopTimeoutMs = stopTimeoutMs;
+    this.cleanupTimeoutMs = cleanupTimeoutMs;
     this.state = "idle";
     this.error = null;
     this.lastActionAt = null;
@@ -62,14 +96,23 @@ export class ClaudeAccessibilityVoice {
     this.method = null;
     let stderr = "";
     let stdout = "";
-    const child = this.spawnProcess(
-      this.launcher,
-      ["--claude-dictation-hold"],
-      {
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      },
-    );
+    let child;
+    try {
+      child = this.spawnProcess(
+        this.launcher,
+        ["--claude-dictation-hold"],
+        {
+          stdio: ["pipe", "pipe", "pipe"],
+          windowsHide: true,
+        },
+      );
+    } catch {
+      const detail = "Louder Bridge could not start its dictation helper.";
+      this.state = "error";
+      this.error = detail;
+      this.lastActionAt = new Date().toISOString();
+      throw new Error(detail);
+    }
     this.child = child;
 
     this.exitPromise = new Promise((resolve, reject) => {
@@ -141,12 +184,22 @@ export class ClaudeAccessibilityVoice {
         },
       );
     } catch (error) {
+      let cleanupError = null;
+      try {
+        await terminateVoiceChild(child, this.exitPromise, {
+          timeoutMs: this.cleanupTimeoutMs,
+        });
+      } catch (caught) {
+        cleanupError = caught;
+      }
       if (this.child === child) {
         this.child = null;
         this.exitPromise = null;
       }
-      child.kill();
-      const detail = childFailure(stderr, error.message);
+      const detail = [
+        childFailure(stderr, error.message),
+        cleanupError?.message,
+      ].filter(Boolean).join(" ");
       this.state = "error";
       this.error = detail;
       this.lastActionAt = new Date().toISOString();
@@ -185,15 +238,23 @@ export class ClaudeAccessibilityVoice {
       this.error = previousError;
       this.lastActionAt = new Date().toISOString();
     } catch (error) {
-      child.kill();
+      let failure = error;
+      try {
+        await terminateVoiceChild(child, exitPromise, {
+          timeoutMs: this.cleanupTimeoutMs,
+          endInput: false,
+        });
+      } catch (cleanupError) {
+        failure = new Error(`${error.message} ${cleanupError.message}`);
+      }
       if (this.child === child) {
         this.child = null;
         this.exitPromise = null;
       }
       this.state = "error";
-      this.error = error.message;
+      this.error = failure.message;
       this.lastActionAt = new Date().toISOString();
-      throw error;
+      throw failure;
     }
   }
 }

@@ -70,6 +70,8 @@ have not shipped appear under "Unreleased."
   setup. Installed-app checks still verify the bundled driver itself.
 - Setup, activation, and uninstall rollback only their own Claude hooks. They
   preserve unrelated settings written while the operation is running.
+- Voice cleanup now waits for the native dictation helper to exit and escalates
+  termination if it remains stuck.
 
 ### Security
 

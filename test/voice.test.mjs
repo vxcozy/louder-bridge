@@ -14,7 +14,10 @@ function fakeChild({
   child.stdin = new PassThrough();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
-  child.kill = () => child.emit("exit", null, "SIGTERM");
+  child.kill = () => {
+    child.emit("exit", null, "SIGTERM");
+    return true;
+  };
   child.stdin.on("finish", () => child.emit("exit", exitCode, null));
   process.nextTick(() => {
     if (stderr) child.stderr.write(stderr);
@@ -84,6 +87,25 @@ test("reports native dictation failures in diagnostics", async () => {
   await voice.stop();
 });
 
+test("reports a synchronous dictation helper launch failure", async () => {
+  const voice = new ClaudeAccessibilityVoice({
+    launcher: "/launcher",
+    spawnProcess() {
+      throw new Error("private launcher detail");
+    },
+  });
+
+  await assert.rejects(
+    () => voice.start(),
+    /could not start its dictation helper/,
+  );
+  assert.equal(voice.status().state, "error");
+  assert.equal(
+    voice.status().error,
+    "Louder Bridge could not start its dictation helper.",
+  );
+});
+
 test("records an unexpected native hold exit", async () => {
   const child = fakeChild();
   const voice = new ClaudeAccessibilityVoice({
@@ -98,4 +120,29 @@ test("records an unexpected native hold exit", async () => {
 
   assert.equal(voice.status().state, "error");
   assert.equal(voice.status().error, "Claude closed while recording.");
+});
+
+test("escalates cleanup when the native dictation helper is stuck", async () => {
+  const signals = [];
+  const child = fakeChild();
+  child.stdin.removeAllListeners("finish");
+  child.kill = (signal) => {
+    signals.push(signal);
+    if (signal === "SIGKILL") child.emit("exit", null, signal);
+    return true;
+  };
+  const voice = new ClaudeAccessibilityVoice({
+    launcher: "/launcher",
+    spawnProcess: () => child,
+    stopTimeoutMs: 1,
+    cleanupTimeoutMs: 1,
+  });
+
+  await voice.start();
+  await assert.rejects(
+    () => voice.stop(),
+    /Claude did not stop recording in time/,
+  );
+  assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+  assert.equal(voice.status().state, "error");
 });
