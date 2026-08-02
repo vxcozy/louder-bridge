@@ -405,3 +405,63 @@ test("stops latched Claude dictation when the Micro disconnects", async (context
   assert.deepEqual(actions, ["start", "stop"]);
   assert.equal(bridge.health().service.voice.state, "idle");
 });
+
+test("closes the server and releases voice when device cleanup fails", async () => {
+  const actions = [];
+  let voiceButton;
+  let deviceStopCalls = 0;
+  const voice = {
+    metadata() {
+      return { id: "test-voice", support: "test" };
+    },
+    status() {
+      return {
+        ...this.metadata(),
+        state: actions.at(-1) === "start" ? "recording" : "idle",
+        error: null,
+        lastActionAt: null,
+      };
+    },
+    async start() {
+      actions.push("start");
+    },
+    async stop() {
+      actions.push("stop");
+    },
+  };
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger,
+    voice,
+    deviceFactory({ onVoiceButton }) {
+      voiceButton = onVoiceButton;
+      return {
+        async start() {},
+        async render() {},
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {
+          deviceStopCalls += 1;
+          throw new Error("device cleanup failed");
+        },
+      };
+    },
+  });
+
+  await voiceButton("press");
+  await voiceButton("release");
+  await voiceButton("press");
+  await voiceButton("release");
+  assert.deepEqual(actions, ["start"]);
+
+  const firstStop = bridge.stop();
+  const secondStop = bridge.stop();
+  assert.equal(firstStop, secondStop);
+  await assert.rejects(firstStop, /did not shut down cleanly/);
+  assert.deepEqual(actions, ["start", "stop"]);
+  assert.equal(deviceStopCalls, 1);
+  assert.equal(bridge.server.listening, false);
+});

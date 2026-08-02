@@ -93,6 +93,7 @@ export async function startBridge({
   let lastHookAt = null;
   let voiceQueue = Promise.resolve();
   let submitQueue = Promise.resolve();
+  let stopPromise = null;
   const metadata = applicationMetadata();
   if (openSession) {
     navigator = {
@@ -198,8 +199,23 @@ export async function startBridge({
     deviceRequested = false;
     const currentDevice = device;
     device = null;
-    await currentDevice?.stop();
-    await pushToTalk.reset();
+    const failures = [];
+    try {
+      await currentDevice?.stop();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await pushToTalk.reset();
+    } catch (error) {
+      failures.push(error);
+    }
+    if (failures.length) {
+      throw new AggregateError(
+        failures,
+        "Louder Bridge could not release the Codex Micro cleanly.",
+      );
+    }
   }
 
   function health() {
@@ -304,11 +320,33 @@ export async function startBridge({
     get device() {
       return device;
     },
-    async stop() {
-      await new Promise((resolve) => server.close(resolve));
-      await disconnectDevice();
-      await voiceQueue.catch(() => {});
-      await submitQueue.catch(() => {});
+    stop() {
+      stopPromise ??= (async () => {
+        const failures = [];
+        const closeServer = new Promise((resolve) => {
+          server.close((error) => {
+            if (error && error.code !== "ERR_SERVER_NOT_RUNNING") {
+              failures.push(error);
+            }
+            resolve();
+          });
+        });
+        try {
+          await disconnectDevice();
+        } catch (error) {
+          failures.push(error);
+        }
+        await voiceQueue.catch(() => {});
+        await submitQueue.catch(() => {});
+        await closeServer;
+        if (failures.length) {
+          throw new AggregateError(
+            failures,
+            "Louder Bridge did not shut down cleanly.",
+          );
+        }
+      })();
+      return stopPromise;
     },
   };
 }

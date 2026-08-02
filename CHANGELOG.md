@@ -10,6 +10,8 @@ have not shipped appear under "Unreleased."
 - A self-contained per-user macOS application bundle with an embedded Node.js
   runtime.
 - Automatic Claude Desktop detection, Micro connection, and device release.
+- Idempotent shutdown that closes the hook server and releases voice input even
+  when device cleanup reports an error.
 - Claude Code lifecycle hooks, six stable session slots, lighting states, and
   Agent Key session navigation.
 - Authenticated loopback HTTP endpoints, private rotating logs, diagnostics,

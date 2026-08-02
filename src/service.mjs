@@ -53,6 +53,7 @@ export async function startDesktopService({
   let previousPermission = null;
   let previousAccessibility = null;
   let stopped = false;
+  let stopPromise = null;
   let update = Promise.resolve();
 
   async function sync() {
@@ -138,11 +139,14 @@ export async function startDesktopService({
   return {
     bridge,
     sync: queueSync,
-    async stop() {
-      stopped = true;
-      clearInterval(timer);
-      await update;
-      await bridge.stop();
+    stop() {
+      stopPromise ??= (async () => {
+        stopped = true;
+        clearInterval(timer);
+        await update;
+        await bridge.stop();
+      })();
+      return stopPromise;
     },
   };
 }

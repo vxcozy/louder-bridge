@@ -6,6 +6,7 @@ import { BRIDGE_URL } from "./config.mjs";
 import { inspectNativeMicroRuntime } from "./device/native-transport.mjs";
 import { inputMonitoringStatus } from "./macos/input-monitoring.mjs";
 import { applicationMetadata } from "./runtime/metadata.mjs";
+import { installSignalShutdown } from "./runtime/signals.mjs";
 import { startBridge } from "./server.mjs";
 import { startDesktopService } from "./service.mjs";
 import {
@@ -124,18 +125,6 @@ async function doctor() {
   if (!ready) process.exitCode = 1;
 }
 
-function stopOnSignals(target) {
-  let stopping = false;
-  const stop = async () => {
-    if (stopping) return;
-    stopping = true;
-    await target.stop();
-    process.exit(0);
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
-}
-
 function openPrivacySettings(url) {
   const child = spawn("/usr/bin/open", [url], {
     detached: true,
@@ -178,7 +167,7 @@ if (command === "help" || command === "--help" || command === "-h") {
     mockDevice: process.argv.includes("--mock-device"),
     authToken: ensureAuthToken().token,
   });
-  stopOnSignals(bridge);
+  installSignalShutdown(bridge, { onError: console.error });
 } else if (command === "service") {
   const paths = launchAgentPaths();
   const logger = createRotatingLogger(paths);
@@ -187,7 +176,7 @@ if (command === "help" || command === "--help" || command === "-h") {
       authToken: readAuthToken(),
       logger,
     });
-    stopOnSignals(service);
+    installSignalShutdown(service, { onError: logger.error });
   } catch (error) {
     logger.error(error);
     process.exitCode = 1;

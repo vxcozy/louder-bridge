@@ -297,3 +297,31 @@ test("requires Accessibility before connecting the device", async () => {
   assert.deepEqual(calls, []);
   await service.stop();
 });
+
+test("stops the desktop service only once", async () => {
+  let bridgeStopCalls = 0;
+  const bridge = {
+    async connectDevice() {},
+    async disconnectDevice() {},
+    async stop() {
+      bridgeStopCalls += 1;
+    },
+    setRuntimeStatus() {},
+  };
+  const service = await startDesktopService({
+    checkClaude: async () => false,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    checkCodex: async () => false,
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  const firstStop = service.stop();
+  const secondStop = service.stop();
+  assert.equal(firstStop, secondStop);
+  await firstStop;
+  assert.equal(bridgeStopCalls, 1);
+});
