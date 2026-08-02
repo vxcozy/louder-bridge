@@ -272,7 +272,7 @@ if (command === "help" || command === "--help" || command === "-h") {
           attemptRollback(
             error,
             "The new authentication token could not be removed",
-            () => removeAuthToken(),
+            () => removeAuthToken({ identity: authentication.identity }),
           );
         }
       },
@@ -330,7 +330,9 @@ if (command === "help" || command === "--help" || command === "-h") {
         rollbackClaudeSettingsUpdate(settingsTransaction);
       });
     }
-    if (authentication?.created) removeAuthToken();
+    if (authentication?.created) {
+      removeAuthToken({ identity: authentication.identity });
+    }
     activationDialog(`Setup failed: ${error.message}`, { error: true });
     process.exitCode = 1;
   }

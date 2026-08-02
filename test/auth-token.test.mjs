@@ -159,3 +159,103 @@ test("stages token removal for commit or rollback", () => {
   assert.equal(fs.existsSync(committed.backup), false);
   fs.rmSync(homeDirectory, { recursive: true });
 });
+
+test("rejects a multiply linked authentication token", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-auth-token-hardlink-"),
+  );
+  const created = ensureAuthToken({ homeDirectory });
+  const hardlink = path.join(homeDirectory, "token-hardlink");
+  fs.linkSync(created.file, hardlink);
+
+  assert.throws(
+    () => readAuthToken({ homeDirectory }),
+    /not a regular file/,
+  );
+  assert.equal(fs.readFileSync(hardlink, "utf8").trim(), created.token);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("token cleanup leaves a replacement file untouched", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-auth-token-replaced-"),
+  );
+  const created = ensureAuthToken({ homeDirectory });
+  fs.renameSync(created.file, path.join(homeDirectory, "original-token"));
+  const replacement = "c".repeat(64);
+  fs.writeFileSync(created.file, `${replacement}\n`, { mode: 0o600 });
+
+  assert.throws(
+    () =>
+      removeAuthToken({
+        homeDirectory,
+        identity: created.identity,
+      }),
+    /changed before it could be removed.*left untouched/,
+  );
+  assert.equal(readAuthToken({ homeDirectory }), replacement);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("token rollback does not delete a token that appeared later", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-auth-token-rollback-occupied-"),
+  );
+  ensureAuthToken({ homeDirectory });
+  const transaction = stageAuthTokenRemoval({ homeDirectory });
+  const replacement = "d".repeat(64);
+  fs.writeFileSync(transaction.file, `${replacement}\n`, { mode: 0o600 });
+
+  assert.throws(
+    () => rollbackAuthTokenRemoval(transaction),
+    /new authentication token appeared.*left untouched/,
+  );
+  assert.equal(readAuthToken({ homeDirectory }), replacement);
+  assert.equal(fs.existsSync(transaction.backup), true);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("token rollback keeps the current token when its backup is missing", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-auth-token-rollback-missing-"),
+  );
+  ensureAuthToken({ homeDirectory });
+  const transaction = stageAuthTokenRemoval({ homeDirectory });
+  fs.renameSync(
+    transaction.backup,
+    path.join(homeDirectory, "missing-backup"),
+  );
+  const replacement = "f".repeat(64);
+  fs.writeFileSync(transaction.file, `${replacement}\n`, { mode: 0o600 });
+
+  assert.throws(
+    () => rollbackAuthTokenRemoval(transaction),
+    /backup is missing.*current token untouched/,
+  );
+  assert.equal(readAuthToken({ homeDirectory }), replacement);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("token cleanup leaves a changed backup untouched", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-auth-token-backup-replaced-"),
+  );
+  ensureAuthToken({ homeDirectory });
+  const transaction = stageAuthTokenRemoval({ homeDirectory });
+  fs.renameSync(
+    transaction.backup,
+    path.join(homeDirectory, "original-backup"),
+  );
+  const replacement = "e".repeat(64);
+  fs.writeFileSync(transaction.backup, `${replacement}\n`, { mode: 0o600 });
+
+  assert.throws(
+    () => commitAuthTokenRemoval(transaction),
+    /backup changed before cleanup.*left untouched/,
+  );
+  assert.equal(
+    fs.readFileSync(transaction.backup, "utf8").trim(),
+    replacement,
+  );
+  fs.rmSync(homeDirectory, { recursive: true });
+});

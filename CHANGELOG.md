@@ -79,6 +79,9 @@ have not shipped appear under "Unreleased."
 - Setup and uninstall verify the app's bundle identity before replacing or
   removing it. Rollback and backup cleanup leave a path alone if it no longer
   points to the bundle recorded at the start of the transaction.
+- Token removal records the exact token file before staging it. Rollback does
+  not overwrite a token created by another setup process, and cleanup does not
+  delete a backup path that now points to another file.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of
