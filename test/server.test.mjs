@@ -210,6 +210,7 @@ test("acknowledges Claude hooks even when device lighting fails", async (context
     body: JSON.stringify({
       session_id: "00000000-0000-4000-8000-000000000001",
       cwd: "/tmp/project",
+      prompt: "private-prompt-sentinel",
       hook_event_name: "SessionStart",
     }),
   });
@@ -219,6 +220,12 @@ test("acknowledges Claude hooks even when device lighting fails", async (context
   assert.match(errors[0], /USB write failed/);
   assert.equal(messages.includes("Slot 1: idle"), true);
   assert.equal(messages.some((message) => message.includes("project")), false);
+  const logOutput = [...messages, ...errors].join("\n");
+  assert.equal(
+    logOutput.includes("00000000-0000-4000-8000-000000000001"),
+    false,
+  );
+  assert.equal(logOutput.includes("private-prompt-sentinel"), false);
   assert.equal("id" in rendered.at(-1)[0], false);
   assert.equal("cwd" in rendered.at(-1)[0], false);
 

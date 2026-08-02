@@ -156,3 +156,30 @@ test("keeps new log entries on one line and omits local paths", () => {
   );
   fs.rmSync(directory, { recursive: true });
 });
+
+test("omits session identifiers and authentication tokens", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
+  const stdout = path.join(directory, "bridge.log");
+  const stderr = path.join(directory, "bridge-error.log");
+  const logger = createRotatingLogger({
+    stdout,
+    stderr,
+    now: () => new Date("2026-07-31T00:00:00.000Z"),
+  });
+  const session = "00000000-0000-4000-8000-000000000001";
+  const token = "a".repeat(64);
+
+  logger.error(`Session ${session} used token ${token}`);
+
+  assert.equal(
+    fs.readFileSync(stderr, "utf8"),
+    "2026-07-31T00:00:00.000Z ERROR Session <session identifier omitted> used token <authentication token omitted>\n",
+  );
+  fs.writeFileSync(stdout, `Legacy session ${session} token ${token}\n`);
+  prepareRotatingLogs({ stdout, stderr });
+  assert.equal(
+    fs.readFileSync(stdout, "utf8"),
+    "Legacy session <session identifier omitted> token <authentication token omitted>\n",
+  );
+  fs.rmSync(directory, { recursive: true });
+});

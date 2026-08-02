@@ -70,6 +70,8 @@ have not shipped appear under "Unreleased."
   agent.
 - Status now reports the installed app version and both macOS permission states
   while the hook server is unavailable.
+- New and existing logs now redact UUID-shaped session identifiers and
+  64-character authentication tokens.
 - Permission onboarding now checks TCC state through a fresh LaunchServices app
   probe instead of inheriting a stale decision from the requesting process.
 - The source compatibility check now verifies the compiler and macOS SDK before

@@ -16,9 +16,16 @@ const PRIVATE_PATH_ROOTS = [
   "/private/var/folders/",
   "/var/folders/",
 ];
+const SESSION_IDENTIFIER =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const AUTH_TOKEN = /\b[a-f0-9]{64}\b/gi;
 
 function sanitizePart(value) {
-  let text = String(value).replace(/\s+/g, " ").trim();
+  let text = String(value)
+    .replace(SESSION_IDENTIFIER, "<session identifier omitted>")
+    .replace(AUTH_TOKEN, "<authentication token omitted>")
+    .replace(/\s+/g, " ")
+    .trim();
   const privatePathIndex = PRIVATE_PATH_ROOTS.reduce((earliest, root) => {
     const index = text.indexOf(root);
     if (index < 0) return earliest;
@@ -76,6 +83,7 @@ function scrubLegacyContext(filename) {
         !LEGACY_SOURCE_LINE.test(line) &&
         !LEGACY_STACK_DETAIL_LINE.test(line),
     )
+    .map((line) => sanitizePart(line))
     .join("\n");
   if (scrubbed !== contents) {
     writeFileAtomic(filename, scrubbed, { mode: 0o600 });

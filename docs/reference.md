@@ -192,7 +192,9 @@ Recognized fields are:
 - `notification_type`
 
 The hook does not forward working directories, prompts, responses, model
-names, tool data, or transcripts. The health response omits session IDs.
+names, tool data, or transcripts. The health response omits session IDs. The
+logger redacts UUID-shaped identifiers and authentication tokens from new
+entries and older log files.
 
 ## Slot behavior
 
