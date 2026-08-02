@@ -58,7 +58,9 @@ and a seventh inactive session replaces the oldest inactive slot.
 ## Check Micro push-to-talk
 
 Use a distinctive sentence that is easy to recognize and contains no private
-information.
+information. Quit Codex before starting this test. Codex has its own Micro
+integration and can consume the same MIC and send events while Louder Bridge is
+testing Claude.
 
 1. Open an existing local Code session and focus its composer.
 2. Hold MIC. Confirm Claude's listening indicator appears in that composer.
@@ -77,17 +79,45 @@ information.
    submit the prompt.
 10. Disconnect or power off the Micro while MIC is held or latched. Confirm
    dictation stops.
-11. Restart Claude, restart the bridge, and power-cycle the Micro. Repeat the
+11. Press the key to the right of MIC. Confirm it sends the current composer
+    exactly once.
+12. Open a Claude approval prompt, focus its default approval action, and press
+    the same key. Confirm the action is accepted exactly once.
+13. Restart Claude, restart the bridge, and power-cycle the Micro. Repeat the
    test after each restart.
-12. Run the complete test once over USB-C and once over Bluetooth.
+14. Run the complete test once over USB-C and once over Bluetooth.
 
 Do not infer transcript success from bridge logs. The logs prove only that MIC
 edges arrived and Claude's dictation control changed state. A tester must
 confirm that the spoken sentence appears in the correct composer.
 
-Record the Claude account type and whether an organization policy applies.
-Voice tests require a Claude.ai account; API-key and third-party provider
-sessions do not qualify.
+Record the voice route reported by `npm run status`. For `Claude composer`,
+also record the Claude account type and whether an organization policy applies.
+For `macOS Dictation`, record the selected Dictation language and processing
+setting.
+
+## Latest development-build result
+
+The following focused test passed over Bluetooth on August 2, 2026:
+
+| Component | Version or result |
+|---|---|
+| macOS | 26.5.2 (25F84) |
+| Claude Desktop | 1.24012.9 |
+| Louder Bridge | 0.1.0 development build |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | Bluetooth |
+| MIC hold and release | Passed in Claude Code |
+| Transcript insertion | Passed with a distinctive spoken phrase |
+| Send key | Passed; one Return event reached Claude |
+| Lifecycle response | Passed; running and complete hooks reached the bridge |
+
+Codex was closed for the passing run. With Codex open, the same voice input
+was also delivered to Codex, which made the Claude result appear to fail. This
+is a focused development-build result, not a completed release qualification.
+Double-tap latching, the visible Cowork composer route, approval prompts,
+USB-C, power cycling, and the rest of this checklist remain open.
 
 ## Check failure recovery
 

@@ -6,18 +6,29 @@ import { startBridge } from "./server.mjs";
 
 const execFileAsync = promisify(execFile);
 
-export async function isClaudeDesktopRunning(run = execFileAsync) {
-  try {
-    await run("/usr/bin/pgrep", ["-x", "Claude"]);
-    return true;
-  } catch (error) {
-    if (error?.code === 1) return false;
-    throw error;
+async function isNamedProcessRunning(names, run) {
+  for (const name of names) {
+    try {
+      await run("/usr/bin/pgrep", ["-x", name]);
+      return true;
+    } catch (error) {
+      if (error?.code !== 1) throw error;
+    }
   }
+  return false;
+}
+
+export function isClaudeDesktopRunning(run = execFileAsync) {
+  return isNamedProcessRunning(["Claude"], run);
+}
+
+export function isCodexDesktopRunning(run = execFileAsync) {
+  return isNamedProcessRunning(["ChatGPT", "Codex"], run);
 }
 
 export async function startDesktopService({
   checkClaude = isClaudeDesktopRunning,
+  checkCodex = isCodexDesktopRunning,
   createBridge = startBridge,
   pollInterval = 1000,
   logger = console,
@@ -32,8 +43,12 @@ export async function startDesktopService({
     runtimeMode: "service",
     authToken,
   });
-  bridge.setRuntimeStatus?.({ claudeDesktop: "closed" });
+  bridge.setRuntimeStatus?.({
+    claudeDesktop: "closed",
+    codexDesktop: "unknown",
+  });
   let claudeWasRunning = false;
+  let contentionWasActive = false;
   let deviceRequested = false;
   let previousPermission = null;
   let previousAccessibility = null;
@@ -70,10 +85,21 @@ export async function startDesktopService({
     }
     previousPermission = permission;
     previousAccessibility = accessibility;
-    const claudeIsRunning = await checkClaude();
+    const [claudeIsRunning, codexIsRunning] = await Promise.all([
+      checkClaude(),
+      checkCodex(),
+    ]);
     bridge.setRuntimeStatus?.({
       claudeDesktop: claudeIsRunning ? "open" : "closed",
+      codexDesktop: codexIsRunning ? "open" : "closed",
     });
+    const contentionIsActive = claudeIsRunning && codexIsRunning;
+    if (contentionIsActive && !contentionWasActive) {
+      logger.info(
+        "Codex is also open. MIC and send controls may reach both apps.",
+      );
+    }
+    contentionWasActive = contentionIsActive;
     if (
       !claudeIsRunning ||
       permission !== "granted" ||

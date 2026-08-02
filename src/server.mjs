@@ -2,6 +2,7 @@ import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { BRIDGE_HOST, BRIDGE_PORT } from "./config.mjs";
 import { createClaudeNavigator } from "./claude/navigator.mjs";
+import { createClaudeSubmit } from "./claude/submit.mjs";
 import { createClaudeVoice } from "./claude/voice.mjs";
 import { createPushToTalk } from "./device/push-to-talk.mjs";
 import { WorkLouderDevice, MockDevice } from "./device/worklouder.mjs";
@@ -83,6 +84,7 @@ export async function startBridge({
   deviceFactory,
   logger = console,
   navigator = createClaudeNavigator(),
+  submit = createClaudeSubmit(),
   voice = createClaudeVoice(),
   openSession,
   runtimeMode = "manual",
@@ -99,6 +101,7 @@ export async function startBridge({
   let lastDeviceError = null;
   let lastHookAt = null;
   let voiceQueue = Promise.resolve();
+  let submitQueue = Promise.resolve();
   const metadata = applicationMetadata();
   if (openSession) {
     navigator = {
@@ -109,6 +112,7 @@ export async function startBridge({
   let runtimeStatus = {
     mode: runtimeMode,
     claudeDesktop: runtimeMode === "service" ? "closed" : "unknown",
+    codexDesktop: "unknown",
     inputMonitoring: "unknown",
     accessibility: "unknown",
   };
@@ -158,6 +162,15 @@ export async function startBridge({
     },
   });
   const onVoiceButton = (action) => pushToTalk.handle(action);
+  const onSubmitButton = () => {
+    submitQueue = submitQueue
+      .catch(() => {})
+      .then(async () => {
+        await submit.submit();
+        logger.info("Sent Return to Claude.");
+      });
+    return submitQueue;
+  };
 
   const createDevice =
     deviceFactory ??
@@ -173,6 +186,7 @@ export async function startBridge({
       logger,
       onAgentKey,
       onVoiceButton,
+      onSubmitButton,
       onDeviceDisconnect: () => pushToTalk.reset(),
     });
     device = nextDevice;
@@ -303,6 +317,7 @@ export async function startBridge({
       await new Promise((resolve) => server.close(resolve));
       await disconnectDevice();
       await voiceQueue.catch(() => {});
+      await submitQueue.catch(() => {});
     },
   };
 }

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -19,10 +20,16 @@
 extern char **environ;
 
 static volatile sig_atomic_t runtime_process = 0;
+static volatile sig_atomic_t hold_stop_requested = 0;
 
 static void forward_signal(int signal_number) {
   pid_t process = (pid_t)runtime_process;
   if (process > 0) kill(process, signal_number);
+}
+
+static void request_hold_stop(int signal_number) {
+  (void)signal_number;
+  hold_stop_requested = 1;
 }
 
 static int run_runtime(
@@ -212,37 +219,71 @@ static Boolean copy_rect(
   return success;
 }
 
-static Boolean is_dictation_group(AXUIElementRef element) {
-  if (
-    !string_attribute_equals(element, kAXRoleAttribute, "AXGroup") ||
-    !string_attribute_equals(
-      element,
-      kAXSubroleAttribute,
-      "AXApplicationGroup"
-    )
-  ) {
-    return false;
+static pid_t claude_process_identifier(void) {
+  @autoreleasepool {
+    NSArray<NSRunningApplication *> *applications =
+      [NSRunningApplication runningApplicationsWithBundleIdentifier:
+        @"com.anthropic.claudefordesktop"];
+    NSRunningApplication *application = applications.firstObject;
+    return application == nil ? 0 : application.processIdentifier;
   }
-  if (
-    string_attribute_equals(
-      element,
-      kAXDescriptionAttribute,
-      "Dictation"
-    )
-  ) {
-    return true;
-  }
+}
 
-  CGPoint group_position;
-  CGSize group_size;
+static Boolean frontmost_application_is_claude(void) {
+  @autoreleasepool {
+    NSRunningApplication *application =
+      [NSWorkspace sharedWorkspace].frontmostApplication;
+    return [application.bundleIdentifier
+      isEqualToString:@"com.anthropic.claudefordesktop"];
+  }
+}
+
+typedef enum {
+  kComposerButtonMissing = 0,
+  kComposerButtonHold = 1,
+  kComposerButtonToggle = 2,
+  kComposerButtonActive = 3
+} ComposerButtonMode;
+
+static Boolean element_label_equals(
+  AXUIElementRef element,
+  const char *expected
+) {
+  return
+    string_attribute_equals(element, kAXDescriptionAttribute, expected) ||
+    string_attribute_equals(element, kAXTitleAttribute, expected);
+}
+
+static ComposerButtonMode composer_button_mode(AXUIElementRef element) {
+  if (!string_attribute_equals(element, kAXRoleAttribute, "AXButton")) {
+    return kComposerButtonMissing;
+  }
+  if (element_label_equals(element, "Press and hold to record")) {
+    return kComposerButtonHold;
+  }
   if (
-    !copy_rect(element, &group_position, &group_size) ||
-    group_size.width < 30 ||
-    group_size.width > 80 ||
-    group_size.height < 18 ||
-    group_size.height > 50
+    element_label_equals(element, "Dictate") ||
+    element_label_equals(element, "Turn on microphone")
   ) {
-    return false;
+    return kComposerButtonToggle;
+  }
+  if (element_label_equals(element, "Stop dictation")) {
+    return kComposerButtonActive;
+  }
+  return kComposerButtonMissing;
+}
+
+static AXUIElementRef find_record_button(
+  AXUIElementRef element,
+  ComposerButtonMode *mode,
+  int *remaining
+) {
+  if (*remaining <= 0) return NULL;
+  *remaining -= 1;
+  ComposerButtonMode candidate = composer_button_mode(element);
+  if (candidate != kComposerButtonMissing) {
+    *mode = candidate;
+    return (AXUIElementRef)CFRetain(element);
   }
 
   CFTypeRef children_value = NULL;
@@ -256,49 +297,224 @@ static Boolean is_dictation_group(AXUIElementRef element) {
     CFGetTypeID(children_value) != CFArrayGetTypeID()
   ) {
     if (children_value != NULL) CFRelease(children_value);
-    return false;
+    return NULL;
   }
   CFArrayRef children = (CFArrayRef)children_value;
-  Boolean found_popup = false;
-  for (CFIndex index = 0; index < CFArrayGetCount(children); index += 1) {
-    AXUIElementRef child = (AXUIElementRef)CFArrayGetValueAtIndex(
-      children,
-      index
+  AXUIElementRef match = NULL;
+  for (
+    CFIndex index = 0;
+    index < CFArrayGetCount(children) && *remaining > 0;
+    index += 1
+  ) {
+    match = find_record_button(
+      (AXUIElementRef)CFArrayGetValueAtIndex(children, index),
+      mode,
+      remaining
     );
-    if (
-      string_attribute_equals(child, kAXRoleAttribute, "AXPopUpButton")
-    ) {
-      CGPoint popup_position;
-      CGSize popup_size;
-      if (
-        copy_rect(child, &popup_position, &popup_size) &&
-        popup_size.width < group_size.width &&
-        popup_size.height <= group_size.height + 2
-      ) {
-        found_popup = true;
-        break;
-      }
-    }
+    if (match != NULL) break;
   }
   CFRelease(children_value);
-  return found_popup;
+  return match;
 }
 
-typedef struct {
-  AXUIElementRef dictation_group;
-  AXUIElementRef stop_toggle;
-  int remaining;
-} DictationElements;
+static AXUIElementRef focused_claude_record_button(
+  ComposerButtonMode *mode
+) {
+  pid_t process_identifier = claude_process_identifier();
+  if (process_identifier == 0) return NULL;
+  AXUIElementRef application = AXUIElementCreateApplication(
+    process_identifier
+  );
+  CFTypeRef focused_window = NULL;
+  AXError error = AXUIElementCopyAttributeValue(
+    application,
+    kAXFocusedWindowAttribute,
+    &focused_window
+  );
+  CFRelease(application);
+  if (
+    error != kAXErrorSuccess ||
+    focused_window == NULL ||
+    CFGetTypeID(focused_window) != AXUIElementGetTypeID()
+  ) {
+    if (focused_window != NULL) CFRelease(focused_window);
+    return NULL;
+  }
+  int remaining = 20000;
+  AXUIElementRef button = find_record_button(
+    (AXUIElementRef)focused_window,
+    mode,
+    &remaining
+  );
+  CFRelease(focused_window);
+  return button;
+}
 
-static AXUIElementRef find_toggle_descendant(
+static CGEventRef mouse_event(CGEventType type, CGPoint point) {
+  return CGEventCreateMouseEvent(
+    NULL,
+    type,
+    point,
+    kCGMouseButtonLeft
+  );
+}
+
+static int wait_for_stop_signal(void) {
+  char byte;
+  while (!hold_stop_requested) {
+    fd_set input;
+    FD_ZERO(&input);
+    FD_SET(STDIN_FILENO, &input);
+    struct timeval timeout = { .tv_sec = 0, .tv_usec = 100000 };
+    int selected = select(
+      STDIN_FILENO + 1,
+      &input,
+      NULL,
+      NULL,
+      &timeout
+    );
+    if (selected > 0) {
+      ssize_t count = read(STDIN_FILENO, &byte, 1);
+      if (count >= 0) return 0;
+      if (errno != EINTR) return 1;
+    } else if (selected < 0 && errno != EINTR) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static Boolean click_accessibility_button(AXUIElementRef button) {
+  return AXUIElementPerformAction(button, kAXPressAction) == kAXErrorSuccess;
+}
+
+static Boolean click_point(CGPoint point) {
+  CGEventRef down = mouse_event(kCGEventLeftMouseDown, point);
+  CGEventRef up = mouse_event(kCGEventLeftMouseUp, point);
+  if (down == NULL || up == NULL) {
+    if (down != NULL) CFRelease(down);
+    if (up != NULL) CFRelease(up);
+    return false;
+  }
+  CGEventPost(kCGHIDEventTap, down);
+  usleep(30000);
+  CGEventPost(kCGHIDEventTap, up);
+  CFRelease(down);
+  CFRelease(up);
+  return true;
+}
+
+static int hold_composer_dictation(
+  AXUIElementRef button,
+  ComposerButtonMode mode
+) {
+  CGPoint position;
+  CGSize size;
+  if (!copy_rect(button, &position, &size)) {
+    fputs("Louder Bridge could not locate Claude's dictation control.\n", stderr);
+    return 6;
+  }
+  CGPoint point = CGPointMake(
+    position.x + size.width / 2,
+    position.y + size.height / 2
+  );
+  if (mode == kComposerButtonActive) {
+    if (!click_point(point)) {
+      fputs("Louder Bridge could not stop the active Claude dictation.\n", stderr);
+      return 6;
+    }
+    fputs("Claude dictation was already running, so Louder Bridge stopped it. Press MIC again to start.\n", stderr);
+    return 8;
+  }
+
+  CGEventRef down = mouse_event(kCGEventLeftMouseDown, point);
+  if (down == NULL) {
+    fputs("Louder Bridge could not start Claude dictation.\n", stderr);
+    return 6;
+  }
+  CFAbsoluteTime pressed_at = CFAbsoluteTimeGetCurrent();
+  CGEventPost(kCGHIDEventTap, down);
+  CFRelease(down);
+  usleep(50000);
+  puts("ready claude-composer");
+  fflush(stdout);
+  int wait_error = wait_for_stop_signal();
+
+  CFTimeInterval held_for = CFAbsoluteTimeGetCurrent() - pressed_at;
+  if (held_for < 0.55) {
+    usleep((useconds_t)((0.55 - held_for) * 1000000));
+  }
+  CGEventRef up = mouse_event(kCGEventLeftMouseUp, point);
+  if (up == NULL) {
+    fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
+    return 6;
+  }
+  CGEventPost(kCGHIDEventTap, up);
+  CFRelease(up);
+
+  if (mode == kComposerButtonToggle) {
+    usleep(75000);
+    if (!click_point(point)) {
+      fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
+      return 6;
+    }
+  }
+  return wait_error == 0 ? 0 : 7;
+}
+
+static Boolean post_key_event(
+  CGKeyCode key_code,
+  Boolean pressed,
+  Boolean repeated
+) {
+  CGEventRef event = CGEventCreateKeyboardEvent(NULL, key_code, pressed);
+  if (event == NULL) return false;
+  if (repeated) {
+    CGEventSetIntegerValueField(
+      event,
+      kCGKeyboardEventAutorepeat,
+      1
+    );
+  }
+  CGEventPost(kCGHIDEventTap, event);
+  CFRelease(event);
+  return true;
+}
+
+static int submit_in_claude(void) {
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (!frontmost_application_is_claude()) {
+    fputs("Bring Claude to the front before using the send key.\n", stderr);
+    return 4;
+  }
+  if (!post_key_event(36, true, false)) {
+    fputs("Louder Bridge could not press Return in Claude.\n", stderr);
+    return 6;
+  }
+  usleep(30000);
+  if (!post_key_event(36, false, false)) {
+    fputs("Louder Bridge could not release Return in Claude.\n", stderr);
+    return 6;
+  }
+  return 0;
+}
+
+static AXUIElementRef find_element_by_identifier(
   AXUIElementRef element,
+  const char *identifier,
   int *remaining
 ) {
   if (*remaining <= 0) return NULL;
   *remaining -= 1;
   if (
-    string_attribute_equals(element, kAXRoleAttribute, "AXCheckBox") &&
-    string_attribute_equals(element, kAXSubroleAttribute, "AXToggleButton")
+    string_attribute_equals(
+      element,
+      kAXIdentifierAttribute,
+      identifier
+    )
   ) {
     return (AXUIElementRef)CFRetain(element);
   }
@@ -323,8 +539,9 @@ static AXUIElementRef find_toggle_descendant(
     index < CFArrayGetCount(children) && *remaining > 0;
     index += 1
   ) {
-    match = find_toggle_descendant(
+    match = find_element_by_identifier(
       (AXUIElementRef)CFArrayGetValueAtIndex(children, index),
+      identifier,
       remaining
     );
     if (match != NULL) break;
@@ -333,246 +550,107 @@ static AXUIElementRef find_toggle_descendant(
   return match;
 }
 
-static void find_dictation_elements(
-  AXUIElementRef element,
-  DictationElements *found
-) {
-  if (found->remaining <= 0) return;
-  found->remaining -= 1;
-  if (is_dictation_group(element)) {
-    int toggle_budget = 128;
-    AXUIElementRef toggle = find_toggle_descendant(element, &toggle_budget);
-    if (toggle != NULL) {
-      if (found->dictation_group != NULL) {
-        CFRelease(found->dictation_group);
-      }
-      found->dictation_group = (AXUIElementRef)CFRetain(element);
-      found->stop_toggle = toggle;
-      return;
-    }
-    if (found->dictation_group == NULL) {
-      found->dictation_group = (AXUIElementRef)CFRetain(element);
-    }
-  }
-
-  CFTypeRef children_value = NULL;
-  if (
-    AXUIElementCopyAttributeValue(
-      element,
-      kAXChildrenAttribute,
-      &children_value
-    ) != kAXErrorSuccess ||
-    children_value == NULL ||
-    CFGetTypeID(children_value) != CFArrayGetTypeID()
-  ) {
-    if (children_value != NULL) CFRelease(children_value);
-    return;
-  }
-  CFArrayRef children = (CFArrayRef)children_value;
-  for (
-    CFIndex index = 0;
-    index < CFArrayGetCount(children) && found->remaining > 0;
-    index += 1
-  ) {
-    find_dictation_elements(
-      (AXUIElementRef)CFArrayGetValueAtIndex(children, index),
-      found
-    );
-    if (found->stop_toggle != NULL) break;
-  }
-  CFRelease(children_value);
-}
-
-static pid_t claude_process_identifier(void) {
-  @autoreleasepool {
-    NSArray<NSRunningApplication *> *applications =
-      [NSRunningApplication runningApplicationsWithBundleIdentifier:
-        @"com.anthropic.claudefordesktop"];
-    NSRunningApplication *application = applications.firstObject;
-    return application == nil ? 0 : application.processIdentifier;
-  }
-}
-
-static Boolean activate_claude(void) {
-  @autoreleasepool {
-    NSArray<NSRunningApplication *> *applications =
-      [NSRunningApplication runningApplicationsWithBundleIdentifier:
-        @"com.anthropic.claudefordesktop"];
-    NSRunningApplication *application = applications.firstObject;
-    if (application == nil) return false;
-    return [application activateWithOptions:0];
-  }
-}
-
-static DictationElements inspect_claude_dictation(Boolean focused_only) {
-  DictationElements found = {
-    .dictation_group = NULL,
-    .stop_toggle = NULL,
-    .remaining = 20000
-  };
+static AXUIElementRef claude_menu_item(const char *identifier) {
   pid_t process_identifier = claude_process_identifier();
-  if (process_identifier == 0) return found;
+  if (process_identifier == 0) return NULL;
   AXUIElementRef application = AXUIElementCreateApplication(
     process_identifier
   );
-  AXUIElementRef root = application;
-  CFTypeRef focused_window = NULL;
-  if (
-    focused_only &&
-    AXUIElementCopyAttributeValue(
-      application,
-      kAXFocusedWindowAttribute,
-      &focused_window
-    ) == kAXErrorSuccess &&
-    focused_window != NULL &&
-    CFGetTypeID(focused_window) == AXUIElementGetTypeID()
-  ) {
-    root = (AXUIElementRef)focused_window;
-  }
-  if (!focused_only || root != application) {
-    find_dictation_elements(root, &found);
-  }
-  if (focused_window != NULL) CFRelease(focused_window);
+  CFTypeRef menu_bar = NULL;
+  AXError error = AXUIElementCopyAttributeValue(
+    application,
+    kAXMenuBarAttribute,
+    &menu_bar
+  );
   CFRelease(application);
-  return found;
+  if (
+    error != kAXErrorSuccess ||
+    menu_bar == NULL ||
+    CFGetTypeID(menu_bar) != AXUIElementGetTypeID()
+  ) {
+    if (menu_bar != NULL) CFRelease(menu_bar);
+    return NULL;
+  }
+  int remaining = 5000;
+  AXUIElementRef item = find_element_by_identifier(
+    (AXUIElementRef)menu_bar,
+    identifier,
+    &remaining
+  );
+  CFRelease(menu_bar);
+  return item;
 }
 
-static void release_dictation_elements(DictationElements *found) {
-  if (found->dictation_group != NULL) {
-    CFRelease(found->dictation_group);
-    found->dictation_group = NULL;
-  }
-  if (found->stop_toggle != NULL) {
-    CFRelease(found->stop_toggle);
-    found->stop_toggle = NULL;
-  }
+static Boolean accessibility_element_is_enabled(AXUIElementRef element) {
+  CFTypeRef value = NULL;
+  AXError error = AXUIElementCopyAttributeValue(
+    element,
+    kAXEnabledAttribute,
+    &value
+  );
+  Boolean enabled =
+    error == kAXErrorSuccess &&
+    value != NULL &&
+    CFGetTypeID(value) == CFBooleanGetTypeID() &&
+    CFBooleanGetValue((CFBooleanRef)value);
+  if (value != NULL) CFRelease(value);
+  return enabled;
 }
 
-static Boolean click_dictation_group(AXUIElementRef group) {
-  CGPoint position;
-  CGSize size;
-  if (!copy_rect(group, &position, &size)) return false;
-  CGPoint point = CGPointMake(
-    position.x + fmin(size.width * 0.25, 12),
-    position.y + size.height / 2
-  );
-  CGEventRef current = CGEventCreate(NULL);
-  CGPoint previous = current == NULL
-    ? point
-    : CGEventGetLocation(current);
-  if (current != NULL) CFRelease(current);
-
-  CGEventRef down = CGEventCreateMouseEvent(
-    NULL,
-    kCGEventLeftMouseDown,
-    point,
-    kCGMouseButtonLeft
-  );
-  CGEventRef up = CGEventCreateMouseEvent(
-    NULL,
-    kCGEventLeftMouseUp,
-    point,
-    kCGMouseButtonLeft
-  );
-  if (down == NULL || up == NULL) {
-    if (down != NULL) CFRelease(down);
-    if (up != NULL) CFRelease(up);
-    return false;
-  }
-  CGEventPost(kCGHIDEventTap, down);
-  usleep(30000);
-  CGEventPost(kCGHIDEventTap, up);
-  CFRelease(down);
-  CFRelease(up);
-  usleep(30000);
-
-  CGEventRef restore = CGEventCreateMouseEvent(
-    NULL,
-    kCGEventMouseMoved,
-    previous,
-    kCGMouseButtonLeft
-  );
-  if (restore != NULL) {
-    CGEventPost(kCGHIDEventTap, restore);
-    CFRelease(restore);
-  }
-  return true;
-}
-
-static int start_claude_dictation(void) {
-  if (!AXIsProcessTrusted()) {
-    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
-    return 3;
-  }
-  if (!activate_claude()) {
-    fputs("Claude Desktop is not running.\n", stderr);
-    return 4;
-  }
-  usleep(150000);
-  DictationElements found = inspect_claude_dictation(false);
-  if (found.stop_toggle != NULL) {
-    release_dictation_elements(&found);
-    return 0;
-  }
-  release_dictation_elements(&found);
-  found = inspect_claude_dictation(true);
-  if (found.dictation_group == NULL) {
-    fputs(
-      "The active Claude Code composer does not expose dictation.\n",
-      stderr
-    );
-    release_dictation_elements(&found);
+static int hold_system_dictation(void) {
+  AXUIElementRef item = claude_menu_item("startDictation:");
+  if (item == NULL) {
+    fputs("Claude does not expose the macOS Dictation command.\n", stderr);
     return 5;
   }
-  Boolean clicked = click_dictation_group(found.dictation_group);
-  release_dictation_elements(&found);
-  if (!clicked) {
-    fputs("Louder Bridge could not press Claude's dictation control.\n", stderr);
+  if (!accessibility_element_is_enabled(item)) {
+    CFRelease(item);
+    fputs("Click in the Claude Code composer before using the MIC key.\n", stderr);
+    return 4;
+  }
+  Boolean started = click_accessibility_button(item);
+  CFRelease(item);
+  if (!started) {
+    fputs("Louder Bridge could not start macOS Dictation in Claude.\n", stderr);
     return 6;
   }
+  usleep(250000);
+  puts("ready macos-dictation");
+  fflush(stdout);
 
-  for (int attempt = 0; attempt < 30; attempt += 1) {
-    usleep(100000);
-    found = inspect_claude_dictation(true);
-    Boolean recording = found.stop_toggle != NULL;
-    release_dictation_elements(&found);
-    if (recording) return 0;
+  int wait_error = wait_for_stop_signal();
+  if (
+    !post_key_event(53, true, false) ||
+    !post_key_event(53, false, false)
+  ) {
+    fputs("Louder Bridge could not stop macOS Dictation.\n", stderr);
+    return 6;
   }
-  fputs(
-    "Claude did not start dictation. Check its microphone permission.\n",
-    stderr
-  );
-  return 7;
+  return wait_error == 0 ? 0 : 7;
 }
 
-static int stop_claude_dictation(void) {
+static int hold_claude_dictation(void) {
   if (!AXIsProcessTrusted()) {
     fputs("Louder Bridge needs Accessibility permission.\n", stderr);
     return 3;
   }
-  DictationElements found = inspect_claude_dictation(false);
-  if (found.stop_toggle == NULL) {
-    release_dictation_elements(&found);
-    return 0;
+  if (!frontmost_application_is_claude()) {
+    fputs("Bring Claude to the front before using the MIC key.\n", stderr);
+    return 4;
   }
-  AXError error = AXUIElementPerformAction(
-    found.stop_toggle,
-    kAXPressAction
-  );
-  release_dictation_elements(&found);
-  if (error != kAXErrorSuccess) {
-    fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
-    return 6;
-  }
-  for (int attempt = 0; attempt < 30; attempt += 1) {
-    usleep(100000);
-    found = inspect_claude_dictation(false);
-    Boolean stopped = found.stop_toggle == NULL;
-    release_dictation_elements(&found);
-    if (stopped) return 0;
-  }
-  fputs("Claude dictation did not stop after MIC was released.\n", stderr);
-  return 7;
+  hold_stop_requested = 0;
+  struct sigaction stop_action = { 0 };
+  stop_action.sa_handler = request_hold_stop;
+  sigemptyset(&stop_action.sa_mask);
+  sigaction(SIGINT, &stop_action, NULL);
+  sigaction(SIGTERM, &stop_action, NULL);
+
+  ComposerButtonMode mode = kComposerButtonMissing;
+  AXUIElementRef button = focused_claude_record_button(&mode);
+  if (button == NULL) return hold_system_dictation();
+  int result = hold_composer_dictation(button, mode);
+  CFRelease(button);
+  return result;
 }
 
 static const char *access_name(IOHIDAccessType access) {
@@ -632,11 +710,11 @@ int main(int argc, char *argv[]) {
     puts(accessibility_name(trusted));
     return trusted ? 0 : 3;
   }
-  if (argc > 1 && strcmp(argv[1], "--claude-dictation-start") == 0) {
-    return start_claude_dictation();
+  if (argc > 1 && strcmp(argv[1], "--claude-dictation-hold") == 0) {
+    return hold_claude_dictation();
   }
-  if (argc > 1 && strcmp(argv[1], "--claude-dictation-stop") == 0) {
-    return stop_claude_dictation();
+  if (argc > 1 && strcmp(argv[1], "--claude-submit") == 0) {
+    return submit_in_claude();
   }
   if (argc > 1 && strcmp(argv[1], "--micro-device") == 0) {
     return run_micro_device();

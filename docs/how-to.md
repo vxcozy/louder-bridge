@@ -93,20 +93,25 @@ report `granted`, and the voice adapter must not report an error.
 Then check the following:
 
 1. Open a local session in Claude Desktop's Code tab and focus its composer.
-2. Allow Claude Desktop to use the microphone when macOS asks.
-3. Hold MIC long enough for Claude's listening indicator to appear.
-4. Release MIC and confirm the indicator closes.
+2. Quit Codex so its built-in Micro integration cannot receive the same input.
+3. Allow microphone access when macOS asks.
+4. Hold MIC long enough for the listening indicator to appear.
+5. Release MIC and confirm the indicator closes.
 
-Louder Bridge finds Claude's dictation control through Accessibility. It does
-not use fixed screen coordinates, read the composer, receive microphone audio,
-or inspect the transcript. The integration is experimental because Anthropic
-does not publish this Accessibility interface.
+When Claude exposes a composer microphone button, Louder Bridge holds that
+control through Accessibility. In Code views without the button, it uses
+macOS Dictation. It does not use fixed screen coordinates, read the composer,
+receive microphone audio, or inspect the transcript. Both routes are
+experimental because Anthropic does not publish a supported Desktop voice
+interface.
 
-Claude's voice service requires a Claude.ai account and may be disabled by an
-organization's policy. Anthropic says transcription does not consume Claude
-messages or tokens. See [Voice dictation in Claude
-Code](https://code.claude.com/docs/en/voice-dictation) for its account, data,
-language, and microphone requirements.
+The visible composer route depends on Claude voice being available for the
+account and organization. Anthropic documents its account, data, and language
+requirements in [Voice dictation in Claude
+Code](https://code.claude.com/docs/en/voice-dictation). The fallback depends on
+[macOS Dictation](https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac)
+instead. Check the Mac's Dictation language and processing settings when that
+route is active.
 
 ### The local port is already in use
 

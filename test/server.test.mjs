@@ -66,6 +66,7 @@ test("reports service and device health", async (context) => {
     service: {
       mode: "service",
       claudeDesktop: "open",
+      codexDesktop: "unknown",
       inputMonitoring: "unknown",
       accessibility: "unknown",
       version: "0.1.0",
@@ -80,6 +81,7 @@ test("reports service and device health", async (context) => {
         state: "idle",
         error: null,
         lastActionAt: null,
+        method: null,
       },
       lastHookAt: null,
       device: { state: "inactive", error: null },
@@ -316,6 +318,37 @@ test("serializes Micro voice press and release into Claude dictation", async (co
   await Promise.all([press, release]);
   assert.deepEqual(actions, ["start", "stop"]);
   assert.equal(bridge.health().service.voice.state, "idle");
+});
+
+test("routes the Micro send key to Claude", async (context) => {
+  const actions = [];
+  let submitButton;
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger,
+    submit: {
+      async submit() {
+        actions.push("submit");
+      },
+    },
+    deviceFactory({ onSubmitButton }) {
+      submitButton = onSubmitButton;
+      return {
+        async start() {},
+        async render() {},
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+
+  await submitButton();
+  assert.deepEqual(actions, ["submit"]);
 });
 
 test("stops latched Claude dictation when the Micro disconnects", async (context) => {

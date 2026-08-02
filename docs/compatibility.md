@@ -39,7 +39,7 @@ Agent Key press, and navigation to the matching Claude Desktop session. The
 baseline did not include MIC-triggered dictation and does not qualify the new
 driver.
 
-## Direct-driver baseline
+## Direct-driver checks
 
 The bundled driver completed a real USB `device.status` round trip on July 31,
 2026:
@@ -52,9 +52,26 @@ The bundled driver completed a real USB `device.status` round trip on July 31,
 | Driver | `native-iokit-protocol` |
 
 This result proves device discovery, report framing, and a two-way protocol
-exchange. It does not yet prove lighting, key events, Bluetooth, recovery, or
-Claude voice input. The final release candidate must pass the complete
-[hardware acceptance checklist](testing.md) after signing and notarization.
+exchange over USB-C.
+
+A later focused test passed over Bluetooth on August 2, 2026:
+
+| Component | Version or result |
+|---|---|
+| Mac architecture | Apple Silicon (`arm64`) |
+| macOS | 26.5.2 (25F84) |
+| Node.js | 22.23.1 |
+| Claude Desktop | 1.24012.9 |
+| Louder Bridge | 0.1.0 development build |
+| Codex Micro firmware | v0.4.1 |
+| Driver | `native-iokit-protocol` over Bluetooth |
+| Verified behavior | MIC hold and release, transcript insertion, send key, lifecycle hooks |
+
+Codex was closed during the passing run so its built-in Micro integration did
+not receive the same controls. This focused test does not qualify the release
+candidate. The visible Cowork composer route, double-tap latching, approval
+prompts, USB-C controls, lighting matrix, recovery, and signed-package test
+remain open. See the [hardware acceptance checklist](testing.md).
 
 ## Compatibility policy
 

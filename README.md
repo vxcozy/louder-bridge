@@ -10,13 +10,14 @@ error. Press the key to open its session in Claude Desktop.
 Hold the Micro's MIC control to dictate into the active Claude Code composer.
 Release it to stop, or double-tap MIC to keep recording without holding it.
 Press MIC again to stop a latched recording. Louder Bridge uses Claude's own
-dictation control, so the transcript stays in the session you are already
-using.
+composer control when one is available and macOS Dictation in Code views that
+do not expose one. Press the key to the right of MIC to send the composer or
+accept the focused approval.
 
 Louder Bridge reads Claude Code lifecycle hooks and sends the resulting state
 to the Micro. The bridge itself runs on your Mac and does not modify either
 desktop app. It does not collect audio, transcripts, or conversation content.
-Claude handles dictation under Anthropic's own data policy.
+Claude or macOS handles dictation, depending on which route is available.
 
 ## Install
 
@@ -25,7 +26,7 @@ Download the signed macOS archive from this repository's Releases page:
 1. Move **Louder Bridge.app** into **Applications**.
 2. Open it once.
 3. Approve Input Monitoring and Accessibility when macOS asks.
-4. Give Claude Desktop microphone access when you first use dictation.
+4. Approve microphone access if macOS asks when you first use dictation.
 5. Open Claude Desktop and turn on the Micro.
 
 Louder Bridge starts at login and connects whenever Claude Desktop is open.
@@ -73,17 +74,18 @@ The bridge tracks local Claude Code sessions. It cannot track cloud or SSH
 sessions because their hooks run on another machine.
 
 ChatGPT is not required. Louder Bridge talks to the Micro through a bundled
-native macOS driver. If ChatGPT is open at the same time, both apps can write
-to the same lights. Quit Claude Desktop before returning to active Codex work;
-the background agent will release the device.
+native macOS driver. Codex and Louder Bridge can both receive the same Micro
+input when both desktop apps are open. For predictable MIC and send behavior,
+quit Codex while testing or using the Micro with Claude. Quit Claude Desktop
+before returning to Codex; the background agent will then release the device.
 
 ## Project status
 
-This is a pre-1.0 project. The hooks, background agent, lighting, and session
-navigation have passed a physical test on a Codex Micro. The new direct device
-driver has completed a status round trip with a USB-connected unit running
-firmware v0.4.1. Its key, lighting, Bluetooth, and recovery matrix still needs
-to pass before it replaces the earlier hardware baseline.
+This is a pre-1.0 project. On the current Bluetooth test build, a physical
+Codex Micro started and stopped dictation in Claude Code, inserted spoken text,
+sent it with the adjacent key, and displayed fresh lifecycle states. The
+visible Cowork composer route, double-tap latching, approval prompts, USB-C,
+and the complete recovery matrix still need release-candidate testing.
 
 The preview still relies on three unsupported integration points: the
 independently documented Codex Micro protocol, Claude's local resume URL, and

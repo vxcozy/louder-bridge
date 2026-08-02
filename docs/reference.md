@@ -9,7 +9,7 @@
 | Hardware | Work Louder Codex Micro |
 | Hardware connection | USB-C or Bluetooth |
 | Agent surface | Local sessions in Claude Desktop's Code tab |
-| Voice account | Claude.ai account with voice allowed by organization policy |
+| Voice service | Claude voice when its composer control is available; otherwise macOS Dictation |
 | Permissions | Input Monitoring and Accessibility for Louder Bridge; Microphone for Claude Desktop |
 | Device driver | Bundled native IOKit driver; vendor-supported interface required for v1 |
 | Protocol reference | FreeMicro revision `64258eb6cc3312a43f9f9f86d87e55e0b609ccc5` (MIT) |
@@ -130,6 +130,7 @@ Returns bridge status and the six current slots:
   "service": {
     "mode": "service",
     "claudeDesktop": "open",
+    "codexDesktop": "closed",
     "inputMonitoring": "granted",
     "accessibility": "granted",
     "version": "0.1.0",
@@ -142,6 +143,7 @@ Returns bridge status and the six current slots:
       "id": "claude-accessibility-dictation",
       "support": "experimental",
       "state": "idle",
+      "method": "macos-dictation",
       "error": null,
       "lastActionAt": "2026-07-31T05:20:18.204Z"
     },
@@ -210,6 +212,7 @@ not forwarded by the hook process.
 - Releasing MIC stops dictation without submitting the composer.
 - Double-tapping MIC within 350 ms latches dictation until the next press.
 - A device disconnect while MIC is held or latched stops dictation.
+- Pressing the key to the right of MIC sends Return to Claude once per press.
 
 ## Source layout
 
@@ -227,6 +230,7 @@ not forwarded by the hook process.
 | `src/claude/navigator.mjs` | Claude navigation adapter |
 | `src/claude/open-session.mjs` | Experimental Claude resume URL |
 | `src/claude/voice.mjs` | Experimental Claude dictation adapter |
+| `src/claude/submit.mjs` | Claude composer and approval submit adapter |
 | `src/macos/input-monitoring.mjs` | Native permission status checks |
 | `src/macos/accessibility.mjs` | Native Accessibility permission status checks |
 | `native/launcher.m` | App launcher, permission onboarding, and Claude dictation control |
@@ -247,10 +251,12 @@ not forwarded by the hook process.
   for Input Monitoring or Accessibility again after an upgrade.
 - The native driver uses an independently documented, MIT-licensed protocol
   implementation. Stable v1 requires a vendor-supported Work Louder interface.
-- RGB writes can race while Claude Desktop and ChatGPT are both open.
+- Micro input and RGB writes can reach both Louder Bridge and Codex while both
+  desktop apps are open. Keep only the target app open for predictable control.
 - Claude's resume URL is not part of Anthropic's public interface. Stable v1
   requires a supported navigation route.
 - Claude's Accessibility surface for dictation is not a published Anthropic
   interface. Stable v1 requires a supported voice route.
-- Micro-triggered dictation is not part of the physical compatibility baseline
-  until the USB-C and Bluetooth acceptance tests pass.
+- Bluetooth MIC hold and release, transcript insertion, send, and lifecycle
+  response passed a focused physical test. The full USB-C and Bluetooth
+  acceptance matrix has not passed yet.

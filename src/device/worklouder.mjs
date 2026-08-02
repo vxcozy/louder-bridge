@@ -12,6 +12,7 @@ export class WorkLouderDevice {
     logger = console,
     onAgentKey = () => {},
     onVoiceButton = () => {},
+    onSubmitButton = () => {},
     onDeviceDisconnect = () => {},
   } = {}) {
     this.transportFactory = transportFactory;
@@ -19,6 +20,7 @@ export class WorkLouderDevice {
     this.logger = logger;
     this.onAgentKey = onAgentKey;
     this.onVoiceButton = onVoiceButton;
+    this.onSubmitButton = onSubmitButton;
     this.onDeviceDisconnect = onDeviceDisconnect;
     this.transport = null;
     this.reconnectTimer = null;
@@ -31,6 +33,7 @@ export class WorkLouderDevice {
     this.lastEventAt = null;
     this.lastEvent = null;
     this.voicePressed = false;
+    this.submitPressed = false;
   }
 
   status() {
@@ -180,6 +183,26 @@ export class WorkLouderDevice {
             `Voice input action failed: ${error?.message ?? String(error)}`,
           );
         });
+      return;
+    }
+    if (event.key === "ACT12" && (event.act === 0 || event.act === 1)) {
+      const pressed = event.act === 1;
+      if (pressed === this.submitPressed) return;
+      this.submitPressed = pressed;
+      if (!pressed) return;
+      this.lastEventAt = new Date().toISOString();
+      this.lastEvent = {
+        type: "submit",
+        action: "press",
+        at: this.lastEventAt,
+      };
+      Promise.resolve()
+        .then(() => this.onSubmitButton())
+        .catch((error) => {
+          this.logger.error(
+            `Send key action failed: ${error?.message ?? String(error)}`,
+          );
+        });
     }
   }
 
@@ -205,6 +228,7 @@ export class WorkLouderDevice {
     }
     const wasConnected = this.transport === expectedTransport;
     if (wasConnected) this.transport = null;
+    this.submitPressed = false;
     if (this.voicePressed) {
       this.voicePressed = false;
       await Promise.resolve(this.onVoiceButton("release")).catch((error) => {
@@ -260,11 +284,13 @@ export class MockDevice {
     logger = console,
     onAgentKey = () => {},
     onVoiceButton = () => {},
+    onSubmitButton = () => {},
     onDeviceDisconnect = () => {},
   } = {}) {
     this.logger = logger;
     this.onAgentKey = onAgentKey;
     this.onVoiceButton = onVoiceButton;
+    this.onSubmitButton = onSubmitButton;
     this.onDeviceDisconnect = onDeviceDisconnect;
     this.started = false;
   }

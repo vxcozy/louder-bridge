@@ -142,6 +142,78 @@ test("routes the MIC key as press and release without duplicate edges", async ()
   await device.stop();
 });
 
+test("routes one send action for each ACT12 press", async () => {
+  let submissions = 0;
+  const transport = new FakeTransport();
+  const device = testDevice([transport], {
+    logger: { info() {}, error() {} },
+    async onSubmitButton() {
+      submissions += 1;
+    },
+  });
+
+  await device.start();
+  transport.event("ACT12", 1);
+  transport.event("ACT12", 1);
+  transport.event("ACT12", 0);
+  transport.event("ACT12", 0);
+  transport.event("ACT12", 1);
+  await waitForImmediate();
+
+  assert.equal(submissions, 2);
+  assert.equal(device.status().lastEvent.type, "submit");
+  assert.equal(device.status().lastEvent.action, "press");
+  await device.stop();
+});
+
+test("contains asynchronous send key failures", async () => {
+  const errors = [];
+  const transport = new FakeTransport();
+  const device = testDevice([transport], {
+    logger: {
+      info() {},
+      error(message) {
+        errors.push(message);
+      },
+    },
+    async onSubmitButton() {
+      throw new Error("Claude is not focused");
+    },
+  });
+
+  await device.start();
+  transport.event("ACT12", 1);
+  await waitForImmediate();
+  assert.deepEqual(errors, [
+    "Send key action failed: Claude is not focused",
+  ]);
+  await device.stop();
+});
+
+test("accepts the next send press after reconnecting mid-press", async () => {
+  let submissions = 0;
+  const firstTransport = new FakeTransport();
+  const secondTransport = new FakeTransport();
+  const device = testDevice([firstTransport, secondTransport], {
+    logger: { info() {}, error() {} },
+    async onSubmitButton() {
+      submissions += 1;
+    },
+  });
+
+  await device.start();
+  firstTransport.event("ACT12", 1);
+  await waitForImmediate();
+  firstTransport.disconnected();
+  await waitForImmediate();
+  await device.connect();
+  secondTransport.event("ACT12", 1);
+  await waitForImmediate();
+
+  assert.equal(submissions, 2);
+  await device.stop();
+});
+
 test("releases voice input if the Micro disconnects while held", async () => {
   const actions = [];
   const transport = new FakeTransport();

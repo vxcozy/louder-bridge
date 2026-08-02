@@ -89,7 +89,7 @@ Open **System Settings → Privacy & Security** and enable **Louder Bridge** und
 both **Input Monitoring** and **Accessibility**. The packaged app waits for
 approval and starts the agent automatically; you do not need to reopen it.
 Input Monitoring lets the bridge receive Micro controls. Accessibility lets it
-operate Claude's dictation button.
+operate Claude's composer control or macOS Dictation.
 
 Open Claude Desktop and turn on the Codex Micro. The background agent detects
 Claude and connects without another terminal command.
@@ -123,6 +123,9 @@ The bridge copies the selected slot's color to the other keys and ambient ring.
 
 ## 8. Test push-to-talk
 
+Quit Codex before this test so its built-in Micro integration does not receive
+the same controls.
+
 Keep the current Code session open and place the cursor in its composer. Hold
 MIC, wait for Claude's listening indicator, and speak a short, distinctive
 sentence. Release MIC.
@@ -130,6 +133,8 @@ sentence. Release MIC.
 The sentence should appear in the same composer. It should not be sent
 automatically, open another session, or appear in Codex. Claude may ask for
 microphone permission the first time.
+
+Press the key to the right of MIC. The sentence should be sent once.
 
 Double-tap MIC quickly. Claude should keep listening after the second release.
 Speak another short sentence, then press MIC once to stop. The second sentence

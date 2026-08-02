@@ -329,6 +329,14 @@ if (command === "help" || command === "--help" || command === "-h") {
     console.log(`Louder Bridge: ${health.service?.version ?? "unknown"}`);
     console.log(`Node runtime: ${health.service?.nodeVersion ?? "unknown"}`);
     console.log(`Claude Desktop: ${health.service?.claudeDesktop ?? "unknown"}`);
+    const codexDesktop = health.service?.codexDesktop ?? "unknown";
+    console.log(
+      `Codex: ${codexDesktop}${
+        codexDesktop === "open"
+          ? " (MIC and send controls may reach both apps)"
+          : ""
+      }`,
+    );
     console.log(
       `Input Monitoring: ${health.service?.inputMonitoring ?? "unknown"}`,
     );
@@ -358,6 +366,15 @@ if (command === "help" || command === "--help" || command === "-h") {
     const voice = health.service?.voice;
     if (voice) {
       console.log(`Voice input: ${voice.state} (${voice.support})`);
+      if (voice.method) {
+        console.log(
+          `Voice control: ${
+            voice.method === "claude-composer"
+              ? "Claude composer"
+              : "macOS Dictation"
+          }`,
+        );
+      }
       if (voice.error) console.log(`Voice error: ${voice.error}`);
     }
   } catch (error) {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isClaudeDesktopRunning,
+  isCodexDesktopRunning,
   startDesktopService,
 } from "../src/service.mjs";
 
@@ -18,6 +19,70 @@ test("detects whether Claude Desktop is running", async () => {
     }),
     false,
   );
+});
+
+test("detects the ChatGPT and Codex desktop process names", async () => {
+  const calls = [];
+  const running = await isCodexDesktopRunning(async (command, args) => {
+    calls.push([command, ...args]);
+    if (args[1] === "ChatGPT") {
+      const error = new Error("not found");
+      error.code = 1;
+      throw error;
+    }
+    return { stdout: "123\n" };
+  });
+
+  assert.equal(running, true);
+  assert.deepEqual(calls, [
+    ["/usr/bin/pgrep", "-x", "ChatGPT"],
+    ["/usr/bin/pgrep", "-x", "Codex"],
+  ]);
+});
+
+test("reports Micro input contention once for each app overlap", async () => {
+  let codexIsRunning = true;
+  const messages = [];
+  const statuses = [];
+  const bridge = {
+    async connectDevice() {},
+    async disconnectDevice() {},
+    async stop() {},
+    setRuntimeStatus(status) {
+      statuses.push(status);
+    },
+  };
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => codexIsRunning,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info(message) {
+        messages.push(message);
+      },
+      error() {},
+    },
+  });
+
+  await service.sync();
+  codexIsRunning = false;
+  await service.sync();
+  codexIsRunning = true;
+  await service.sync();
+
+  assert.equal(
+    messages.filter((message) => message.includes("may reach both apps")).length,
+    2,
+  );
+  assert.deepEqual(statuses.at(-1), {
+    claudeDesktop: "open",
+    codexDesktop: "open",
+  });
+  await service.stop();
 });
 
 test("connects the device only while Claude Desktop is open", async () => {
@@ -42,6 +107,7 @@ test("connects the device only while Claude Desktop is open", async () => {
       return bridge;
     },
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     checkInputMonitoring: () => "granted",
     checkAccessibility: () => "granted",
     pollInterval: 60_000,
@@ -78,6 +144,7 @@ test("retries a failed device startup while Claude remains open", async () => {
     checkClaude: async () => true,
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     checkInputMonitoring: () => "granted",
     checkAccessibility: () => "granted",
     pollInterval: 60_000,
@@ -114,6 +181,7 @@ test("requests an agent restart when Input Monitoring becomes available", async 
     },
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
@@ -146,6 +214,7 @@ test("does not request the device before Input Monitoring is granted", async () 
     onPermissionGranted() {},
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
@@ -179,6 +248,7 @@ test("releases the device when Input Monitoring is revoked", async () => {
     checkAccessibility: () => "granted",
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
@@ -215,6 +285,7 @@ test("requires Accessibility before connecting the device", async () => {
     },
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });

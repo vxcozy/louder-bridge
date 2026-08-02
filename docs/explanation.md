@@ -139,28 +139,33 @@ until a supported navigator replaces it.
 ## Claude voice input
 
 Codex treats MIC as push-to-talk, so Louder Bridge preserves that interaction
-in Claude. It does not replace Claude's speech recognition or send audio to a
-separate service. Instead, a small native adapter finds the dictation control
-inside the frontmost Claude Code window through macOS Accessibility.
+in Claude. The native adapter uses one of two routes, depending on what the
+frontmost Claude window exposes through macOS Accessibility.
 
-On the first press, the adapter activates Claude and clicks the discovered
-dictation control. A release after the 350 ms gesture window stops recording.
+When a visible Claude composer button is available, the adapter holds that
+button for as long as MIC is held. It sends a real pointer-down event, waits at
+least as long as Claude's hold threshold, and sends pointer-up on release. This
+matches the button's own press-and-hold behavior instead of toggling it with a
+click.
+
+Some Claude Code views have voice support but no accessible composer button.
+There, the adapter starts macOS Dictation through the Edit menu and stops it
+with Escape, Apple's documented stop gesture. This is the route that passed
+the August 2 Bluetooth hardware test.
+
 A quick double-tap keeps recording active, and the next press stops it. The
-adapter checks the control's role and surrounding structure rather than using
-screen coordinates. Start and stop are idempotent, which prevents repeated
-device events from toggling dictation in the wrong direction.
+bridge sees only device edges and native control state. It never receives
+audio, reads the transcript, or inspects the composer. Claude or macOS owns the
+microphone path, depending on the route used.
 
-The bridge observes only the Micro control edge and whether Claude's dictation
-control entered or left its recording state. Claude owns microphone access
-and the resulting transcript. Anthropic's [voice dictation
-documentation](https://code.claude.com/docs/en/voice-dictation) says Claude
-streams recorded audio to its transcription service and does not count that
-work against messages or tokens. Louder Bridge never receives the audio and
-does not read the composer.
+That distinction also determines the applicable voice service and privacy
+terms. The composer-button route uses Claude's service. The fallback uses the
+Mac's Dictation configuration, whose processing behavior can vary by language
+and system settings. Louder Bridge does not choose or proxy either service.
 
-Anthropic does not document this Accessibility surface as a supported
-Desktop integration. The voice adapter is therefore experimental, and the
-release check blocks stable v1 until a supported interface replaces it.
+Neither route is a supported Anthropic Desktop integration. The adapter is
+experimental, and the release check blocks stable v1 until Anthropic provides
+a supported interface.
 
 ## Privacy boundary
 
@@ -181,13 +186,15 @@ is no cloud service in the bridge and no account credential is required.
 ## Coexisting with Codex
 
 The native driver opens the device in non-exclusive mode. This lets Codex and
-Louder Bridge connect at the same time, but it does not coordinate their
-lighting writes. If both update the Micro at once, the last write wins.
+Louder Bridge connect at the same time, but the apps do not coordinate input
+events or lighting writes. A MIC or send press can reach both apps, and the
+last lighting write wins.
 
-To avoid conflicting RGB updates, keep one desktop app active at a time:
+For predictable controls and lighting, keep one desktop app open at a time:
 
 - Open Claude Desktop while working in Claude.
-- Quit Claude Desktop when returning to Codex.
+- Quit Codex while using the Micro with Claude.
+- Quit Claude Desktop before returning to Codex.
 
 The background agent clears its Agent Key lighting and disconnects when Claude
 quits. The next Codex update can then restore Codex's state.
@@ -199,3 +206,4 @@ quits. The next Codex update can then restore Codex's state.
 - [Claude Code Desktop](https://code.claude.com/docs/en/desktop)
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 - [Claude Code voice dictation](https://code.claude.com/docs/en/voice-dictation)
+- [Dictate messages and documents on Mac](https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac)
