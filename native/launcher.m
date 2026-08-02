@@ -245,6 +245,27 @@ typedef enum {
   kComposerButtonActive = 3
 } ComposerButtonMode;
 
+static Boolean composer_button_uses_toggle(ComposerButtonMode mode) {
+  return mode == kComposerButtonToggle;
+}
+
+static int print_composer_gesture_plan(const char *mode) {
+  ComposerButtonMode button_mode;
+  if (strcmp(mode, "hold") == 0) {
+    button_mode = kComposerButtonHold;
+  } else if (strcmp(mode, "toggle") == 0) {
+    button_mode = kComposerButtonToggle;
+  } else {
+    return 2;
+  }
+  puts(
+    composer_button_uses_toggle(button_mode)
+      ? "click click"
+      : "mouse-down mouse-up"
+  );
+  return 0;
+}
+
 static Boolean element_label_equals(
   AXUIElementRef element,
   const char *expected
@@ -427,14 +448,22 @@ static int hold_composer_dictation(
     return 8;
   }
 
-  CGEventRef down = mouse_event(kCGEventLeftMouseDown, point);
-  if (down == NULL) {
-    fputs("Louder Bridge could not start Claude dictation.\n", stderr);
-    return 6;
+  Boolean uses_toggle = composer_button_uses_toggle(mode);
+  if (uses_toggle) {
+    if (!click_point(point)) {
+      fputs("Louder Bridge could not start Claude dictation.\n", stderr);
+      return 6;
+    }
+  } else {
+    CGEventRef down = mouse_event(kCGEventLeftMouseDown, point);
+    if (down == NULL) {
+      fputs("Louder Bridge could not start Claude dictation.\n", stderr);
+      return 6;
+    }
+    CGEventPost(kCGHIDEventTap, down);
+    CFRelease(down);
   }
   CFAbsoluteTime pressed_at = CFAbsoluteTimeGetCurrent();
-  CGEventPost(kCGHIDEventTap, down);
-  CFRelease(down);
   usleep(50000);
   puts("ready claude-composer");
   fflush(stdout);
@@ -444,20 +473,19 @@ static int hold_composer_dictation(
   if (held_for < 0.55) {
     usleep((useconds_t)((0.55 - held_for) * 1000000));
   }
-  CGEventRef up = mouse_event(kCGEventLeftMouseUp, point);
-  if (up == NULL) {
-    fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
-    return 6;
-  }
-  CGEventPost(kCGHIDEventTap, up);
-  CFRelease(up);
-
-  if (mode == kComposerButtonToggle) {
-    usleep(75000);
+  if (uses_toggle) {
     if (!click_point(point)) {
       fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
       return 6;
     }
+  } else {
+    CGEventRef up = mouse_event(kCGEventLeftMouseUp, point);
+    if (up == NULL) {
+      fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
+      return 6;
+    }
+    CGEventPost(kCGHIDEventTap, up);
+    CFRelease(up);
   }
   return wait_error == 0 ? 0 : 7;
 }
@@ -730,6 +758,12 @@ int main(int argc, char *argv[]) {
     strcmp(argv[1], "--test-micro-command") == 0
   ) {
     return validate_micro_command(argv[2]);
+  }
+  if (
+    argc == 3 &&
+    strcmp(argv[1], "--test-composer-gesture") == 0
+  ) {
+    return print_composer_gesture_plan(argv[2]);
   }
   if (argc > 1 && strcmp(argv[1], "--input-monitoring-status-code") == 0) {
     IOHIDAccessType access =

@@ -30,6 +30,20 @@ class FakeChild extends EventEmitter {
   }
 }
 
+class StubbornChild extends FakeChild {
+  constructor({ exitOnSignal = "SIGKILL" } = {}) {
+    super();
+    this.exitOnSignal = exitOnSignal;
+    this.signals = [];
+  }
+
+  kill(signal) {
+    this.signals.push(signal);
+    if (signal === this.exitOnSignal) this.finish(null, signal);
+    return true;
+  }
+}
+
 test("recognizes the bundled native driver", () => {
   const status = inspectNativeMicroRuntime({ launcher: "/bin/ls" });
   assert.equal(status.id, "native-iokit-protocol");
@@ -121,6 +135,25 @@ test("reports a disconnect once after a successful connection", async () => {
   child.finish(0);
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(disconnects, ["clean"]);
+});
+
+test("forces an unresponsive native driver to exit before closing", async () => {
+  const child = new StubbornChild();
+  const transport = new NativeMicroTransport({
+    launcher: "/bin/ls",
+    spawnProcess: () => child,
+    closeTimeoutMs: 1,
+  });
+  const connected = transport.connect();
+  child.stdout.write(
+    '{"_louder":{"type":"connected","transport":"USB","status":{"version":"v0.4.1"}}}\n',
+  );
+  await connected;
+
+  await transport.close();
+
+  assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+  assert.equal(child.signalCode, "SIGKILL");
 });
 
 test("encodes thread lights with the Codex Micro protocol fields", () => {

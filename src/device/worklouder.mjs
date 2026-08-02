@@ -255,6 +255,7 @@ export class WorkLouderDevice {
     if (this.reconnectTimer) clearInterval(this.reconnectTimer);
     this.reconnectTimer = null;
     await this.connectPromise?.catch(() => {});
+    const failures = [];
     try {
       if (this.transport) {
         await this.render(
@@ -266,15 +267,23 @@ export class WorkLouderDevice {
         );
       }
     } catch (error) {
+      failures.push(error);
       this.logger.error(`Could not clear Codex Micro lighting: ${error.message}`);
     } finally {
       await this.disconnect().catch((error) => {
+        failures.push(error);
         this.logger.error(`Could not disconnect Codex Micro: ${error.message}`);
       });
       this.state = "stopped";
       this.lastConnectionError = null;
       this.deviceMissingLogged = false;
       this.voicePressed = false;
+    }
+    if (failures.length) {
+      throw new AggregateError(
+        failures,
+        "Codex Micro did not shut down cleanly.",
+      );
     }
   }
 }

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 
 const MAX_LINE_BYTES = 64 * 1024;
 const STARTUP_TIMEOUT_MS = 3000;
+const CLOSE_TIMEOUT_MS = 1000;
 const RUNTIME_ID = "native-iokit-protocol";
 const RUNTIME_SUPPORT = "experimental";
 
@@ -66,10 +67,12 @@ export class NativeMicroTransport {
     launcher = process.env.LOUDER_BRIDGE_LAUNCHER,
     spawnProcess = spawn,
     startupTimeoutMs = STARTUP_TIMEOUT_MS,
+    closeTimeoutMs = CLOSE_TIMEOUT_MS,
   } = {}) {
     this.launcher = launcher;
     this.spawnProcess = spawnProcess;
     this.startupTimeoutMs = startupTimeoutMs;
+    this.closeTimeoutMs = closeTimeoutMs;
     this.child = null;
     this.connected = false;
     this.closing = false;
@@ -228,15 +231,35 @@ export class NativeMicroTransport {
     this.connected = false;
     if (!child.stdin.destroyed) child.stdin.end();
     if (child.exitCode !== null || child.signalCode !== null) return;
-    await new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        child.kill("SIGTERM");
-        resolve();
-      }, 1000);
-      child.once("exit", () => {
+    if (await this.waitForExit(child)) return;
+    if (!child.kill("SIGTERM")) {
+      if (await this.waitForExit(child)) return;
+      throw new Error("Louder Bridge could not stop the Codex Micro driver.");
+    }
+    if (await this.waitForExit(child)) return;
+    if (!child.kill("SIGKILL")) {
+      if (await this.waitForExit(child)) return;
+      throw new Error("Louder Bridge could not stop the Codex Micro driver.");
+    }
+    if (!(await this.waitForExit(child))) {
+      throw new Error("The Codex Micro driver did not stop in time.");
+    }
+  }
+
+  waitForExit(child) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const onExit = () => {
         clearTimeout(timer);
-        resolve();
-      });
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        child.off("exit", onExit);
+        resolve(false);
+      }, this.closeTimeoutMs);
+      child.once("exit", onExit);
     });
   }
 }

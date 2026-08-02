@@ -13,9 +13,11 @@ function deferred() {
 }
 
 class FakeTransport {
-  constructor({ connectGate, connectError } = {}) {
+  constructor({ connectGate, connectError, sendError, closeError } = {}) {
     this.connectGate = connectGate;
     this.connectError = connectError;
+    this.sendError = sendError;
+    this.closeError = closeError;
     this.connectCalls = 0;
     this.closeCalls = 0;
     this.messages = [];
@@ -40,11 +42,13 @@ class FakeTransport {
   }
 
   async send(message) {
+    if (this.sendError) throw this.sendError;
     this.messages.push(message);
   }
 
   async close() {
     this.closeCalls += 1;
+    if (this.closeError) throw this.closeError;
   }
 
   event(key, act) {
@@ -374,4 +378,37 @@ test("reports a driver startup failure and closes its process", async () => {
   assert.equal(transport.closeCalls, 1);
   await device.stop();
   assert.equal(device.status().state, "stopped");
+});
+
+test("reports cleanup failures after resetting the device state", async () => {
+  const messages = [];
+  const transport = new FakeTransport({
+    sendError: new Error("lighting failed"),
+    closeError: new Error("close failed"),
+  });
+  const device = testDevice([transport], {
+    logger: {
+      info() {},
+      error(message) {
+        messages.push(message);
+      },
+    },
+  });
+
+  await device.start();
+  await assert.rejects(
+    device.stop(),
+    (error) =>
+      error instanceof AggregateError &&
+      error.message === "Codex Micro did not shut down cleanly." &&
+      error.errors.length === 2,
+  );
+
+  assert.equal(device.status().state, "stopped");
+  assert.equal(device.transport, null);
+  assert.equal(transport.closeCalls, 1);
+  assert.deepEqual(messages, [
+    "Could not clear Codex Micro lighting: lighting failed",
+    "Could not disconnect Codex Micro: close failed",
+  ]);
 });

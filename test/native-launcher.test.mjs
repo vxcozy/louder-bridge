@@ -313,3 +313,36 @@ test("allows only the Codex Micro methods used by the bridge", (context) => {
     assert.equal(result.status, 2, payload);
   }
 });
+
+test("uses complete clicks for toggle dictation controls", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("The native Claude adapter requires Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-dictation-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  compileNativeLauncher({ sourceRoot, output });
+
+  const hold = spawnSync(
+    output,
+    ["--test-composer-gesture", "hold"],
+    { encoding: "utf8" },
+  );
+  const toggle = spawnSync(
+    output,
+    ["--test-composer-gesture", "toggle"],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(hold.status, 0);
+  assert.equal(hold.stdout.trim(), "mouse-down mouse-up");
+  assert.equal(toggle.status, 0);
+  assert.equal(toggle.stdout.trim(), "click click");
+});

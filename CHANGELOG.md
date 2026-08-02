@@ -12,6 +12,8 @@ have not shipped appear under "Unreleased."
 - Automatic Claude Desktop detection, Micro connection, and device release.
 - Idempotent shutdown that closes the hook server and releases voice input even
   when device cleanup reports an error.
+- MIC now clicks toggle-style Claude composer controls once to start and once
+  to stop.
 - Claude Code lifecycle hooks, six stable session slots, lighting states, and
   Agent Key session navigation.
 - Authenticated loopback HTTP endpoints, private rotating logs, diagnostics,
