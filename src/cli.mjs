@@ -37,6 +37,7 @@ import {
   needsPermissionOnboarding,
   openOnboardingApplication,
 } from "./setup/permission-onboarding.mjs";
+import { stopOnboardingApplication } from "./setup/running-application.mjs";
 import {
   installLaunchAgent,
   launchAgentIsRunning,
@@ -169,6 +170,7 @@ if (command === "help" || command === "--help" || command === "-h") {
 } else if (command === "setup") {
   const platform = platformSupport();
   if (!platform.supported) throw new Error(platform.error);
+  stopOnboardingApplication();
   const settingsSnapshot = snapshotClaudeSettings();
   let application;
   let authentication;

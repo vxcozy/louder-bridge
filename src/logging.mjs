@@ -5,11 +5,40 @@ import { writeFileAtomic } from "./setup/atomic-file.mjs";
 
 const LEGACY_CONTEXT_SUFFIX =
   /(\bSlot \d+: (?:idle|running|needs_input|complete|error|off)|\bOpened Claude session in slot \d+) \([^\r\n]*\)(?=\r?$)/gm;
+const LEGACY_PRIVATE_PATH_LINE =
+  /(?:file:\/\/)?\/(?:Users\/|private\/var\/folders\/|var\/folders\/)/;
+const LEGACY_STACK_LINE = /^\s*at\s+/;
+const PRIVATE_PATH_ROOTS = [
+  "file:///Users/",
+  "/Users/",
+  "/private/var/folders/",
+  "/var/folders/",
+];
+
+function sanitizePart(value) {
+  let text = String(value).replace(/\s+/g, " ").trim();
+  const privatePathIndex = PRIVATE_PATH_ROOTS.reduce((earliest, root) => {
+    const index = text.indexOf(root);
+    if (index < 0) return earliest;
+    return earliest < 0 ? index : Math.min(earliest, index);
+  }, -1);
+  if (privatePathIndex >= 0) {
+    const prefix = text
+      .slice(0, privatePathIndex)
+      .trimEnd()
+      .replace(/[([{<]\s*$/, "")
+      .trimEnd();
+    text = `${prefix} <local path omitted>`;
+  }
+  return text;
+}
 
 function formatPart(value) {
-  if (value instanceof Error) return value.stack ?? value.message;
-  if (typeof value === "string") return value;
-  return inspect(value, { breakLength: Infinity, depth: 4 });
+  if (value instanceof Error) {
+    return sanitizePart(`${value.name}: ${value.message}`);
+  }
+  if (typeof value === "string") return sanitizePart(value);
+  return sanitizePart(inspect(value, { breakLength: Infinity, depth: 4 }));
 }
 
 function rotate(filename, backups) {
@@ -26,7 +55,15 @@ function rotate(filename, backups) {
 function scrubLegacyContext(filename) {
   if (!fs.existsSync(filename)) return;
   const contents = fs.readFileSync(filename, "utf8");
-  const scrubbed = contents.replace(LEGACY_CONTEXT_SUFFIX, "$1");
+  const scrubbed = contents
+    .replace(LEGACY_CONTEXT_SUFFIX, "$1")
+    .split("\n")
+    .filter(
+      (line) =>
+        !LEGACY_PRIVATE_PATH_LINE.test(line) &&
+        !LEGACY_STACK_LINE.test(line),
+    )
+    .join("\n");
   if (scrubbed !== contents) {
     writeFileAtomic(filename, scrubbed, { mode: 0o600 });
   }
