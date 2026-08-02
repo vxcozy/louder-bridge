@@ -62,8 +62,12 @@ have not shipped appear under "Unreleased."
   directories and rejects Downloads or App Translocation.
 - Release builds now run the packaged location preflight through the signed
   launcher before creating the ZIP.
-- When Codex and Claude are open together, the bridge now reports the conflict,
-  releases the Micro, and reconnects after Codex quits.
+- When Codex and Claude are already open together, the bridge now leaves the
+  Micro disconnected instead of opening it briefly to confirm the conflict.
+  If Codex opens later, the bridge releases the Micro before showing the
+  warning. It reconnects after Codex quits.
+- Failures to launch the Codex conflict notice now appear in the private error
+  log.
 - Permission onboarding now stops after a five-minute wait, names the missing
   permission, and opens the matching System Settings pane.
 - Native test commands are now compiled only for automated test binaries.

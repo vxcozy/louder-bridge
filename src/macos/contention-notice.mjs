@@ -6,14 +6,17 @@ export const CODEX_CONTENTION_MESSAGE =
 const DIALOG_SCRIPT =
   'display dialog (item 1 of argv) with title "Louder Bridge" buttons {"OK"} default button 1 with icon caution';
 
-export function showCodexContentionNotice({ run = spawn } = {}) {
+export function showCodexContentionNotice({
+  run = spawn,
+  onError = () => {},
+} = {}) {
   try {
     const child = run(
       "/usr/bin/osascript",
       ["-e", DIALOG_SCRIPT, "--", CODEX_CONTENTION_MESSAGE],
       { detached: true, stdio: "ignore" },
     );
-    child.on?.("error", () => {});
+    child.on?.("error", onError);
     child.unref?.();
     return true;
   } catch {

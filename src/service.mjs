@@ -129,11 +129,25 @@ export async function startDesktopService({
       claudeWasRunning = claudeIsRunning;
       return;
     }
-    if (contentionIsActive && contentionNoticeShown) {
+    if (contentionIsActive) {
       if (deviceRequested) {
         await bridge.disconnectDevice();
         deviceRequested = false;
       }
+      if (!contentionNoticeShown) {
+        contentionNoticeShown = true;
+        const reportNoticeFailure = () => {
+          logger.error("Could not show the Codex conflict notice.");
+        };
+        try {
+          if (notifyContention({ onError: reportNoticeFailure }) === false) {
+            reportNoticeFailure();
+          }
+        } catch {
+          reportNoticeFailure();
+        }
+      }
+      claudeWasRunning = true;
       return;
     }
     if (!deviceRequested) {
@@ -143,20 +157,6 @@ export async function startDesktopService({
       await bridge.connectDevice();
       deviceRequested = true;
       claudeWasRunning = true;
-    }
-    const microIsConnected =
-      bridge.deviceStatus?.().state === "connected";
-    if (contentionIsActive && microIsConnected) {
-      if (!contentionNoticeShown) {
-        contentionNoticeShown = true;
-        try {
-          notifyContention();
-        } catch {
-          logger.error("Could not show the Codex conflict notice.");
-        }
-      }
-      await bridge.disconnectDevice();
-      deviceRequested = false;
     }
   }
 

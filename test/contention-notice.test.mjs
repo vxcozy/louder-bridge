@@ -7,6 +7,7 @@ import {
 
 test("shows the Codex conflict without blocking the service", () => {
   const calls = [];
+  const errors = [];
   let errorHandler;
   let unrefCalls = 0;
   const shown = showCodexContentionNotice({
@@ -21,11 +22,16 @@ test("shows the Codex conflict without blocking the service", () => {
         },
       };
     },
+    onError(error) {
+      errors.push(error.message);
+    },
   });
 
   assert.equal(shown, true);
   assert.equal(unrefCalls, 1);
   assert.equal(typeof errorHandler, "function");
+  errorHandler(new Error("dialog launch failed"));
+  assert.deepEqual(errors, ["dialog launch failed"]);
   assert.deepEqual(calls, [
     {
       command: "/usr/bin/osascript",

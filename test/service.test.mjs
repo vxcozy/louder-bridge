@@ -77,7 +77,8 @@ test("reports Micro input contention once for each app overlap", async () => {
     checkCodex: async () => codexIsRunning,
     checkInputMonitoring: () => "granted",
     checkAccessibility: () => "granted",
-    notifyContention() {
+    notifyContention({ onError }) {
+      assert.equal(typeof onError, "function");
       notices += 1;
     },
     createBridge: async () => bridge,
@@ -103,12 +104,7 @@ test("reports Micro input contention once for each app overlap", async () => {
     2,
   );
   assert.equal(notices, 2);
-  assert.deepEqual(deviceCalls, [
-    "connect",
-    "disconnect",
-    "connect",
-    "disconnect",
-  ]);
+  assert.deepEqual(deviceCalls, ["connect", "disconnect"]);
   assert.deepEqual(statuses.at(-1), {
     claudeDesktop: "open",
     codexDesktop: "open",
@@ -116,8 +112,7 @@ test("reports Micro input contention once for each app overlap", async () => {
   await service.stop();
 });
 
-test("waits for the Micro before reporting an app conflict", async () => {
-  let deviceState = "waiting";
+test("does not open the Micro while Codex already owns its input", async () => {
   let codexIsRunning = true;
   const calls = [];
   const bridge = {
@@ -128,9 +123,6 @@ test("waits for the Micro before reporting an app conflict", async () => {
       calls.push("disconnect");
     },
     async stop() {},
-    deviceStatus() {
-      return { state: deviceState };
-    },
     setRuntimeStatus() {},
   };
   const service = await startDesktopService({
@@ -147,18 +139,45 @@ test("waits for the Micro before reporting an app conflict", async () => {
     logger: { info() {}, error() {} },
   });
 
-  assert.deepEqual(calls, ["connect"]);
+  assert.deepEqual(calls, ["notice"]);
   await service.sync();
-  assert.deepEqual(calls, ["connect"]);
-
-  deviceState = "connected";
-  await service.sync();
-  await service.sync();
-  assert.deepEqual(calls, ["connect", "notice", "disconnect"]);
+  assert.deepEqual(calls, ["notice"]);
 
   codexIsRunning = false;
   await service.sync();
-  assert.deepEqual(calls, ["connect", "notice", "disconnect", "connect"]);
+  assert.deepEqual(calls, ["notice", "connect"]);
+
+  codexIsRunning = true;
+  await service.sync();
+  assert.deepEqual(calls, ["notice", "connect", "disconnect", "notice"]);
+  await service.stop();
+});
+
+test("logs when the Codex conflict notice cannot be shown", async () => {
+  const errors = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => true,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    notifyContention: () => false,
+    createBridge: async () => ({
+      async connectDevice() {},
+      async disconnectDevice() {},
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error);
+      },
+    },
+  });
+
+  assert.deepEqual(errors, ["Could not show the Codex conflict notice."]);
   await service.stop();
 });
 
