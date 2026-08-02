@@ -67,6 +67,8 @@ have not shipped appear under "Unreleased."
 - A native driver that stops accepting commands is treated as disconnected
   after one second. The bridge closes that process, then the device service
   reconnects through its normal retry loop.
+- Concurrent driver shutdowns now wait for the same cleanup operation. A new
+  driver process does not start until the previous process has exited.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of

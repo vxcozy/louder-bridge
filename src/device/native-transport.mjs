@@ -60,6 +60,7 @@ export class NativeMicroTransport {
     this.onEvent = () => {};
     this.onDisconnect = () => {};
     this.disconnectReported = false;
+    this.closePromise = null;
   }
 
   metadata() {
@@ -75,6 +76,7 @@ export class NativeMicroTransport {
     if (!isNativeExecutable(this.launcher)) {
       throw new Error("The installed Codex Micro driver is unavailable.");
     }
+    if (this.closePromise) await this.closePromise;
     if (this.child) return this.metadata();
     this.onEvent = onEvent;
     this.onDisconnect = onDisconnect;
@@ -91,18 +93,35 @@ export class NativeMicroTransport {
       let settled = false;
       let stdout = "";
       const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        this.close().catch(() => {});
-        reject(new Error("Codex Micro did not answer the device status check."));
+        finishStartup(
+          new Error("Codex Micro did not answer the device status check."),
+          { close: true },
+        );
       }, this.startupTimeoutMs);
 
-      const finishStartup = (error) => {
+      const finishStartup = (error, { close = false } = {}) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (error) reject(error);
-        else resolve(this.metadata());
+        if (!error) {
+          resolve(this.metadata());
+          return;
+        }
+        if (!close) {
+          reject(error);
+          return;
+        }
+        this.close().then(
+          () => reject(error),
+          (cleanupError) => {
+            reject(
+              new AggregateError(
+                [error, cleanupError],
+                "Codex Micro startup failed and its driver did not close cleanly.",
+              ),
+            );
+          },
+        );
       };
 
       const processLine = (line) => {
@@ -144,8 +163,13 @@ export class NativeMicroTransport {
           processLine(line);
         }
         if (Buffer.byteLength(stdout) > MAX_LINE_BYTES) {
-          finishStartup(new Error("Codex Micro sent an oversized response."));
-          this.close().catch(() => {});
+          const error = new Error("Codex Micro sent an oversized response.");
+          if (settled) {
+            this.reportDisconnect(error);
+            this.close().catch(() => {});
+          } else {
+            finishStartup(error, { close: true });
+          }
         }
       });
       child.stderr.on("data", (chunk) => {
@@ -226,27 +250,36 @@ export class NativeMicroTransport {
     });
   }
 
-  async close() {
+  close() {
+    if (this.closePromise) return this.closePromise;
     const child = this.child;
-    if (!child) return;
+    if (!child) return Promise.resolve();
     this.closing = true;
     this.child = null;
     this.connected = false;
-    if (!child.stdin.destroyed) child.stdin.end();
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    if (await this.waitForExit(child)) return;
-    if (!child.kill("SIGTERM")) {
+    const operation = (async () => {
+      if (!child.stdin.destroyed) child.stdin.end();
+      if (child.exitCode !== null || child.signalCode !== null) return;
       if (await this.waitForExit(child)) return;
-      throw new Error("Louder Bridge could not stop the Codex Micro driver.");
-    }
-    if (await this.waitForExit(child)) return;
-    if (!child.kill("SIGKILL")) {
+      if (!child.kill("SIGTERM")) {
+        if (await this.waitForExit(child)) return;
+        throw new Error("Louder Bridge could not stop the Codex Micro driver.");
+      }
       if (await this.waitForExit(child)) return;
-      throw new Error("Louder Bridge could not stop the Codex Micro driver.");
-    }
-    if (!(await this.waitForExit(child))) {
-      throw new Error("The Codex Micro driver did not stop in time.");
-    }
+      if (!child.kill("SIGKILL")) {
+        if (await this.waitForExit(child)) return;
+        throw new Error("Louder Bridge could not stop the Codex Micro driver.");
+      }
+      if (!(await this.waitForExit(child))) {
+        throw new Error("The Codex Micro driver did not stop in time.");
+      }
+    })();
+    let tracked;
+    tracked = operation.finally(() => {
+      if (this.closePromise === tracked) this.closePromise = null;
+    });
+    this.closePromise = tracked;
+    return tracked;
   }
 
   waitForExit(child) {

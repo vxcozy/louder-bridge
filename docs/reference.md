@@ -97,7 +97,9 @@ compiled binary for the required hardening symbols.
 
 The native device process has a three-second startup deadline and a one-second
 command-write deadline. If a write stalls, the bridge terminates that process.
-The device service then reconnects through its normal three-second retry loop.
+Shutdown calls share one cleanup operation, and the next process waits for it
+to finish. The device service then reconnects through its normal three-second
+retry loop.
 
 The hook server requires a random bearer token. Setup stores it in the current
 user's Application Support directory with mode `0600`. The token is never

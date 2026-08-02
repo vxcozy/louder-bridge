@@ -115,6 +115,28 @@ test("reports a driver failure before startup completes", async () => {
   await assert.rejects(connected, /Codex Micro was not found/);
 });
 
+test("waits for a timed-out startup process to exit before rejecting", async () => {
+  const child = new FakeChild();
+  const transport = new NativeMicroTransport({
+    launcher: "/bin/ls",
+    spawnProcess: () => child,
+    startupTimeoutMs: 5,
+  });
+  let rejected = false;
+  const connected = transport.connect().catch((error) => {
+    rejected = true;
+    throw error;
+  });
+
+  await once(child.stdin, "finish");
+  assert.equal(rejected, false);
+  child.finish();
+
+  await assert.rejects(connected, /did not answer the device status check/);
+  assert.equal(rejected, true);
+  assert.equal(transport.child, null);
+});
+
 test("reports a disconnect once after a successful connection", async () => {
   const child = new FakeChild();
   const disconnects = [];
@@ -150,10 +172,48 @@ test("forces an unresponsive native driver to exit before closing", async () => 
   );
   await connected;
 
-  await transport.close();
+  const firstClose = transport.close();
+  const secondClose = transport.close();
+  assert.equal(firstClose, secondClose);
+  await firstClose;
 
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
   assert.equal(child.signalCode, "SIGKILL");
+});
+
+test("waits for a closing driver before reconnecting", async () => {
+  const first = new FakeChild();
+  const second = new FakeChild();
+  const children = [first, second];
+  let spawnCalls = 0;
+  const transport = new NativeMicroTransport({
+    launcher: "/bin/ls",
+    spawnProcess: () => children[spawnCalls++],
+  });
+  const connected = transport.connect();
+  first.stdout.write(
+    '{"_louder":{"type":"connected","transport":"USB","status":{"version":"v0.4.1"}}}\n',
+  );
+  await connected;
+
+  const closing = transport.close();
+  const reconnecting = transport.connect();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(spawnCalls, 1);
+
+  first.finish();
+  await closing;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(spawnCalls, 2);
+  second.stdout.write(
+    '{"_louder":{"type":"connected","transport":"Bluetooth Low Energy","status":{"version":"v0.4.1"}}}\n',
+  );
+  await reconnecting;
+  assert.equal(transport.metadata().transport, "Bluetooth Low Energy");
+
+  const finalClose = transport.close();
+  second.finish();
+  await finalClose;
 });
 
 test("disconnects and terminates a driver that stops accepting commands", async () => {
