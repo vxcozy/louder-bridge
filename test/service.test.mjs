@@ -7,8 +7,12 @@ import {
 } from "../src/service.mjs";
 
 test("detects whether Claude Desktop is running", async () => {
+  const calls = [];
   assert.equal(
-    await isClaudeDesktopRunning(async () => ({ stdout: "123\n" })),
+    await isClaudeDesktopRunning(async (command, args, options) => {
+      calls.push({ command, args, options });
+      return { stdout: "123\n" };
+    }),
     true,
   );
   assert.equal(
@@ -19,6 +23,13 @@ test("detects whether Claude Desktop is running", async () => {
     }),
     false,
   );
+  assert.deepEqual(calls, [
+    {
+      command: "/usr/bin/pgrep",
+      args: ["-x", "Claude"],
+      options: { timeout: 2000, maxBuffer: 1024, windowsHide: true },
+    },
+  ]);
 });
 
 test("detects the ChatGPT and Codex desktop process names", async () => {
@@ -324,4 +335,43 @@ test("stops the desktop service only once", async () => {
   assert.equal(firstStop, secondStop);
   await firstStop;
   assert.equal(bridgeStopCalls, 1);
+});
+
+test("coalesces overlapping service sync requests", async () => {
+  let checks = 0;
+  let releaseCheck;
+  const bridge = {
+    async connectDevice() {},
+    async disconnectDevice() {},
+    async stop() {},
+    setRuntimeStatus() {},
+  };
+  const service = await startDesktopService({
+    checkClaude() {
+      checks += 1;
+      if (checks !== 2) return Promise.resolve(false);
+      return new Promise((resolve) => {
+        releaseCheck = resolve;
+      });
+    },
+    checkCodex: async () => false,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  const first = service.sync();
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = service.sync();
+  const third = service.sync();
+  assert.equal(first, second);
+  assert.equal(second, third);
+
+  releaseCheck(false);
+  await first;
+  assert.equal(checks, 3);
+  await service.stop();
 });

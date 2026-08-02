@@ -91,6 +91,10 @@ The logger rejects symbolic links and multiply linked files during startup and
 while the agent is running. It changes file and directory permissions through
 open file descriptors.
 
+Desktop process checks stop after two seconds. If one is still running when
+the next timer fires, the service keeps one pending refresh instead of adding
+another.
+
 The native launcher is compiled with strong stack protection, fortified libc
 calls, and fatal compiler and linker warnings. Package verification checks the
 compiled binary for the required hardening symbols.

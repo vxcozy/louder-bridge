@@ -5,11 +5,16 @@ import { accessibilityStatus } from "./macos/accessibility.mjs";
 import { startBridge } from "./server.mjs";
 
 const execFileAsync = promisify(execFile);
+const PROCESS_CHECK_TIMEOUT_MS = 2000;
 
 async function isNamedProcessRunning(names, run) {
   for (const name of names) {
     try {
-      await run("/usr/bin/pgrep", ["-x", name]);
+      await run("/usr/bin/pgrep", ["-x", name], {
+        timeout: PROCESS_CHECK_TIMEOUT_MS,
+        maxBuffer: 1024,
+        windowsHide: true,
+      });
       return true;
     } catch (error) {
       if (error?.code !== 1) throw error;
@@ -55,6 +60,8 @@ export async function startDesktopService({
   let stopped = false;
   let stopPromise = null;
   let update = Promise.resolve();
+  let syncRunning = false;
+  let syncRequested = false;
 
   async function sync() {
     if (stopped) return;
@@ -129,7 +136,24 @@ export async function startDesktopService({
   }
 
   function queueSync() {
-    update = update.then(sync).catch((error) => logger.error(error));
+    if (stopped) return update;
+    syncRequested = true;
+    if (syncRunning) return update;
+    syncRunning = true;
+    update = (async () => {
+      try {
+        while (syncRequested && !stopped) {
+          syncRequested = false;
+          try {
+            await sync();
+          } catch (error) {
+            logger.error(error);
+          }
+        }
+      } finally {
+        syncRunning = false;
+      }
+    })();
     return update;
   }
 

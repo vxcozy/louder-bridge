@@ -69,6 +69,8 @@ have not shipped appear under "Unreleased."
   reconnects through its normal retry loop.
 - Concurrent driver shutdowns now wait for the same cleanup operation. A new
   driver process does not start until the previous process has exited.
+- Desktop process checks stop after two seconds. Overlapping timer ticks now
+  share one pending refresh instead of building an unbounded queue.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of
