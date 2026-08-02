@@ -174,11 +174,12 @@ a supported interface.
 The hook receives more data than the lighting system needs, so it builds a new
 allowlisted payload before making the local request.
 
-The allowlist contains the session ID, working directory, event name,
-notification type, model, stop reason, and a few other lifecycle fields. It
-excludes prompt text, responses, transcripts, tool arguments, and tool results.
-The voice path does not carry audio or transcript text. Normal logs record slot
-numbers, states, and MIC edges, not session IDs or project names.
+The allowlist contains only the session ID, event name, and notification type.
+It excludes the working directory, model name, stop reason, prompt text,
+responses, transcripts, and tool data. The server keeps session IDs in memory
+for Agent Key navigation but omits them from diagnostics. The voice path does
+not carry audio or transcript text. Normal logs record slot numbers, states,
+and MIC edges, not session IDs or project names.
 
 The server accepts only loopback bind addresses. Every request also needs a
 random bearer token stored in a user-only file. This prevents another local

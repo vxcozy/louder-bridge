@@ -64,9 +64,7 @@ export class SessionStore {
       !event ||
       typeof event.session_id !== "string" ||
       event.session_id.length < 1 ||
-      event.session_id.length > 256 ||
-      (event.cwd !== undefined &&
-        (typeof event.cwd !== "string" || event.cwd.length > 4096))
+      event.session_id.length > 256
     ) {
       return null;
     }
@@ -80,7 +78,6 @@ export class SessionStore {
       session = {
         id: event.session_id,
         slot,
-        cwd: event.cwd ?? null,
         state: "idle",
         updatedAt: this.now(),
       };
@@ -92,7 +89,6 @@ export class SessionStore {
       const ended = {
         ...session,
         state,
-        cwd: event.cwd ?? session.cwd,
         updatedAt: this.now(),
       };
       this.sessions.delete(event.session_id);
@@ -102,7 +98,6 @@ export class SessionStore {
     }
 
     session.state = state;
-    session.cwd = event.cwd ?? session.cwd;
     session.updatedAt = this.now();
     return { ...session };
   }

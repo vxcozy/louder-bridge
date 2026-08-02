@@ -74,7 +74,10 @@ have not shipped appear under "Unreleased."
 - Loopback requests now require a random bearer token stored in a mode-0600
   file.
 - The bridge refuses non-loopback bind addresses.
-- Hook payloads exclude prompts, responses, transcripts, and tool contents.
+- Hook payloads contain only the session ID, lifecycle event, and notification
+  type. Health diagnostics omit session IDs and working directories.
+- Invalid hook requests return fixed errors without echoing request content.
+- The health endpoint returns a fixed error if an adapter fails.
 - The embedded Node.js runtime keeps library validation enabled.
 - Source-installed test builds now use the same hardened runtime and Node.js
   entitlements as release builds.

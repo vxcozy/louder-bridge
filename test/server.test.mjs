@@ -88,11 +88,44 @@ test("reports service and device health", async (context) => {
     },
     slots: Array.from({ length: 6 }, (_, slot) => ({
       slot,
-      id: null,
       state: "off",
       selected: false,
     })),
   });
+});
+
+test("contains health adapter failures without exposing their details", async (context) => {
+  const errors = [];
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger: {
+      info() {},
+      error(...values) {
+        errors.push(values);
+      },
+    },
+    voice: {
+      status() {
+        throw new Error("private adapter detail");
+      },
+    },
+  });
+  context.after(() => bridge.stop());
+
+  const response = await fetch(`${bridgeUrl(bridge)}/health`, {
+    headers: { authorization: `Bearer ${authToken}` },
+  });
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: "Health request failed.",
+  });
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][0], "Health request failed.");
 });
 
 test("records the last authenticated hook even when state does not change", async (context) => {
@@ -137,12 +170,14 @@ test("records the last authenticated hook even when state does not change", asyn
 
 test("acknowledges Claude hooks even when device lighting fails", async (context) => {
   let renderCalls = 0;
+  const rendered = [];
   const errors = [];
   const messages = [];
   const device = {
     async start() {},
-    async render() {
+    async render(slots) {
       renderCalls += 1;
+      rendered.push(slots);
       if (renderCalls > 1) throw new Error("USB write failed");
     },
     status() {
@@ -184,12 +219,21 @@ test("acknowledges Claude hooks even when device lighting fails", async (context
   assert.match(errors[0], /USB write failed/);
   assert.equal(messages.includes("Slot 1: idle"), true);
   assert.equal(messages.some((message) => message.includes("project")), false);
+  assert.equal("id" in rendered.at(-1)[0], false);
+  assert.equal("cwd" in rendered.at(-1)[0], false);
 
   const healthResponse = await fetch(`${bridgeUrl(bridge)}/health`, {
     headers: { authorization: `Bearer ${authToken}` },
   });
   const health = await healthResponse.json();
   assert.match(health.service.lastHookAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(health.slots[0], {
+    slot: 0,
+    state: "idle",
+    selected: false,
+  });
+  assert.equal("id" in health.slots[0], false);
+  assert.equal("cwd" in health.slots[0], false);
 });
 
 test("rejects requests without the private bearer token", async (context) => {
@@ -224,6 +268,24 @@ test("rejects oversized and non-JSON hook requests", async (context) => {
     body: "{}",
   });
   assert.equal(unsupported.status, 415);
+
+  const misleading = await fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/jsonp" },
+    body: "{}",
+  });
+  assert.equal(misleading.status, 415);
+
+  const invalid = await fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: '{"prompt":"private text",}',
+  });
+  assert.equal(invalid.status, 400);
+  assert.deepEqual(await invalid.json(), {
+    ok: false,
+    error: "Request body must be valid JSON.",
+  });
 
   const oversized = await fetch(`${bridgeUrl(bridge)}/hook`, {
     method: "POST",

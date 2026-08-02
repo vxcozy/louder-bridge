@@ -59,12 +59,18 @@ function readJson(request) {
       if (settled) return;
       try {
         resolve(JSON.parse(body || "{}"));
-      } catch (error) {
-        reject(error);
+      } catch {
+        reject(new HttpError(400, "Request body must be valid JSON."));
       }
     });
     request.on("error", reject);
   });
+}
+
+function requestMediaType(request) {
+  const contentType = request.headers["content-type"];
+  if (typeof contentType !== "string") return null;
+  return contentType.split(";", 1)[0].trim().toLowerCase();
 }
 
 export async function startBridge({
@@ -108,6 +114,13 @@ export async function startBridge({
     inputMonitoring: "unknown",
     accessibility: "unknown",
   };
+  function slotStates() {
+    return store.snapshot().map(({ slot, state, selected }) => ({
+      slot,
+      state,
+      selected,
+    }));
+  }
   async function renderDevice(slots, context) {
     try {
       await device?.render(slots);
@@ -127,7 +140,7 @@ export async function startBridge({
       logger.info(`Agent Key ${slot + 1} has no assigned Claude session.`);
       return;
     }
-    await renderDevice(store.snapshot(), "Agent Key");
+    await renderDevice(slotStates(), "Agent Key");
     await Promise.resolve(navigator.open(session.id));
     logger.info(`Opened Claude session in slot ${slot + 1}.`);
   };
@@ -184,7 +197,7 @@ export async function startBridge({
     device = nextDevice;
     try {
       await nextDevice.start();
-      await nextDevice.render(store.snapshot());
+      await nextDevice.render(slotStates());
       lastDeviceError = null;
       return nextDevice;
     } catch (error) {
@@ -236,7 +249,7 @@ export async function startBridge({
         lastHookAt,
         device: deviceStatus,
       },
-      slots: store.snapshot(),
+      slots: slotStates(),
     };
   }
 
@@ -252,7 +265,16 @@ export async function startBridge({
       return;
     }
     if (request.method === "GET" && request.url === "/health") {
-      response.end(JSON.stringify(health()));
+      try {
+        response.end(JSON.stringify(health()));
+      } catch (error) {
+        logger.error("Health request failed.", error);
+        response.statusCode = 500;
+        response.end(JSON.stringify({
+          ok: false,
+          error: "Health request failed.",
+        }));
+      }
       return;
     }
     if (request.method !== "POST" || request.url !== "/hook") {
@@ -260,11 +282,7 @@ export async function startBridge({
       response.end(JSON.stringify({ ok: false }));
       return;
     }
-    if (
-      !request.headers["content-type"]
-        ?.toLowerCase()
-        .startsWith("application/json")
-    ) {
+    if (requestMediaType(request) !== "application/json") {
       response.statusCode = 415;
       response.end(JSON.stringify({ ok: false }));
       return;
@@ -274,13 +292,20 @@ export async function startBridge({
       lastHookAt = now().toISOString();
       const changed = store.apply(event);
       if (changed) {
-        await renderDevice(store.snapshot(), "Claude hook");
+        await renderDevice(slotStates(), "Claude hook");
         logger.info(`Slot ${changed.slot + 1}: ${changed.state}`);
       }
       response.end(JSON.stringify({ ok: true }));
     } catch (error) {
-      response.statusCode = error.statusCode ?? 400;
-      response.end(JSON.stringify({ ok: false, error: error.message }));
+      const expected = error instanceof HttpError;
+      response.statusCode = expected ? error.statusCode : 500;
+      if (!expected) logger.error("Hook request failed.", error);
+      response.end(
+        JSON.stringify({
+          ok: false,
+          error: expected ? error.message : "Hook request failed.",
+        }),
+      );
     }
   });
   server.requestTimeout = 5000;

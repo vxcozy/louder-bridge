@@ -13,7 +13,9 @@ test("maps Claude lifecycle events to Micro states", () => {
       ...extra,
     });
 
-  assert.equal(event("SessionStart").state, "idle");
+  const started = event("SessionStart");
+  assert.equal(started.state, "idle");
+  assert.equal("cwd" in started, false);
   assert.equal(event("UserPromptSubmit").state, "running");
   assert.equal(event("PermissionRequest").state, "needs_input");
   assert.equal(event("Stop").state, "complete");
@@ -111,7 +113,7 @@ test("select returns the session assigned to an Agent Key", () => {
   assert.equal(store.select(5), null);
 });
 
-test("rejects malformed session identifiers and working directories", () => {
+test("rejects malformed session identifiers", () => {
   const store = new SessionStore();
   assert.equal(
     store.apply({
@@ -122,8 +124,7 @@ test("rejects malformed session identifiers and working directories", () => {
   );
   assert.equal(
     store.apply({
-      session_id: "session-a",
-      cwd: { unexpected: true },
+      session_id: "x".repeat(257),
       hook_event_name: "SessionStart",
     }),
     null,

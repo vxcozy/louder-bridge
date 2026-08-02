@@ -125,7 +125,7 @@ The event server listens only on the configured loopback address.
 
 ### `GET /health`
 
-Returns bridge status and the six current slots:
+Returns bridge status and the six current slot states:
 
 ```json
 {
@@ -170,11 +170,8 @@ Returns bridge status and the six current slots:
   },
   "slots": [
     {
-      "id": "session-id",
       "slot": 0,
-      "cwd": "<project-directory>",
       "state": "running",
-      "updatedAt": 1785456000000,
       "selected": false
     }
   ]
@@ -191,17 +188,11 @@ Accepts a Claude hook event as JSON. Request bodies are limited to 64 KiB.
 Recognized fields are:
 
 - `session_id`
-- `cwd`
 - `hook_event_name`
 - `notification_type`
-- `reason`
-- `source`
-- `model`
-- `tool_name`
-- `agent_id`
 
-Prompts, assistant responses, tool inputs, tool outputs, and transcripts are
-not forwarded by the hook process.
+The hook does not forward working directories, prompts, responses, model
+names, tool data, or transcripts. The health response omits session IDs.
 
 ## Slot behavior
 

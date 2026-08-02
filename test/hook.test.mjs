@@ -90,7 +90,12 @@ test("the hook sends only allowlisted lifecycle fields", async (context) => {
       session_id: "session-a",
       cwd: "/work/project",
       hook_event_name: "UserPromptSubmit",
+      notification_type: "permission_prompt",
+      reason: "private stop reason",
+      source: "private source",
       model: "claude-model",
+      tool_name: "private tool name",
+      agent_id: "private-agent-id",
       prompt: "private prompt",
       transcript: "private transcript",
       tool_input: { command: "private command" },
@@ -109,9 +114,8 @@ test("the hook sends only allowlisted lifecycle fields", async (context) => {
   assert.equal(request.authorization, `Bearer ${token}`);
   assert.deepEqual(request.body, {
     session_id: "session-a",
-    cwd: "/work/project",
     hook_event_name: "UserPromptSubmit",
-    model: "claude-model",
+    notification_type: "permission_prompt",
   });
 });
 

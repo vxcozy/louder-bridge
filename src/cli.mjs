@@ -532,7 +532,6 @@ if (command === "help" || command === "--help" || command === "-h") {
       body: JSON.stringify({
         session_id:
           process.argv[4] ?? "00000000-0000-4000-8000-000000000001",
-        cwd: process.cwd(),
         hook_event_name: hookEvent,
       }),
     });
