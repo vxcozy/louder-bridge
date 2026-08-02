@@ -8,12 +8,14 @@
 #include <mach-o/dyld.h>
 #include <signal.h>
 #include <spawn.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "micro_device.h"
@@ -22,6 +24,10 @@ extern char **environ;
 
 static volatile sig_atomic_t runtime_process = 0;
 static volatile sig_atomic_t hold_stop_requested = 0;
+
+#define PERMISSION_POLL_ATTEMPTS 600
+#define PERMISSION_POLL_INTERVAL_US 500000
+#define PERMISSION_WAIT_SECONDS 300
 
 static void forward_signal(int signal_number) {
   pid_t process = (pid_t)runtime_process;
@@ -716,29 +722,59 @@ static Boolean read_permission_probe(
   return true;
 }
 
-static Boolean wait_for_probe_launcher(pid_t child, int *status) {
+static int64_t monotonic_milliseconds(void) {
+  struct timespec now;
+  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return -1;
+  return
+    ((int64_t)now.tv_sec * 1000) +
+    ((int64_t)now.tv_nsec / 1000000);
+}
+
+static Boolean sleep_before_deadline(
+  useconds_t interval,
+  int64_t deadline
+) {
+  int64_t now = monotonic_milliseconds();
+  if (now < 0 || now >= deadline) return false;
+  int64_t remaining_microseconds = (deadline - now) * 1000;
+  useconds_t delay = interval;
+  if (remaining_microseconds < (int64_t)delay) {
+    delay = (useconds_t)remaining_microseconds;
+  }
+  if (delay > 0) usleep(delay);
+  return true;
+}
+
+static Boolean wait_for_probe_launcher(
+  pid_t child,
+  int *status,
+  int64_t deadline
+) {
   for (int attempt = 0; attempt < 50; attempt += 1) {
     pid_t waited = waitpid(child, status, WNOHANG);
     if (waited == child) return true;
     if (waited < 0 && errno != EINTR) return false;
-    usleep(100000);
+    if (!sleep_before_deadline(100000, deadline)) break;
   }
   kill(child, SIGTERM);
   for (int attempt = 0; attempt < 10; attempt += 1) {
     pid_t waited = waitpid(child, status, WNOHANG);
     if (waited == child) return false;
     if (waited < 0 && errno != EINTR) return false;
-    usleep(100000);
+    if (!sleep_before_deadline(100000, deadline)) break;
   }
   kill(child, SIGKILL);
   while (waitpid(child, status, 0) < 0 && errno == EINTR) {}
   return false;
 }
 
-static Boolean probe_permissions_fresh(
+static Boolean probe_permissions_fresh_until(
   const char *executable,
-  PermissionProbe *probe
+  PermissionProbe *probe,
+  int64_t deadline
 ) {
+  int64_t now = monotonic_milliseconds();
+  if (now < 0 || now >= deadline) return false;
   char app[PATH_MAX];
   if (!application_path(executable, app)) return false;
   char probe_path[] = "/tmp/app.louder-bridge.permission.XXXXXX";
@@ -772,7 +808,7 @@ static Boolean probe_permissions_fresh(
   if (spawn_error == 0) {
     int status;
     if (
-      wait_for_probe_launcher(child, &status) &&
+      wait_for_probe_launcher(child, &status, deadline) &&
       WIFEXITED(status) &&
       WEXITSTATUS(status) == 0
     ) {
@@ -781,7 +817,7 @@ static Boolean probe_permissions_fresh(
           success = true;
           break;
         }
-        usleep(100000);
+        if (!sleep_before_deadline(100000, deadline)) break;
       }
     }
   }
@@ -790,21 +826,112 @@ static Boolean probe_permissions_fresh(
   return success;
 }
 
-static IOHIDAccessType request_input_monitoring(const char *executable) {
+static Boolean probe_permissions_fresh(
+  const char *executable,
+  PermissionProbe *probe
+) {
+  int64_t now = monotonic_milliseconds();
+  if (now < 0) return false;
+  return probe_permissions_fresh_until(executable, probe, now + 10000);
+}
+
+typedef Boolean (*PermissionCheck)(const char *executable, int64_t deadline);
+
+static Boolean wait_for_permission(
+  const char *executable,
+  PermissionCheck check,
+  int max_attempts,
+  int timeout_seconds,
+  useconds_t interval
+) {
+  if (max_attempts < 1 || timeout_seconds < 0) return false;
+  int64_t started = monotonic_milliseconds();
+  if (started < 0) return false;
+  int64_t deadline = started + ((int64_t)timeout_seconds * 1000);
+  for (int attempt = 0; attempt < max_attempts; attempt += 1) {
+    if (check(executable, deadline)) return true;
+    int64_t now = monotonic_milliseconds();
+    if (now < 0 || now >= deadline) return false;
+    if (attempt + 1 < max_attempts && interval > 0) {
+      if (!sleep_before_deadline(interval, deadline)) return false;
+    }
+  }
+  return false;
+}
+
+static Boolean fresh_input_monitoring_is_granted(
+  const char *executable,
+  int64_t deadline
+) {
+  PermissionProbe probe;
+  return
+    probe_permissions_fresh_until(executable, &probe, deadline) &&
+    probe.input_monitoring == kIOHIDAccessTypeGranted;
+}
+
+static Boolean fresh_accessibility_is_granted(
+  const char *executable,
+  int64_t deadline
+) {
+  PermissionProbe probe;
+  return
+    probe_permissions_fresh_until(executable, &probe, deadline) &&
+    probe.accessibility;
+}
+
+static int simulated_permission_checks = 0;
+static int simulated_permission_grant_after = 0;
+
+static Boolean simulated_permission_check(
+  const char *executable,
+  int64_t deadline
+) {
+  (void)executable;
+  (void)deadline;
+  simulated_permission_checks += 1;
+  return
+    simulated_permission_grant_after > 0 &&
+    simulated_permission_checks >= simulated_permission_grant_after;
+}
+
+static int test_permission_wait(const char *mode) {
+  simulated_permission_checks = 0;
+  if (strcmp(mode, "grant") == 0) {
+    simulated_permission_grant_after = 2;
+  } else if (strcmp(mode, "timeout") == 0) {
+    simulated_permission_grant_after = 0;
+  } else if (strcmp(mode, "deadline") == 0) {
+    simulated_permission_grant_after = 0;
+  } else {
+    return 2;
+  }
+  Boolean granted = wait_for_permission(
+    "test",
+    simulated_permission_check,
+    3,
+    strcmp(mode, "deadline") == 0 ? 0 : 1,
+    0
+  );
+  printf(
+    "%s %d\n",
+    granted ? "granted" : "timed-out",
+    simulated_permission_checks
+  );
+  return 0;
+}
+
+static Boolean request_input_monitoring(const char *executable) {
   IOHIDAccessType access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
-  if (access == kIOHIDAccessTypeGranted) return access;
+  if (access == kIOHIDAccessTypeGranted) return true;
 
   IOHIDRequestAccess(kIOHIDRequestTypeListenEvent);
-  for (;;) {
-    PermissionProbe probe;
-    if (
-      probe_permissions_fresh(executable, &probe) &&
-      probe.input_monitoring == kIOHIDAccessTypeGranted
-    ) {
-      return probe.input_monitoring;
-    }
-    usleep(500000);
-  }
+  return wait_for_permission(
+    executable,
+    fresh_input_monitoring_is_granted,
+    PERMISSION_POLL_ATTEMPTS,
+    PERMISSION_WAIT_SECONDS,
+    PERMISSION_POLL_INTERVAL_US
+  );
 }
 
 static Boolean request_accessibility(const char *executable) {
@@ -822,21 +949,21 @@ static Boolean request_accessibility(const char *executable) {
   AXIsProcessTrustedWithOptions(options);
   CFRelease(options);
 
-  for (;;) {
-    PermissionProbe probe;
-    if (
-      probe_permissions_fresh(executable, &probe) &&
-      probe.accessibility
-    ) {
-      return true;
-    }
-    usleep(500000);
-  }
+  return wait_for_permission(
+    executable,
+    fresh_accessibility_is_granted,
+    PERMISSION_POLL_ATTEMPTS,
+    PERMISSION_WAIT_SECONDS,
+    PERMISSION_POLL_INTERVAL_US
+  );
 }
 
 int main(int argc, char *argv[]) {
   if (argc == 3 && strcmp(argv[1], "--permission-probe") == 0) {
     return write_permission_probe(argv[2]);
+  }
+  if (argc == 3 && strcmp(argv[1], "--test-permission-wait") == 0) {
+    return test_permission_wait(argv[2]);
   }
   if (argc > 1 && strcmp(argv[1], "--permission-status-fresh") == 0) {
     char executable[PATH_MAX];
@@ -964,12 +1091,18 @@ int main(int argc, char *argv[]) {
   if (argc == 1) {
     int preflight_status = run_runtime(node, cli, "preflight");
     if (preflight_status != 0) return preflight_status;
-    IOHIDAccessType access = request_input_monitoring(resolved);
-    setenv("LOUDER_INPUT_MONITORING_STATUS", access_name(access), 1);
+    Boolean input_monitoring = request_input_monitoring(resolved);
+    if (!input_monitoring) {
+      return run_runtime(node, cli, "input-monitoring-timeout");
+    }
+    setenv("LOUDER_INPUT_MONITORING_STATUS", "granted", 1);
     Boolean accessibility = request_accessibility(resolved);
+    if (!accessibility) {
+      return run_runtime(node, cli, "accessibility-timeout");
+    }
     setenv(
       "LOUDER_ACCESSIBILITY_STATUS",
-      accessibility_name(accessibility),
+      "granted",
       1
     );
   }

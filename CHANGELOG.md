@@ -64,6 +64,8 @@ have not shipped appear under "Unreleased."
   launcher before creating the ZIP.
 - When Codex and Claude are open together, the bridge now reports the conflict,
   releases the Micro, and reconnects after Codex quits.
+- Permission onboarding now stops after a five-minute wait, names the missing
+  permission, and opens the matching System Settings pane.
 - Interrupting source setup with SIGINT or SIGTERM now cancels permission
   onboarding and rolls back the app, hooks, agent, and token changes.
 - Failed or interrupted source setup now stops the replacement onboarding app

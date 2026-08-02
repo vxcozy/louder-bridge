@@ -189,6 +189,20 @@ if (command === "help" || command === "--help" || command === "-h") {
   requireSupportedApplicationLocation(runtime.app, {
     homeDirectory: stagingHome,
   });
+} else if (
+  command === "input-monitoring-timeout" ||
+  command === "accessibility-timeout"
+) {
+  const inputMonitoring = command === "input-monitoring-timeout";
+  const permission = inputMonitoring ? "Input Monitoring" : "Accessibility";
+  activationDialog(
+    `Setup stopped because ${permission} is still off. Enable Louder Bridge in System Settings, then open the app again.`,
+    { error: true, settingsLabel: `Open ${permission}` },
+  );
+  openPrivacySettings(
+    inputMonitoring ? INPUT_MONITORING_URL : ACCESSIBILITY_URL,
+  );
+  process.exitCode = 3;
 } else if (command === "start") {
   const bridge = await startBridge({
     mockDevice: process.argv.includes("--mock-device"),

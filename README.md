@@ -31,6 +31,9 @@ Download the signed macOS archive from this repository's Releases page:
 
 Louder Bridge checks its location before requesting permissions. If you open it
 from Downloads, it asks you to move the app and exits without changing Claude.
+Permission setup waits up to five minutes for each approval. If a permission
+stays off, the app tells you which setting needs attention and exits. Enable
+that permission, then open Louder Bridge again.
 
 Louder Bridge starts at login and connects whenever Claude Desktop is open.
 Node.js and a source checkout are not required after installation.

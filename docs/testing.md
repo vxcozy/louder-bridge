@@ -14,8 +14,12 @@ matches the [supported baseline](compatibility.md).
 3. Move the packaged app into Applications and open it again. Approve Input
    Monitoring and Accessibility, then confirm the background agent starts
    without reopening Louder Bridge.
-4. Run `npm run doctor`, `npm test`, and `npm run status`.
-5. Confirm the background agent and hook server are ready.
+4. In a clean test account, leave Input Monitoring off for five minutes.
+   Confirm the dialog identifies the missing permission, opens the matching
+   setting, and exits without installing hooks or a login agent. Enable the
+   permission, reopen the app, and confirm setup can finish.
+5. Run `npm run doctor`, `npm test`, and `npm run status`.
+6. Confirm the background agent and hook server are ready.
 
 Record the macOS, Node.js, Codex Micro firmware, connection type, device
 driver, Claude Desktop, and Louder Bridge versions in the release notes.

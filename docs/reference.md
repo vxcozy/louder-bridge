@@ -118,6 +118,10 @@ Before first launch asks for permission or changes Claude settings, it resolves
 the app bundle's real path. The path must be inside the system or current user's
 Applications directory. The preflight rejects Downloads, App Translocation
 mounts, and symlinks to other directories.
+First launch waits up to five minutes for Input Monitoring, then five minutes
+for Accessibility. Once you grant access, setup continues immediately. If
+either wait expires, the app opens the matching System Settings pane and exits
+before activation. Source setup then rolls back its transaction.
 
 Before setup replaces or removes the app, it checks the bundle identifier and
 executable name. It also records the bundle's filesystem identity for rollback

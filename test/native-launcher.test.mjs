@@ -388,3 +388,43 @@ test("writes permission probes only to private single-link files", (context) => 
   assert.equal(rejected.status, 1);
   assert.equal(fs.readFileSync(target, "utf8"), "keep this");
 });
+
+test("bounds permission onboarding while allowing a later grant", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("The native permission helper requires Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-permission-wait-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  compileNativeLauncher({ sourceRoot, output });
+
+  const granted = spawnSync(output, ["--test-permission-wait", "grant"], {
+    encoding: "utf8",
+  });
+  const timedOut = spawnSync(
+    output,
+    ["--test-permission-wait", "timeout"],
+    { encoding: "utf8" },
+  );
+  const deadline = spawnSync(
+    output,
+    ["--test-permission-wait", "deadline"],
+    { encoding: "utf8" },
+  );
+  const invalid = spawnSync(output, ["--test-permission-wait", "invalid"]);
+
+  assert.equal(granted.status, 0);
+  assert.equal(granted.stdout.trim(), "granted 2");
+  assert.equal(timedOut.status, 0);
+  assert.equal(timedOut.stdout.trim(), "timed-out 3");
+  assert.equal(deadline.status, 0);
+  assert.equal(deadline.stdout.trim(), "timed-out 1");
+  assert.equal(invalid.status, 2);
+});

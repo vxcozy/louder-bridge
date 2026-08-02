@@ -15,6 +15,11 @@ dictation control.
 4. Return to Claude Desktop. The background agent starts as soon as both
    permissions are available.
 
+The app waits up to five minutes for each permission. If that time expires, it
+opens the missing setting and asks you to open Louder Bridge again after you
+enable it. Source setup rolls back before it exits, so rerun `npm run setup`
+after fixing the permission.
+
 For a manual development run with `npm start`, grant permission to the terminal
 application instead.
 

@@ -56,6 +56,11 @@ check. If the app closes early or activation fails, setup restores the previous
 installation. If you interrupt the command with Ctrl-C, setup finishes its
 rollback before exiting.
 
+The app waits up to five minutes for each permission. If you grant access in
+that time, setup continues on its own. If the wait expires, a dialog identifies
+the missing permission and source setup restores the previous installation.
+Enable the permission, then run `npm run setup` again.
+
 The command performs the one-time setup:
 
 - It creates a self-contained **Louder Bridge.app** with an embedded Node.js
@@ -73,8 +78,9 @@ After setup finishes, you do not need to keep a terminal open or run
 ## 4. Grant macOS permissions
 
 Open **System Settings → Privacy & Security** and enable **Louder Bridge** under
-both **Input Monitoring** and **Accessibility**. The installed app waits for
-both approvals, then starts the agent. You do not need to reopen it.
+both **Input Monitoring** and **Accessibility**. The installed app starts the
+agent as soon as both approvals arrive. You do not need to reopen it unless a
+five-minute permission wait has already expired.
 
 Input Monitoring lets the bridge receive Micro controls. Accessibility lets
 it operate Claude's composer control or macOS Dictation.
