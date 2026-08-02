@@ -945,6 +945,9 @@ int main(int argc, char *argv[]) {
     else if (strcmp(argv[1], "--doctor") == 0) command = "doctor";
     else if (strcmp(argv[1], "--service") == 0) command = "service";
     else if (
+      strcmp(argv[1], "--package-preflight") == 0
+    ) command = "package-preflight";
+    else if (
       strcmp(argv[1], "--help") == 0 ||
       strcmp(argv[1], "-h") == 0
     ) command = "help";

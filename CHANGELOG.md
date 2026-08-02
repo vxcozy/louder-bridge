@@ -60,6 +60,8 @@ have not shipped appear under "Unreleased."
 - First launch now checks the resolved bundle path before permission prompts or
   configuration changes. It accepts the system and per-user Applications
   directories and rejects Downloads or App Translocation.
+- Release builds now run the packaged location preflight through the signed
+  launcher before creating the ZIP.
 - Interrupting source setup with SIGINT or SIGTERM now cancels permission
   onboarding and rolls back the app, hooks, agent, and token changes.
 - Failed or interrupted source setup now stops the replacement onboarding app

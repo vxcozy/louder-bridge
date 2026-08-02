@@ -105,6 +105,7 @@ if (smokeTest.stdout.trim() !== metadata.version) {
     "The signed launcher did not start the embedded Node.js runtime.",
   );
 }
+run(transaction.launcher, ["--package-preflight"]);
 const archive = path.join(
   dist,
   `Louder-Bridge-${metadata.version}-macOS-arm64.zip`,

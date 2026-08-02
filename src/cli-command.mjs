@@ -181,6 +181,14 @@ if (command === "help" || command === "--help" || command === "-h") {
     activationDialog(error.message, { error: true });
     process.exitCode = 1;
   }
+} else if (command === "package-preflight") {
+  const runtime = applicationBundlePathsForCli(
+    fileURLToPath(import.meta.url),
+  );
+  const stagingHome = path.dirname(path.dirname(runtime.app));
+  requireSupportedApplicationLocation(runtime.app, {
+    homeDirectory: stagingHome,
+  });
 } else if (command === "start") {
   const bridge = await startBridge({
     mockDevice: process.argv.includes("--mock-device"),
