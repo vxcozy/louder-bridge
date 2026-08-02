@@ -127,6 +127,9 @@ const generatedSbom = run("/usr/bin/env", [
   "--omit",
   "dev",
 ]);
+const nodeSha256 = createHash("sha256")
+  .update(fs.readFileSync(transaction.node))
+  .digest("hex");
 const sbomFile = path.join(
   dist,
   `Louder-Bridge-${metadata.version}.spdx.json`,
@@ -134,6 +137,7 @@ const sbomFile = path.join(
 const sbom = addBundledComponents(JSON.parse(generatedSbom.stdout), {
   metadata,
   nodeVersion: process.version,
+  nodeSha256,
 });
 fs.writeFileSync(sbomFile, `${JSON.stringify(sbom, null, 2)}\n`, {
   mode: 0o644,

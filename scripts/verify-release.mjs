@@ -74,6 +74,15 @@ for (const [label, identifier] of Object.entries(bundledComponentIds)) {
     throw new Error(`The release SBOM does not identify the ${label} component.`);
   }
 }
+const nodePackage = sbom.packages.find(
+  (entry) => entry.SPDXID === bundledComponentIds.node,
+);
+const nodeChecksum = nodePackage?.checksums?.find(
+  (entry) => entry.algorithm === "SHA256",
+)?.checksumValue;
+if (!/^[a-f0-9]{64}$/.test(nodeChecksum ?? "")) {
+  throw new Error("The release SBOM does not contain the Node.js SHA-256.");
+}
 const rootSpdxId = sbom.packages.find(
   (entry) =>
     entry.name === metadata.name &&
@@ -130,6 +139,12 @@ try {
   ]);
   const launcher = path.join(app, "Contents", "MacOS", "LouderBridge");
   const node = path.join(app, "Contents", "MacOS", "node");
+  const extractedNodeChecksum = createHash("sha256")
+    .update(fs.readFileSync(node))
+    .digest("hex");
+  if (extractedNodeChecksum !== nodeChecksum) {
+    throw new Error("The embedded Node.js runtime does not match the SBOM.");
+  }
   for (const executable of [launcher, node]) {
     const description = run("/usr/bin/file", [executable]);
     if (!description.includes("arm64")) {

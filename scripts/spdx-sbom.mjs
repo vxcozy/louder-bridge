@@ -11,7 +11,7 @@ function rootPackage(sbom, metadata) {
 
 export function addBundledComponents(
   sbom,
-  { metadata, nodeVersion },
+  { metadata, nodeVersion, nodeSha256 },
 ) {
   const root = rootPackage(sbom, metadata);
   if (!root?.SPDXID) {
@@ -31,6 +31,9 @@ export function addBundledComponents(
   if (!/^\d+\.\d+\.\d+$/.test(normalizedNodeVersion)) {
     throw new Error("The embedded Node.js version is invalid.");
   }
+  if (!/^[a-f0-9]{64}$/.test(nodeSha256 ?? "")) {
+    throw new Error("The embedded Node.js checksum is invalid.");
+  }
 
   sbom.packages.push(
     {
@@ -42,6 +45,12 @@ export function addBundledComponents(
       licenseConcluded: "NOASSERTION",
       licenseDeclared: "NOASSERTION",
       copyrightText: "NOASSERTION",
+      checksums: [
+        {
+          algorithm: "SHA256",
+          checksumValue: nodeSha256,
+        },
+      ],
       externalRefs: [
         {
           referenceCategory: "PACKAGE-MANAGER",

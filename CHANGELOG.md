@@ -71,4 +71,6 @@ have not shipped appear under "Unreleased."
 - Source-installed test builds now use the same hardened runtime and Node.js
   entitlements as release builds.
 - SPDX SBOMs now identify the embedded Node.js runtime and the exact licensed
-  protocol reference.
+  protocol reference. The runtime entry includes the SHA-256 of the binary in
+  the release archive.
+- Native release builds fail on compiler warnings.

@@ -35,11 +35,14 @@ function fixture() {
   };
 }
 
+const nodeSha256 = "a".repeat(64);
+
 test("adds the embedded runtime and protocol reference to SPDX", () => {
   const { sbom, metadata } = fixture();
   const result = addBundledComponents(sbom, {
     metadata,
     nodeVersion: "v22.23.1",
+    nodeSha256,
   });
 
   const node = result.packages.find(
@@ -49,6 +52,9 @@ test("adds the embedded runtime and protocol reference to SPDX", () => {
     (entry) => entry.SPDXID === bundledComponentIds.protocol,
   );
   assert.equal(node.versionInfo, "22.23.1");
+  assert.deepEqual(node.checksums, [
+    { algorithm: "SHA256", checksumValue: nodeSha256 },
+  ]);
   assert.equal(protocol.licenseDeclared, "MIT");
   assert.equal(
     protocol.versionInfo,
@@ -68,7 +74,20 @@ test("rejects incomplete protocol provenance", () => {
       addBundledComponents(sbom, {
         metadata,
         nodeVersion: "v22.23.1",
+        nodeSha256,
       }),
     /protocol reference metadata is invalid/,
+  );
+});
+
+test("rejects a missing embedded runtime checksum", () => {
+  const { sbom, metadata } = fixture();
+  assert.throws(
+    () =>
+      addBundledComponents(sbom, {
+        metadata,
+        nodeVersion: "v22.23.1",
+      }),
+    /Node\.js checksum is invalid/,
   );
 });
