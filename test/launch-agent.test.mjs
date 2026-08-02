@@ -250,6 +250,90 @@ test("restores a launch agent removed during a failed setup", () => {
   fs.rmSync(homeDirectory, { recursive: true });
 });
 
+test("does not remove a launch-agent file changed after bootout", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-remove-conflict-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  let bootstraps = 0;
+  const run = (command, args) => {
+    if (args[0] === "print") {
+      return { status: 0, stdout: "state = running", stderr: "" };
+    }
+    if (args[0] === "bootout") {
+      fs.writeFileSync(paths.plist, "newer plist");
+    }
+    if (args[0] === "bootstrap") bootstraps += 1;
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  assert.throws(
+    () => removeLaunchAgent({ homeDirectory, userId: 501, run }),
+    /changed before removal.*left untouched/,
+  );
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "newer plist");
+  assert.equal(bootstraps, 0);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("does not overwrite a launch-agent file created before rollback", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-restore-conflict-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  const run = (command, args) => ({
+    status: args[0] === "print" ? 1 : 0,
+    stdout: "",
+    stderr: "",
+  });
+  const removal = removeLaunchAgent({ homeDirectory, userId: 501, run });
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "newer plist");
+
+  assert.throws(
+    () => restoreRemovedLaunchAgent(removal, { run }),
+    /appeared during rollback.*left untouched/,
+  );
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "newer plist");
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("does not overwrite a launch-agent file created during rollback", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-restore-race-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  const removeRun = (command, args) => ({
+    status: 0,
+    stdout: args[0] === "print" ? "state = running" : "",
+    stderr: "",
+  });
+  const removal = removeLaunchAgent({
+    homeDirectory,
+    userId: 501,
+    run: removeRun,
+  });
+  let created = false;
+  const restoreRun = (command, args) => {
+    if (args[0] === "bootout" && !created) {
+      created = true;
+      fs.writeFileSync(paths.plist, "newer plist");
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  assert.throws(
+    () => restoreRemovedLaunchAgent(removal, { run: restoreRun }),
+    /appeared during rollback.*left untouched/,
+  );
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "newer plist");
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
 test("rejects a symlinked launch-agent property list", async () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-launch-link-"),

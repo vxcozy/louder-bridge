@@ -348,10 +348,20 @@ export function removeLaunchAgent({
     }).status === 0;
   bootoutLaunchAgent(serviceTarget, run);
   try {
-    if (fs.existsSync(paths.plist)) fs.unlinkSync(paths.plist);
+    requireLaunchAgentState(
+      paths.plist,
+      previous,
+      "The launch-agent file changed before removal. It was left untouched.",
+    );
+    if (previous !== null) fs.unlinkSync(paths.plist);
   } catch (error) {
-    if (wasLoaded) {
+    if (wasLoaded && previous !== null) {
       try {
+        requireLaunchAgentState(
+          paths.plist,
+          previous,
+          "The previous launch-agent file changed before it could be reloaded.",
+        );
         bootstrapLaunchAgent(userId, paths.plist, run);
         runLaunchctl(["kickstart", "-k", serviceTarget], {
           allowFailure: true,
@@ -380,15 +390,46 @@ export function restoreRemovedLaunchAgent(
   if (!removal?.removed) return removal;
   if (process.platform !== "darwin") return removal;
   const serviceTarget = `gui/${removal.userId}/${LAUNCH_AGENT_LABEL}`;
-  bootoutLaunchAgent(serviceTarget, run);
   if (removal.previousPlist === null) {
-    if (fs.existsSync(removal.plist)) fs.unlinkSync(removal.plist);
+    requireLaunchAgentState(
+      removal.plist,
+      null,
+      "A launch-agent file appeared during rollback. It was left untouched.",
+    );
     return removal;
   }
+  requireLaunchAgentState(
+    removal.plist,
+    null,
+    "A launch-agent file appeared during rollback. It was left untouched.",
+  );
+  bootoutLaunchAgent(serviceTarget, run);
   writeFileAtomic(removal.plist, removal.previousPlist, {
     mode: removal.previousMode,
+    beforeRename() {
+      requireLaunchAgentState(
+        removal.plist,
+        null,
+        "A launch-agent file appeared during rollback. It was left untouched.",
+      );
+    },
   });
+  const restored = readLaunchAgentPlist(removal.plist);
+  if (
+    restored === null ||
+    restored.contents !== removal.previousPlist ||
+    restored.mode !== removal.previousMode
+  ) {
+    throw new Error(
+      "The restored launch-agent file changed before rollback could finish.",
+    );
+  }
   if (removal.wasLoaded) {
+    requireLaunchAgentState(
+      removal.plist,
+      restored,
+      "The restored launch-agent file changed before it could be loaded.",
+    );
     bootstrapLaunchAgent(removal.userId, removal.plist, run);
     runLaunchctl(["kickstart", "-k", serviceTarget], { run });
   }

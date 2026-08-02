@@ -92,6 +92,8 @@ have not shipped appear under "Unreleased."
   rollback, and uninstall do not wait forever on a stuck macOS command.
 - Setup rejects symlinked launch-agent files and log directories. Rollback
   restores the previous launch-agent file mode and leaves newer edits alone.
+- Launch-agent removal checks the plist again after stopping the service.
+  Rollback will not overwrite a plist created by another process.
 - Setup and uninstall verify the app's bundle identity before replacing or
   removing it. Rollback and backup cleanup leave a path alone if it no longer
   points to the bundle recorded at the start of the transaction.
