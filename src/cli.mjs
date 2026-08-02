@@ -47,6 +47,7 @@ import {
 } from "./setup/permission-onboarding.mjs";
 import { installedApplicationStatus } from "./setup/installed-status.mjs";
 import { runInterruptibleSetup } from "./setup/transaction-signals.mjs";
+import { rollbackSetupApplication } from "./setup/setup-rollback.mjs";
 import {
   onboardingApplicationIsRunning,
   stopOnboardingApplication,
@@ -190,7 +191,6 @@ if (command === "help" || command === "--help" || command === "-h") {
   const platform = platformSupport();
   if (!platform.supported) throw new Error(platform.error);
   prepareRotatingLogs(launchAgentPaths());
-  const installedApp = applicationBundlePaths().app;
   let application;
   let authentication;
   let file;
@@ -251,11 +251,13 @@ if (command === "help" || command === "--help" || command === "-h") {
           );
         }
         if (application) {
-          attemptRollback(
-            error,
-            "The previous app could not be restored",
-            () => rollbackApplicationBundle(application),
-          );
+          try {
+            await rollbackSetupApplication(application, {
+              reopenPrevious: stoppedOnboarding,
+            });
+          } catch (rollbackError) {
+            error.message += ` The previous app could not be restored: ${rollbackError.message}`;
+          }
         }
         if (agent?.removed) {
           attemptRollback(
@@ -263,13 +265,6 @@ if (command === "help" || command === "--help" || command === "-h") {
             "The previous background agent could not be restored",
             () => restoreRemovedLaunchAgent(agent),
           );
-        }
-        if (stoppedOnboarding) {
-          try {
-            await openOnboardingApplication(installedApp);
-          } catch (rollbackError) {
-            error.message += ` The previous onboarding app could not be reopened: ${rollbackError.message}`;
-          }
         }
         if (authentication?.created) {
           attemptRollback(

@@ -56,6 +56,8 @@ have not shipped appear under "Unreleased."
   finishes and the replacement background agent is running.
 - Interrupting source setup with SIGINT or SIGTERM now cancels permission
   onboarding and rolls back the app, hooks, agent, and token changes.
+- Failed or interrupted source setup now stops the replacement onboarding app
+  before restoring the previous application bundle.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of
