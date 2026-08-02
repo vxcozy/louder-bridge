@@ -59,7 +59,9 @@ only. Do not publish it.
 
 Final verification checks the app, launcher, and embedded Node.js runtime
 separately. All three must use the same Developer ID team, carry hardened
-runtime signatures, and include secure timestamps.
+runtime signatures, and include secure timestamps. The verifier also rejects
+unsafe archive paths, links, special files, group- or world-writable entries,
+and binaries that are not arm64-only.
 
 ## Notarize
 

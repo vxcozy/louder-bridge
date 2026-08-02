@@ -98,6 +98,8 @@ have not shipped appear under "Unreleased."
   the release archive.
 - Notarized release verification now requires the app, launcher, and embedded
   runtime to share one Developer ID team and secure signing timestamps.
+- Release verification now rejects unsafe ZIP paths, links, special files,
+  group- or world-writable entries, and executables that are not arm64-only.
 - Native release builds fail on compiler warnings.
 - Release tags must point to commits on the protected default branch, and CI
   audits production dependencies before packaging.

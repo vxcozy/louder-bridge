@@ -7,6 +7,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bundledComponentIds } from "./spdx-sbom.mjs";
 import {
+  assertRegularArchiveTree,
+  validateArchiveEntries,
+} from "./archive-safety.mjs";
+import {
   requireDeveloperIdSignature,
   requireHardenedRuntime,
 } from "./code-signature.mjs";
@@ -114,8 +118,11 @@ const extracted = fs.mkdtempSync(
   path.join(os.tmpdir(), "louder-release-verify-"),
 );
 try {
+  const archiveListing = run("/usr/bin/unzip", ["-Z1", archive]);
+  validateArchiveEntries(archiveListing);
   run("/usr/bin/unzip", ["-tq", archive]);
   run("/usr/bin/ditto", ["-x", "-k", archive, extracted]);
+  assertRegularArchiveTree(extracted);
   const app = path.join(extracted, "Louder Bridge.app");
   if (!fs.existsSync(app)) {
     throw new Error("The release archive does not contain Louder Bridge.app.");
@@ -157,10 +164,10 @@ try {
   }
   const executableSignatures = new Map();
   for (const executable of [launcher, node]) {
-    const description = run("/usr/bin/file", [executable]);
-    if (!description.includes("arm64")) {
+    const architectures = run("/usr/bin/lipo", ["-archs", executable]).trim();
+    if (architectures !== "arm64") {
       throw new Error(
-        `${path.basename(executable)} is not an arm64 executable.`,
+        `${path.basename(executable)} is not an arm64-only executable.`,
       );
     }
     const signature = run("/usr/bin/codesign", [
