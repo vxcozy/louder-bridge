@@ -11,7 +11,7 @@ function rootPackage(sbom, metadata) {
 
 export function addBundledComponents(
   sbom,
-  { metadata, nodeVersion, nodeSha256 },
+  { metadata, nodeVersion, nodeSha256, sourceRevision },
 ) {
   const root = rootPackage(sbom, metadata);
   if (!root?.SPDXID) {
@@ -34,6 +34,12 @@ export function addBundledComponents(
   if (!/^[a-f0-9]{64}$/.test(nodeSha256 ?? "")) {
     throw new Error("The embedded Node.js checksum is invalid.");
   }
+  if (!/^[a-f0-9]{40}(?:\+dirty)?$/.test(sourceRevision ?? "")) {
+    throw new Error("The source revision is invalid.");
+  }
+
+  root.primaryPackagePurpose = "APPLICATION";
+  root.sourceInfo = `Built from Git revision ${sourceRevision}.`;
 
   sbom.packages.push(
     {

@@ -57,6 +57,10 @@ The build rejects signing identities that are not Developer ID Application
 certificates. An unset identity produces an ad hoc build for local testing
 only. Do not publish it.
 
+The SBOM records the exact Git revision. Ad hoc builds add a `+dirty` marker
+when the checkout has uncommitted changes. Developer ID builds require a clean
+checkout, and verification compares the SBOM revision with the current source.
+
 Final verification checks the app, launcher, and embedded Node.js runtime
 separately. All three must use the same Developer ID team, carry hardened
 runtime signatures, and include secure timestamps. The verifier also rejects

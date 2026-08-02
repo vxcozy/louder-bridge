@@ -11,6 +11,10 @@ import {
 import { compileNativeLauncher } from "../src/setup/native-launcher.mjs";
 import { addBundledComponents } from "./spdx-sbom.mjs";
 import {
+  requireCleanSignedSource,
+  sourceRevision,
+} from "./source-revision.mjs";
+import {
   requireDeveloperIdSignature,
   requireHardenedRuntime,
 } from "./code-signature.mjs";
@@ -33,6 +37,10 @@ if (process.platform !== "darwin" || process.arch !== "arm64") {
   throw new Error("Release bundles must be built on an Apple Silicon Mac.");
 }
 
+const identity = process.env.APPLE_SIGNING_IDENTITY;
+const revision = sourceRevision({ root });
+requireCleanSignedSource(revision, Boolean(identity));
+
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(stagingHome, { recursive: true });
 const transaction = installApplicationBundle({
@@ -46,7 +54,6 @@ compileNativeLauncher({
   output: transaction.launcher,
 });
 
-const identity = process.env.APPLE_SIGNING_IDENTITY;
 const signingIdentity = identity ?? "-";
 const signingOptions = [
   "--force",
@@ -136,6 +143,7 @@ const sbom = addBundledComponents(JSON.parse(generatedSbom.stdout), {
   metadata,
   nodeVersion: process.version,
   nodeSha256,
+  sourceRevision: revision,
 });
 fs.writeFileSync(sbomFile, `${JSON.stringify(sbom, null, 2)}\n`, {
   mode: 0o644,

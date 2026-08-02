@@ -7,6 +7,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bundledComponentIds } from "./spdx-sbom.mjs";
 import {
+  requireCleanSignedSource,
+  sourceRevision,
+} from "./source-revision.mjs";
+import {
   assertRegularArchiveTree,
   validateArchiveEntries,
 } from "./archive-safety.mjs";
@@ -28,6 +32,11 @@ const checksum = `${archive}.sha256`;
 const sbomFile = path.join(
   dist,
   `Louder-Bridge-${metadata.version}.spdx.json`,
+);
+const revision = sourceRevision({ root });
+requireCleanSignedSource(
+  revision,
+  process.env.LOUDER_REQUIRE_NOTARIZED === "1",
 );
 
 function run(command, args) {
@@ -66,15 +75,22 @@ const sbom = JSON.parse(fs.readFileSync(sbomFile, "utf8"));
 if (sbom.spdxVersion !== "SPDX-2.3" || !Array.isArray(sbom.packages)) {
   throw new Error("The release SBOM is not valid SPDX 2.3 JSON.");
 }
-if (
-  !sbom.packages.some(
-    (entry) =>
-      entry.name === metadata.name &&
-      entry.versionInfo === metadata.version,
-  )
-) {
+const projectPackage = sbom.packages.find(
+  (entry) =>
+    entry.name === metadata.name &&
+    entry.versionInfo === metadata.version,
+);
+if (!projectPackage) {
   throw new Error(
     "The release SBOM does not identify the package name and version.",
+  );
+}
+if (
+  projectPackage.primaryPackagePurpose !== "APPLICATION" ||
+  projectPackage.sourceInfo !== `Built from Git revision ${revision}.`
+) {
+  throw new Error(
+    "The release SBOM does not match this application source revision.",
   );
 }
 for (const [label, identifier] of Object.entries(bundledComponentIds)) {
@@ -91,11 +107,7 @@ const nodeChecksum = nodePackage?.checksums?.find(
 if (!/^[a-f0-9]{64}$/.test(nodeChecksum ?? "")) {
   throw new Error("The release SBOM does not contain the Node.js SHA-256.");
 }
-const rootSpdxId = sbom.packages.find(
-  (entry) =>
-    entry.name === metadata.name &&
-    entry.versionInfo === metadata.version,
-)?.SPDXID;
+const rootSpdxId = projectPackage.SPDXID;
 for (const [identifier, relationshipType] of [
   [bundledComponentIds.node, "CONTAINS"],
   [bundledComponentIds.protocol, "OTHER"],

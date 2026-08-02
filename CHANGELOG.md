@@ -96,6 +96,8 @@ have not shipped appear under "Unreleased."
 - SPDX SBOMs now identify the embedded Node.js runtime and the exact licensed
   protocol reference. The runtime entry includes the SHA-256 of the binary in
   the release archive.
+- SPDX SBOMs now identify the exact Git revision and mark development builds
+  made from a dirty checkout. Developer ID builds require clean source.
 - Notarized release verification now requires the app, launcher, and embedded
   runtime to share one Developer ID team and secure signing timestamps.
 - Release verification now rejects unsafe ZIP paths, links, special files,
