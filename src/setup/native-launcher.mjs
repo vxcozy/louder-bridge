@@ -61,6 +61,7 @@ export function compileNativeLauncher({
   output,
   platform = process.platform,
   arch = process.arch,
+  testBuild = false,
   run = spawnSync,
 } = {}) {
   if (platform !== "darwin" || arch !== "arm64") {
@@ -84,6 +85,7 @@ export function compileNativeLauncher({
       "-Wall",
       "-Wextra",
       "-Werror",
+      ...(testBuild ? ["-DLOUDER_TEST_BUILD=1"] : []),
       path.join(sourceRoot, "native", "launcher.m"),
       path.join(sourceRoot, "native", "micro_device.m"),
       "-framework",

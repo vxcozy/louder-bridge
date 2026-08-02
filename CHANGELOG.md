@@ -66,6 +66,10 @@ have not shipped appear under "Unreleased."
   releases the Micro, and reconnects after Codex quits.
 - Permission onboarding now stops after a five-minute wait, names the missing
   permission, and opens the matching System Settings pane.
+- Native test commands are now compiled only for automated test binaries.
+  Package verification rejects a release launcher that exposes one.
+- The standalone Input Monitoring request now reports a successful grant as
+  granted instead of treating its Boolean result as an access-state enum.
 - Interrupting source setup with SIGINT or SIGTERM now cancels permission
   onboarding and rolls back the app, hooks, agent, and token changes.
 - Failed or interrupted source setup now stops the replacement onboarding app

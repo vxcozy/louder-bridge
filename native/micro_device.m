@@ -290,6 +290,7 @@ static IOReturn send_payload(
   return kIOReturnSuccess;
 }
 
+#if defined(LOUDER_TEST_BUILD)
 int print_micro_frames(const char *transport, const char *payload) {
   @autoreleasepool {
     if (transport == NULL || payload == NULL) return 2;
@@ -322,6 +323,7 @@ int print_micro_frames(const char *transport, const char *payload) {
     return 0;
   }
 }
+#endif
 
 static BOOL allowed_method(NSString *method) {
   return
@@ -338,6 +340,7 @@ static BOOL valid_host_command(id object) {
     allowed_method(method);
 }
 
+#if defined(LOUDER_TEST_BUILD)
 int validate_micro_command(const char *payload) {
   @autoreleasepool {
     if (payload == NULL) return 2;
@@ -350,6 +353,7 @@ int validate_micro_command(const char *payload) {
     return error == nil && valid_host_command(object) ? 0 : 2;
   }
 }
+#endif
 
 static BOOL process_host_command(
   IOHIDDeviceRef device,

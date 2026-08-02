@@ -243,6 +243,35 @@ test("keeps the existing launcher when compilation fails", (context) => {
   assert.deepEqual(fs.readdirSync(directory), ["LouderBridge"]);
 });
 
+test("excludes native test interfaces from production launchers", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("The native launcher requires Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-production-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  compileNativeLauncher({ sourceRoot, output });
+
+  for (const args of [
+    ["--test-micro-frame", "usb", '{}'],
+    ["--test-micro-command", '{}'],
+    ["--test-composer-gesture", "hold"],
+    ["--test-permission-wait", "grant"],
+    ["--test-input-monitoring-request", "grant"],
+  ]) {
+    const result = spawnSync(output, args, { encoding: "utf8" });
+    assert.equal(result.status, 2, args[0]);
+    assert.match(result.stderr, /Unknown Louder Bridge option/, args[0]);
+  }
+});
+
 test("frames Codex Micro reports for USB and Bluetooth", (context) => {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
     context.skip("The native Codex Micro driver requires Apple Silicon.");
@@ -257,7 +286,7 @@ test("frames Codex Micro reports for USB and Bluetooth", (context) => {
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
-  compileNativeLauncher({ sourceRoot, output });
+  compileNativeLauncher({ sourceRoot, output, testBuild: true });
 
   const payload = '{"m":"x"}';
   const usb = spawnSync(
@@ -292,7 +321,7 @@ test("allows only the Codex Micro methods used by the bridge", (context) => {
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
-  compileNativeLauncher({ sourceRoot, output });
+  compileNativeLauncher({ sourceRoot, output, testBuild: true });
 
   for (const method of [
     "device.status",
@@ -333,7 +362,7 @@ test("uses complete clicks for toggle dictation controls", (context) => {
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
-  compileNativeLauncher({ sourceRoot, output });
+  compileNativeLauncher({ sourceRoot, output, testBuild: true });
 
   const hold = spawnSync(
     output,
@@ -366,7 +395,7 @@ test("writes permission probes only to private single-link files", (context) => 
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
-  compileNativeLauncher({ sourceRoot, output });
+  compileNativeLauncher({ sourceRoot, output, testBuild: true });
 
   const identifier = `${process.pid}.${randomUUID()}`;
   const probe = `/tmp/app.louder-bridge.permission.${identifier}`;
@@ -403,7 +432,7 @@ test("bounds permission onboarding while allowing a later grant", (context) => {
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
   );
-  compileNativeLauncher({ sourceRoot, output });
+  compileNativeLauncher({ sourceRoot, output, testBuild: true });
 
   const granted = spawnSync(output, ["--test-permission-wait", "grant"], {
     encoding: "utf8",
@@ -427,4 +456,19 @@ test("bounds permission onboarding while allowing a later grant", (context) => {
   assert.equal(deadline.status, 0);
   assert.equal(deadline.stdout.trim(), "timed-out 1");
   assert.equal(invalid.status, 2);
+
+  const requestGranted = spawnSync(
+    output,
+    ["--test-input-monitoring-request", "grant"],
+    { encoding: "utf8" },
+  );
+  const requestDenied = spawnSync(
+    output,
+    ["--test-input-monitoring-request", "deny"],
+    { encoding: "utf8" },
+  );
+  assert.equal(requestGranted.status, 0);
+  assert.equal(requestGranted.stdout.trim(), "granted");
+  assert.equal(requestDenied.status, 3);
+  assert.equal(requestDenied.stdout.trim(), "denied");
 });

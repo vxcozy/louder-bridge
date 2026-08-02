@@ -179,6 +179,23 @@ try {
   requireHardenedRuntime(appSignature, "Louder Bridge app");
   const launcher = path.join(app, "Contents", "MacOS", "LouderBridge");
   const node = path.join(app, "Contents", "MacOS", "node");
+  for (const args of [
+    ["--test-micro-frame", "usb", "{}"],
+    ["--test-micro-command", "{}"],
+    ["--test-composer-gesture", "hold"],
+    ["--test-permission-wait", "grant"],
+    ["--test-input-monitoring-request", "grant"],
+  ]) {
+    const result = spawnSync(launcher, args, { encoding: "utf8" });
+    if (
+      result.status !== 2 ||
+      !result.stderr?.includes("Unknown Louder Bridge option")
+    ) {
+      throw new Error(
+        `The release launcher exposes the ${args[0]} test interface.`,
+      );
+    }
+  }
   requireNativeHardening(
     run("/usr/bin/nm", ["-u", launcher]),
     "Louder Bridge launcher",

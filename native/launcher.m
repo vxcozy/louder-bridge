@@ -188,6 +188,7 @@ static Boolean composer_button_uses_toggle(ComposerButtonMode mode) {
   return mode == kComposerButtonToggle;
 }
 
+#if defined(LOUDER_TEST_BUILD)
 static int print_composer_gesture_plan(const char *mode) {
   ComposerButtonMode button_mode;
   if (strcmp(mode, "hold") == 0) {
@@ -204,6 +205,7 @@ static int print_composer_gesture_plan(const char *mode) {
   );
   return 0;
 }
+#endif
 
 static Boolean element_label_equals(
   AXUIElementRef element,
@@ -879,6 +881,7 @@ static Boolean fresh_accessibility_is_granted(
     probe.accessibility;
 }
 
+#if defined(LOUDER_TEST_BUILD)
 static int simulated_permission_checks = 0;
 static int simulated_permission_grant_after = 0;
 
@@ -918,6 +921,15 @@ static int test_permission_wait(const char *mode) {
     simulated_permission_checks
   );
   return 0;
+}
+#endif
+
+static int report_input_monitoring_request(
+  Boolean granted,
+  IOHIDAccessType final_access
+) {
+  puts(access_name(granted ? kIOHIDAccessTypeGranted : final_access));
+  return granted ? 0 : 3;
 }
 
 static Boolean request_input_monitoring(const char *executable) {
@@ -962,9 +974,29 @@ int main(int argc, char *argv[]) {
   if (argc == 3 && strcmp(argv[1], "--permission-probe") == 0) {
     return write_permission_probe(argv[2]);
   }
+#if defined(LOUDER_TEST_BUILD)
   if (argc == 3 && strcmp(argv[1], "--test-permission-wait") == 0) {
     return test_permission_wait(argv[2]);
   }
+  if (
+    argc == 3 &&
+    strcmp(argv[1], "--test-input-monitoring-request") == 0
+  ) {
+    if (strcmp(argv[2], "grant") == 0) {
+      return report_input_monitoring_request(
+        true,
+        kIOHIDAccessTypeDenied
+      );
+    }
+    if (strcmp(argv[2], "deny") == 0) {
+      return report_input_monitoring_request(
+        false,
+        kIOHIDAccessTypeDenied
+      );
+    }
+    return 2;
+  }
+#endif
   if (argc > 1 && strcmp(argv[1], "--permission-status-fresh") == 0) {
     char executable[PATH_MAX];
     if (resolve_executable(executable) != 0) return 1;
@@ -1000,6 +1032,7 @@ int main(int argc, char *argv[]) {
   if (argc > 1 && strcmp(argv[1], "--micro-device") == 0) {
     return run_micro_device();
   }
+#if defined(LOUDER_TEST_BUILD)
   if (
     argc == 4 &&
     strcmp(argv[1], "--test-micro-frame") == 0
@@ -1018,6 +1051,7 @@ int main(int argc, char *argv[]) {
   ) {
     return print_composer_gesture_plan(argv[2]);
   }
+#endif
   if (argc > 1 && strcmp(argv[1], "--input-monitoring-status-code") == 0) {
     IOHIDAccessType access =
       IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
@@ -1034,9 +1068,11 @@ int main(int argc, char *argv[]) {
   if (argc > 1 && strcmp(argv[1], "--request-input-monitoring") == 0) {
     char executable[PATH_MAX];
     if (resolve_executable(executable) != 0) return 1;
-    IOHIDAccessType access = request_input_monitoring(executable);
-    puts(access_name(access));
-    return access == kIOHIDAccessTypeGranted ? 0 : 3;
+    Boolean granted = request_input_monitoring(executable);
+    return report_input_monitoring_request(
+      granted,
+      IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+    );
   }
 
   char resolved[PATH_MAX];
