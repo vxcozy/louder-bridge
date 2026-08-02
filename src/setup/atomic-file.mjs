@@ -21,7 +21,11 @@ function fsyncDirectory(directory) {
   }
 }
 
-export function writeFileAtomic(filename, contents, { mode = 0o600 } = {}) {
+export function writeFileAtomic(
+  filename,
+  contents,
+  { mode = 0o600, beforeRename = () => {} } = {},
+) {
   const directory = path.dirname(filename);
   fs.mkdirSync(directory, { recursive: true });
   const temporary = temporaryPath(filename);
@@ -33,6 +37,7 @@ export function writeFileAtomic(filename, contents, { mode = 0o600 } = {}) {
     fs.fsyncSync(descriptor);
     fs.closeSync(descriptor);
     descriptor = undefined;
+    beforeRename();
     fs.renameSync(temporary, filename);
     fsyncDirectory(directory);
   } catch (error) {

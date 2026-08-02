@@ -76,6 +76,12 @@ Setup adds Louder Bridge command hooks to `~/.claude/settings.json`. It keeps
 unrelated settings and hooks, along with the existing file mode and any
 symbolic link at the settings path.
 
+Before it replaces an existing settings file, setup checks the path,
+filesystem identity, and contents again. If another process changed the file,
+setup merges its hooks into the new version. When the file does not exist,
+setup creates it without replacing anything that appears in the meantime.
+Five consecutive conflicts stop setup with an error.
+
 If failed setup needs to remove a settings file that it created, rollback
 checks the file and its bridge hooks first. A file that was replaced, cleared,
 or given other settings is left in place.

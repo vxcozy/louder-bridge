@@ -87,6 +87,9 @@ have not shipped appear under "Unreleased."
 - Failed setup deletes a newly created Claude settings file only when the file
   and its bridge hooks still match that setup transaction. A replaced or
   cleared file is left untouched.
+- Claude settings writes now check the target again immediately before
+  replacement. If another process creates or edits the file, setup retries
+  from the latest settings up to five times instead of overwriting them.
 - Release automation uses reviewed notes supplied by the maintainer instead of
   generated release copy.
 - Ended Claude sessions now release their Agent Key slot and in-memory session

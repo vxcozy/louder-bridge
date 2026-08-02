@@ -36,3 +36,24 @@ test("atomically creates a file without replacing a concurrent value", () => {
   assert.deepEqual(fs.readdirSync(directory), ["auth-token"]);
   fs.rmSync(directory, { recursive: true });
 });
+
+test("checks the destination immediately before atomic replacement", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-atomic-"),
+  );
+  const filename = path.join(directory, "settings.json");
+  fs.writeFileSync(filename, "original\n");
+
+  assert.throws(
+    () =>
+      writeFileAtomic(filename, "replacement\n", {
+        beforeRename() {
+          throw new Error("destination changed");
+        },
+      }),
+    /destination changed/,
+  );
+  assert.equal(fs.readFileSync(filename, "utf8"), "original\n");
+  assert.deepEqual(fs.readdirSync(directory), ["settings.json"]);
+  fs.rmSync(directory, { recursive: true });
+});

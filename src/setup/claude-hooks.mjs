@@ -6,7 +6,10 @@ import {
   BRIDGE_PORT,
   claudeSettingsPath,
 } from "../config.mjs";
-import { writeFileAtomic } from "./atomic-file.mjs";
+import {
+  writeFileAtomic,
+  writeFileAtomicIfAbsent,
+} from "./atomic-file.mjs";
 
 const HOOK_EVENTS = [
   "SessionStart",
@@ -18,6 +21,14 @@ const HOOK_EVENTS = [
   "SessionEnd",
 ];
 const HOOK_TAG = "# louder-bridge";
+const SETTINGS_WRITE_ATTEMPTS = 5;
+const SETTINGS_CONFLICT = "LOUDER_SETTINGS_CONFLICT";
+
+function settingsConflict(message, cause) {
+  const error = new Error(message, cause ? { cause } : undefined);
+  error.code = SETTINGS_CONFLICT;
+  return error;
+}
 
 function fileIdentity(entry) {
   return { device: entry.dev, inode: entry.ino };
@@ -172,7 +183,9 @@ function restoreBridgeHookGroups(settings, groupsByEvent) {
 }
 
 function readSettings(target) {
-  if (!target.existed) return { settings: {}, identity: null };
+  if (!target.existed) {
+    return { settings: {}, contents: null, identity: null };
+  }
   let descriptor;
   try {
     descriptor = fs.openSync(
@@ -190,8 +203,10 @@ function readSettings(target) {
         "Claude settings changed while Louder Bridge was reading it.",
       );
     }
+    const contents = fs.readFileSync(descriptor, "utf8");
     return {
-      settings: JSON.parse(fs.readFileSync(descriptor, "utf8")),
+      settings: JSON.parse(contents),
+      contents,
       identity: fileIdentity(metadata),
     };
   } finally {
@@ -199,12 +214,53 @@ function readSettings(target) {
   }
 }
 
-function writeSettings(target, settings) {
-  writeFileAtomic(
-    target.file,
-    `${JSON.stringify(settings, null, 2)}\n`,
-    { mode: target.mode },
-  );
+function requireUnchangedSettings(settingsFile, target, expected) {
+  let currentTarget;
+  let current;
+  try {
+    currentTarget = resolveSettingsTarget(settingsFile);
+    if (!currentTarget.existed || currentTarget.file !== target.file) {
+      throw settingsConflict(
+        "Claude settings changed location while Louder Bridge was updating it.",
+      );
+    }
+    current = readSettings(currentTarget);
+  } catch (error) {
+    if (error?.code === SETTINGS_CONFLICT) throw error;
+    throw settingsConflict(
+      "Claude settings changed while Louder Bridge was updating it.",
+      error,
+    );
+  }
+  if (
+    !sameFile(expected.identity, current.identity) ||
+    expected.contents !== current.contents
+  ) {
+    throw settingsConflict(
+      "Claude settings changed while Louder Bridge was updating it.",
+    );
+  }
+}
+
+function writeSettings(settingsFile, target, expected, settings) {
+  const contents = `${JSON.stringify(settings, null, 2)}\n`;
+  if (!target.existed) {
+    const created = writeFileAtomicIfAbsent(target.file, contents, {
+      mode: target.mode,
+    });
+    if (!created) {
+      throw settingsConflict(
+        "Claude settings appeared while Louder Bridge was creating it.",
+      );
+    }
+  } else {
+    writeFileAtomic(target.file, contents, {
+      mode: target.mode,
+      beforeRename() {
+        requireUnchangedSettings(settingsFile, target, expected);
+      },
+    });
+  }
   const installed = pathEntry(target.file);
   if (!installed?.isFile() || installed.isSymbolicLink()) {
     throw new Error("Claude settings changed before setup could finish.");
@@ -216,21 +272,40 @@ export function beginClaudeSettingsUpdate({
   remove = false,
   command,
   settingsFile = claudeSettingsPath(),
+  beforeWrite = () => {},
 } = {}) {
-  const target = resolveSettingsTarget(settingsFile);
-  const { settings } = readSettings(target);
-  const updated = remove
-    ? removeBridgeHooks(settings)
-    : addBridgeHooks(settings, command);
-  const installedIdentity = writeSettings(target, updated);
-  return {
-    settingsFile,
-    targetFile: target.file,
-    existed: target.existed,
-    previousBridgeHooks: bridgeHookGroups(settings),
-    installedBridgeHooks: bridgeHookGroups(updated),
-    installedIdentity,
-  };
+  for (let attempt = 1; attempt <= SETTINGS_WRITE_ATTEMPTS; attempt += 1) {
+    const target = resolveSettingsTarget(settingsFile);
+    const snapshot = readSettings(target);
+    const updated = remove
+      ? removeBridgeHooks(snapshot.settings)
+      : addBridgeHooks(snapshot.settings, command);
+    beforeWrite({ attempt, target, updated });
+    try {
+      const installedIdentity = writeSettings(
+        settingsFile,
+        target,
+        snapshot,
+        updated,
+      );
+      return {
+        settingsFile,
+        targetFile: target.file,
+        existed: target.existed,
+        previousBridgeHooks: bridgeHookGroups(snapshot.settings),
+        installedBridgeHooks: bridgeHookGroups(updated),
+        installedIdentity,
+      };
+    } catch (error) {
+      if (
+        error?.code !== SETTINGS_CONFLICT ||
+        attempt === SETTINGS_WRITE_ATTEMPTS
+      ) {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Louder Bridge could not update Claude settings.");
 }
 
 export function rollbackClaudeSettingsUpdate(transaction) {
@@ -269,7 +344,12 @@ export function rollbackClaudeSettingsUpdate(transaction) {
     fs.unlinkSync(target.file);
     return;
   }
-  writeSettings(target, restored);
+  writeSettings(
+    transaction.settingsFile,
+    target,
+    currentState,
+    restored,
+  );
 }
 
 export function updateClaudeSettings({
