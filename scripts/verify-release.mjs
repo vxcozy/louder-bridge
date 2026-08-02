@@ -19,6 +19,7 @@ import {
   requireDeveloperIdSignature,
   requireHardenedRuntime,
 } from "./code-signature.mjs";
+import { requireNativeHardening } from "./native-hardening.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -178,6 +179,10 @@ try {
   requireHardenedRuntime(appSignature, "Louder Bridge app");
   const launcher = path.join(app, "Contents", "MacOS", "LouderBridge");
   const node = path.join(app, "Contents", "MacOS", "node");
+  requireNativeHardening(
+    run("/usr/bin/nm", ["-u", launcher]),
+    "Louder Bridge launcher",
+  );
   const extractedNodeChecksum = createHash("sha256")
     .update(fs.readFileSync(node))
     .digest("hex");

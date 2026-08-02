@@ -90,6 +90,10 @@ The logger rejects symbolic links and multiply linked files during startup and
 while the agent is running. It changes file and directory permissions through
 open file descriptors.
 
+The native launcher is compiled with strong stack protection, fortified libc
+calls, and fatal compiler and linker warnings. Package verification checks the
+compiled binary for the required hardening symbols.
+
 The hook server requires a random bearer token. Setup stores it in the current
 user's Application Support directory with mode `0600`. The token is never
 written into Claude settings or the launch-agent property list. Creation is

@@ -112,5 +112,7 @@ have not shipped appear under "Unreleased."
 - Release verification now checks the project and protocol licenses against
   reviewed source files and rejects a missing or incomplete Node.js license.
 - Native release builds fail on compiler warnings.
+- Native builds now use strong stack protection and fortified library calls.
+  Release verification checks the resulting launcher binary.
 - Release tags must point to commits on the protected default branch, and CI
   audits production dependencies before packaging.
