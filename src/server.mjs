@@ -247,13 +247,16 @@ export async function startBridge({
     }
   }
 
-  function health() {
-    const deviceStatus = device?.status?.() ?? {
+  function currentDeviceStatus() {
+    return device?.status?.() ?? {
       state: deviceRequested
         ? (lastDeviceError ? "error" : "starting")
         : "inactive",
       error: lastDeviceError,
     };
+  }
+
+  function health() {
     return {
       ok: true,
       service: {
@@ -263,7 +266,7 @@ export async function startBridge({
         navigator: navigator.metadata(),
         voice: voice.status(),
         lastHookAt,
-        device: deviceStatus,
+        device: currentDeviceStatus(),
       },
       slots: slotStates(),
     };
@@ -361,6 +364,7 @@ export async function startBridge({
     server,
     connectDevice,
     disconnectDevice,
+    deviceStatus: currentDeviceStatus,
     health,
     setRuntimeStatus(nextStatus) {
       runtimeStatus = { ...runtimeStatus, ...nextStatus };

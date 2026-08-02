@@ -107,6 +107,8 @@ Then check the following:
 
 1. Open a local session in Claude Desktop's Code tab and focus its composer.
 2. Quit Codex so its built-in Micro integration cannot receive the same input.
+   If Louder Bridge reports the conflict, you do not need to restart anything;
+   it reconnects after Codex quits.
 3. Allow microphone access when macOS asks.
 4. Hold MIC long enough for the listening indicator to appear.
 5. Release MIC and confirm the indicator closes.

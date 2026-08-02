@@ -77,10 +77,10 @@ The bridge tracks local Claude Code sessions. It cannot track cloud or SSH
 sessions because their hooks run on another machine.
 
 ChatGPT is not required. Louder Bridge talks to the Micro through a bundled
-native macOS driver. Codex and Louder Bridge can both receive the same Micro
-input when both desktop apps are open. For predictable MIC and send behavior,
-quit Codex while testing or using the Micro with Claude. Quit Claude Desktop
-before returning to Codex; the background agent will then release the device.
+native macOS driver. If Codex and Claude are open when the Micro connects,
+Louder Bridge shows a warning and releases its device connection. Quit
+Codex and the bridge reconnects automatically. Quit Claude Desktop before
+returning to Codex so the bridge releases the Micro.
 
 ## Project status
 

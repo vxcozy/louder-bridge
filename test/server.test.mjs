@@ -56,6 +56,10 @@ test("reports service and device health", async (context) => {
   });
   context.after(() => bridge.stop());
   bridge.setRuntimeStatus({ claudeDesktop: "open" });
+  assert.deepEqual(bridge.deviceStatus(), {
+    state: "inactive",
+    error: null,
+  });
 
   assert.equal(bridge.server.requestTimeout, 5000);
   assert.equal(bridge.server.headersTimeout, 5000);

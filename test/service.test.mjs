@@ -54,11 +54,20 @@ test("detects the ChatGPT and Codex desktop process names", async () => {
 test("reports Micro input contention once for each app overlap", async () => {
   let codexIsRunning = true;
   const messages = [];
+  const deviceCalls = [];
+  let notices = 0;
   const statuses = [];
   const bridge = {
-    async connectDevice() {},
-    async disconnectDevice() {},
+    async connectDevice() {
+      deviceCalls.push("connect");
+    },
+    async disconnectDevice() {
+      deviceCalls.push("disconnect");
+    },
     async stop() {},
+    deviceStatus() {
+      return { state: "connected" };
+    },
     setRuntimeStatus(status) {
       statuses.push(status);
     },
@@ -68,6 +77,9 @@ test("reports Micro input contention once for each app overlap", async () => {
     checkCodex: async () => codexIsRunning,
     checkInputMonitoring: () => "granted",
     checkAccessibility: () => "granted",
+    notifyContention() {
+      notices += 1;
+    },
     createBridge: async () => bridge,
     authToken: "test-auth-token",
     pollInterval: 60_000,
@@ -86,13 +98,67 @@ test("reports Micro input contention once for each app overlap", async () => {
   await service.sync();
 
   assert.equal(
-    messages.filter((message) => message.includes("may reach both apps")).length,
+    messages.filter((message) => message.includes("give the Micro to Claude"))
+      .length,
     2,
   );
+  assert.equal(notices, 2);
+  assert.deepEqual(deviceCalls, [
+    "connect",
+    "disconnect",
+    "connect",
+    "disconnect",
+  ]);
   assert.deepEqual(statuses.at(-1), {
     claudeDesktop: "open",
     codexDesktop: "open",
   });
+  await service.stop();
+});
+
+test("waits for the Micro before reporting an app conflict", async () => {
+  let deviceState = "waiting";
+  let codexIsRunning = true;
+  const calls = [];
+  const bridge = {
+    async connectDevice() {
+      calls.push("connect");
+    },
+    async disconnectDevice() {
+      calls.push("disconnect");
+    },
+    async stop() {},
+    deviceStatus() {
+      return { state: deviceState };
+    },
+    setRuntimeStatus() {},
+  };
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => codexIsRunning,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    notifyContention() {
+      calls.push("notice");
+    },
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  assert.deepEqual(calls, ["connect"]);
+  await service.sync();
+  assert.deepEqual(calls, ["connect"]);
+
+  deviceState = "connected";
+  await service.sync();
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "notice", "disconnect"]);
+
+  codexIsRunning = false;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "notice", "disconnect", "connect"]);
   await service.stop();
 });
 

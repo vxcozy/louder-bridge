@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { inputMonitoringStatus } from "./macos/input-monitoring.mjs";
 import { accessibilityStatus } from "./macos/accessibility.mjs";
+import { showCodexContentionNotice } from "./macos/contention-notice.mjs";
 import { startBridge } from "./server.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -40,6 +41,7 @@ export async function startDesktopService({
   authToken,
   checkInputMonitoring = inputMonitoringStatus,
   checkAccessibility = accessibilityStatus,
+  notifyContention = showCodexContentionNotice,
   onPermissionGranted = () => process.kill(process.pid, "SIGTERM"),
 } = {}) {
   const bridge = await createBridge({
@@ -54,6 +56,7 @@ export async function startDesktopService({
   });
   let claudeWasRunning = false;
   let contentionWasActive = false;
+  let contentionNoticeShown = false;
   let deviceRequested = false;
   let previousPermission = null;
   let previousAccessibility = null;
@@ -104,9 +107,10 @@ export async function startDesktopService({
     const contentionIsActive = claudeIsRunning && codexIsRunning;
     if (contentionIsActive && !contentionWasActive) {
       logger.info(
-        "Codex is also open. MIC and send controls may reach both apps.",
+        "Codex is also open. Waiting to give the Micro to Claude.",
       );
     }
+    if (!contentionIsActive) contentionNoticeShown = false;
     contentionWasActive = contentionIsActive;
     if (
       !claudeIsRunning ||
@@ -125,6 +129,13 @@ export async function startDesktopService({
       claudeWasRunning = claudeIsRunning;
       return;
     }
+    if (contentionIsActive && contentionNoticeShown) {
+      if (deviceRequested) {
+        await bridge.disconnectDevice();
+        deviceRequested = false;
+      }
+      return;
+    }
     if (!deviceRequested) {
       if (!claudeWasRunning) {
         logger.info("Claude Desktop opened. Connecting Codex Micro...");
@@ -132,6 +143,20 @@ export async function startDesktopService({
       await bridge.connectDevice();
       deviceRequested = true;
       claudeWasRunning = true;
+    }
+    const microIsConnected =
+      bridge.deviceStatus?.().state === "connected";
+    if (contentionIsActive && microIsConnected) {
+      if (!contentionNoticeShown) {
+        contentionNoticeShown = true;
+        try {
+          notifyContention();
+        } catch {
+          logger.error("Could not show the Codex conflict notice.");
+        }
+      }
+      await bridge.disconnectDevice();
+      deviceRequested = false;
     }
   }
 

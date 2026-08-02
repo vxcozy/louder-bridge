@@ -62,6 +62,8 @@ have not shipped appear under "Unreleased."
   directories and rejects Downloads or App Translocation.
 - Release builds now run the packaged location preflight through the signed
   launcher before creating the ZIP.
+- When Codex and Claude are open together, the bridge now reports the conflict,
+  releases the Micro, and reconnects after Codex quits.
 - Interrupting source setup with SIGINT or SIGTERM now cancels permission
   onboarding and rolls back the app, hooks, agent, and token changes.
 - Failed or interrupted source setup now stops the replacement onboarding app

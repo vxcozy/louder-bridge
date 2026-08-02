@@ -342,8 +342,9 @@ entries and older log files.
   for Input Monitoring or Accessibility again after an upgrade.
 - The native driver uses an independently documented, MIT-licensed protocol
   implementation. Stable v1 requires a vendor-supported Work Louder interface.
-- Micro input and RGB writes can reach both Louder Bridge and Codex while both
-  desktop apps are open. Keep only the target app open for predictable control.
+- The native driver cannot claim exclusive ownership of the Micro. If Codex and
+  Claude are open together, Louder Bridge warns once and releases its device
+  connection until Codex quits.
 - Claude's resume URL is not part of Anthropic's public interface. Stable v1
   requires a supported navigation route.
 - Claude's Accessibility surface for dictation is not a published Anthropic

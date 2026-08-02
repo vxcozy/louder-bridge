@@ -504,10 +504,11 @@ if (command === "help" || command === "--help" || command === "-h") {
     console.log(`Node runtime: ${health.service?.nodeVersion ?? "unknown"}`);
     console.log(`Claude Desktop: ${health.service?.claudeDesktop ?? "unknown"}`);
     const codexDesktop = health.service?.codexDesktop ?? "unknown";
+    const claudeDesktop = health.service?.claudeDesktop ?? "unknown";
     console.log(
       `Codex: ${codexDesktop}${
-        codexDesktop === "open"
-          ? " (MIC and send controls may reach both apps)"
+        codexDesktop === "open" && claudeDesktop === "open"
+          ? " (Micro paused until Codex quits)"
           : ""
       }`,
     );

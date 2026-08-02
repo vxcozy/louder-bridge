@@ -202,6 +202,10 @@ Louder Bridge connect at the same time, but the apps do not coordinate input
 events or lighting writes. A MIC or send press can reach both apps, and the
 last lighting write wins.
 
+When the bridge finds a connected Micro while both desktop apps are open, it
+shows one conflict notice and releases the device. It stays disconnected until
+Codex quits, then reconnects to the Micro without restarting Claude.
+
 For predictable controls and lighting, keep one desktop app open at a time:
 
 - Open Claude Desktop while working in Claude.

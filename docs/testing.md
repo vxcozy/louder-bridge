@@ -90,6 +90,16 @@ testing Claude.
    test after each restart.
 14. Run the complete test once over USB-C and once over Bluetooth.
 
+## Check the Codex conflict handoff
+
+1. Start with Claude Desktop open, Codex closed, and the Micro connected.
+2. Open Codex. Confirm Louder Bridge shows one conflict notice and clears its
+   Agent Key lighting.
+3. Leave both apps open for ten seconds. Confirm the notice does not repeat and
+   Louder Bridge does not reconnect to the Micro.
+4. Quit Codex. Confirm the bridge reconnects, restores the Claude session
+   lighting, and handles MIC and send without an app or agent restart.
+
 Do not infer transcript success from bridge logs. The logs prove only that MIC
 edges arrived and Claude's dictation control changed state. A tester must
 confirm that the spoken sentence appears in the correct composer.
@@ -119,7 +129,8 @@ The following focused test passed over Bluetooth on August 2, 2026:
 Codex was closed for the passing run. With Codex open, the same voice input
 was also delivered to Codex, which made the Claude result appear to fail. This
 is a focused development-build result, not a completed release qualification.
-Double-tap latching, the visible Cowork composer route, approval prompts,
+The new conflict notice and automatic handoff have not passed a physical run
+yet. Double-tap latching, the visible Cowork composer route, approval prompts,
 USB-C, power cycling, and the rest of this checklist remain open.
 
 ## Check failure recovery
