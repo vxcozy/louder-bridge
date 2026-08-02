@@ -60,6 +60,8 @@ have not shipped appear under "Unreleased."
   Claude settings, and IPv6 loopback URLs are formatted correctly.
 - Status now distinguishes permission onboarding from a stopped background
   agent.
+- The source compatibility check now verifies the compiler and macOS SDK before
+  setup. Installed-app checks still verify the bundled driver itself.
 - Setup, activation, and uninstall rollback only their own Claude hooks. They
   preserve unrelated settings written while the operation is running.
 

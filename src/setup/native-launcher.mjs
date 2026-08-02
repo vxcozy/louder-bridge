@@ -14,6 +14,48 @@ function runChecked(command, args, run) {
   return result;
 }
 
+export function inspectNativeBuildTools({
+  platform = process.platform,
+  arch = process.arch,
+  run = spawnSync,
+} = {}) {
+  if (platform !== "darwin" || arch !== "arm64") {
+    return {
+      available: false,
+      compiler: null,
+      sdk: null,
+      error: "Native build tools require macOS on Apple Silicon.",
+    };
+  }
+  const compiler = run("/usr/bin/xcrun", ["--find", "clang"], {
+    encoding: "utf8",
+  });
+  const sdk = run("/usr/bin/xcrun", ["--show-sdk-path"], {
+    encoding: "utf8",
+  });
+  const compilerPath = compiler.stdout?.trim();
+  const sdkPath = sdk.stdout?.trim();
+  if (
+    compiler.status !== 0 ||
+    sdk.status !== 0 ||
+    !compilerPath ||
+    !sdkPath
+  ) {
+    return {
+      available: false,
+      compiler: null,
+      sdk: null,
+      error: "Install Apple's Command Line Tools before running setup.",
+    };
+  }
+  return {
+    available: true,
+    compiler: compilerPath,
+    sdk: sdkPath,
+    error: null,
+  };
+}
+
 export function compileNativeLauncher({
   sourceRoot,
   output,

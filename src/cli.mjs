@@ -37,6 +37,7 @@ import {
 } from "./setup/auth-token.mjs";
 import {
   compileNativeLauncherAtomically,
+  inspectNativeBuildTools,
   signLocalApplication,
 } from "./setup/native-launcher.mjs";
 import {
@@ -80,6 +81,8 @@ async function doctor() {
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   const metadata = applicationMetadata();
   const driver = inspectNativeMicroRuntime();
+  const installedRuntime = Boolean(process.env.LOUDER_BRIDGE_LAUNCHER);
+  const buildTools = installedRuntime ? null : inspectNativeBuildTools();
   const permission = inputMonitoringStatus();
   const accessibility = accessibilityStatus();
   const platform = platformSupport();
@@ -101,11 +104,17 @@ async function doctor() {
     );
   }
   console.log(`Codex Micro driver: ${driver.id} (${driver.support}).`);
-  if (!driver.available) {
-    console.log(`Codex Micro driver check: ${driver.error}`);
+  if (driver.available) {
+    console.log("Codex Micro driver check: ready.");
+  } else if (!installedRuntime && buildTools?.available) {
+    console.log("Codex Micro driver check: ready to build during setup.");
+    console.log("Native build tools: ready.");
+  } else if (!installedRuntime) {
+    console.log(`Native build tools: ${buildTools?.error ?? "unavailable"}`);
     ready = false;
   } else {
-    console.log("Codex Micro driver check: ready.");
+    console.log(`Codex Micro driver check: ${driver.error}`);
+    ready = false;
   }
   console.log(`Input Monitoring: ${permission}.`);
   if (permission === "denied") ready = false;

@@ -8,8 +8,70 @@ import { fileURLToPath } from "node:url";
 import {
   compileNativeLauncher,
   compileNativeLauncherAtomically,
+  inspectNativeBuildTools,
   signLocalApplication,
 } from "../src/setup/native-launcher.mjs";
+
+test("checks the compiler and macOS SDK before source setup", () => {
+  const calls = [];
+  const tools = inspectNativeBuildTools({
+    platform: "darwin",
+    arch: "arm64",
+    run(command, args, options) {
+      calls.push({ command, args, options });
+      return {
+        status: 0,
+        stdout:
+          args[0] === "--find"
+            ? "/usr/bin/clang\n"
+            : "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk\n",
+      };
+    },
+  });
+
+  assert.deepEqual(tools, {
+    available: true,
+    compiler: "/usr/bin/clang",
+    sdk: "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+    error: null,
+  });
+  assert.deepEqual(calls, [
+    {
+      command: "/usr/bin/xcrun",
+      args: ["--find", "clang"],
+      options: { encoding: "utf8" },
+    },
+    {
+      command: "/usr/bin/xcrun",
+      args: ["--show-sdk-path"],
+      options: { encoding: "utf8" },
+    },
+  ]);
+});
+
+test("reports missing source build tools before setup", () => {
+  const missing = inspectNativeBuildTools({
+    platform: "darwin",
+    arch: "arm64",
+    run: () => ({ status: 1, stdout: "" }),
+  });
+  assert.equal(missing.available, false);
+  assert.match(missing.error, /Install Apple's Command Line Tools/);
+
+  const incomplete = inspectNativeBuildTools({
+    platform: "darwin",
+    arch: "arm64",
+    run: () => ({ status: 0, stdout: "" }),
+  });
+  assert.equal(incomplete.available, false);
+
+  const unsupported = inspectNativeBuildTools({
+    platform: "darwin",
+    arch: "x64",
+  });
+  assert.equal(unsupported.available, false);
+  assert.match(unsupported.error, /Apple Silicon/);
+});
 
 test("compiles the launcher for the supported deployment target", () => {
   const calls = [];

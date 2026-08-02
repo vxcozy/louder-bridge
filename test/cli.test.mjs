@@ -31,6 +31,21 @@ test("prints the package version", () => {
   assert.equal(result.stdout.trim(), "0.1.0");
 });
 
+test("checks source build tools before the native driver is installed", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("Source setup requires Apple Silicon macOS.");
+    return;
+  }
+  const result = run(["doctor"]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(
+    result.stdout,
+    /Codex Micro driver check: ready to build during setup\./,
+  );
+  assert.match(result.stdout, /Native build tools: ready\./);
+  assert.match(result.stdout, /Result: ready\./);
+});
+
 test("uses exit code 2 for an unknown command or simulated state", () => {
   const unknown = run(["not-a-command"]);
   assert.equal(unknown.status, 2);
