@@ -67,22 +67,34 @@ function resolveSettingsTarget(settingsFile) {
     throw error;
   }
 
-  let file = settingsFile;
-  if (entry.isSymbolicLink()) {
-    try {
-      file = fs.realpathSync(settingsFile);
-    } catch (error) {
-      throw new Error(
-        `Claude settings points to a missing file: ${settingsFile}`,
-        { cause: error },
-      );
-    }
+  let file;
+  try {
+    file = fs.realpathSync(settingsFile);
     entry = fs.statSync(file);
+  } catch (error) {
+    if (!["ENOENT", "ENOTDIR"].includes(error?.code)) {
+      throw new Error("Claude settings path could not be resolved.", {
+        cause: error,
+      });
+    }
+    throw new Error(
+      `Claude settings points to a missing file: ${settingsFile}`,
+      { cause: error },
+    );
   }
   if (!entry.isFile()) {
     throw new Error(`Claude settings is not a regular file: ${settingsFile}`);
   }
   return { file, existed: true, mode: entry.mode & 0o777 };
+}
+
+function prepareMissingSettingsTarget(target) {
+  const directory = path.dirname(target.file);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return {
+    ...target,
+    file: path.join(fs.realpathSync(directory), path.basename(target.file)),
+  };
 }
 
 function shellQuote(value) {
@@ -262,6 +274,28 @@ function requireUnchangedSettings(
   }
 }
 
+function requireMissingSettingsLocation(settingsFile, target) {
+  let currentTarget;
+  try {
+    currentTarget = resolveSettingsTarget(settingsFile);
+    const currentFile = path.join(
+      fs.realpathSync(path.dirname(currentTarget.file)),
+      path.basename(currentTarget.file),
+    );
+    if (currentTarget.existed || currentFile !== target.file) {
+      throw settingsConflict(
+        "Claude settings changed location while Louder Bridge was creating it.",
+      );
+    }
+  } catch (error) {
+    if (error?.code === SETTINGS_CONFLICT) throw error;
+    throw settingsConflict(
+      "Claude settings changed while Louder Bridge was creating it.",
+      error,
+    );
+  }
+}
+
 function writeSettings(
   settingsFile,
   target,
@@ -274,6 +308,9 @@ function writeSettings(
   if (!target.existed) {
     const created = writeFileAtomicIfAbsent(target.file, contents, {
       mode: target.mode,
+      beforeLink() {
+        requireMissingSettingsLocation(settingsFile, target);
+      },
     });
     if (!created) {
       throw settingsConflict(
@@ -331,8 +368,34 @@ export function beginClaudeSettingsUpdate({
   expectedUserId = currentUserId(),
 } = {}) {
   for (let attempt = 1; attempt <= SETTINGS_WRITE_ATTEMPTS; attempt += 1) {
-    const target = resolveSettingsTarget(settingsFile);
+    let target = resolveSettingsTarget(settingsFile);
+    if (!target.existed && remove) {
+      return {
+        settingsFile,
+        targetFile: target.file,
+        existed: false,
+        previousBridgeHooks: {},
+        installedBridgeHooks: {},
+        installedIdentity: null,
+        expectedUserId,
+        changed: false,
+      };
+    }
+    if (!target.existed) target = prepareMissingSettingsTarget(target);
     const snapshot = readSettings(target, expectedUserId);
+    const previousBridgeHooks = bridgeHookGroups(snapshot.settings);
+    if (remove && Object.keys(previousBridgeHooks).length === 0) {
+      return {
+        settingsFile,
+        targetFile: target.file,
+        existed: true,
+        previousBridgeHooks,
+        installedBridgeHooks: previousBridgeHooks,
+        installedIdentity: snapshot.identity,
+        expectedUserId,
+        changed: false,
+      };
+    }
     const updated = remove
       ? removeBridgeHooks(snapshot.settings)
       : addBridgeHooks(snapshot.settings, command);
@@ -350,10 +413,11 @@ export function beginClaudeSettingsUpdate({
         settingsFile,
         targetFile: target.file,
         existed: target.existed,
-        previousBridgeHooks: bridgeHookGroups(snapshot.settings),
+        previousBridgeHooks,
         installedBridgeHooks: bridgeHookGroups(updated),
         installedIdentity,
         expectedUserId,
+        changed: true,
       };
     } catch (error) {
       if (
@@ -368,7 +432,7 @@ export function beginClaudeSettingsUpdate({
 }
 
 export function rollbackClaudeSettingsUpdate(transaction) {
-  if (!transaction) return;
+  if (!transaction || transaction.changed === false) return;
   const target = resolveSettingsTarget(transaction.settingsFile);
   if (!target.existed || target.file !== transaction.targetFile) {
     throw new Error(

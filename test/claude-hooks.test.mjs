@@ -110,6 +110,112 @@ test("updates a symlinked settings file without replacing the symlink", () => {
   fs.rmSync(directory, { recursive: true });
 });
 
+test("creates settings safely through a symlinked configuration directory", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const managedDirectory = path.join(directory, "managed");
+  const configDirectory = path.join(directory, "config");
+  fs.mkdirSync(managedDirectory);
+  fs.symlinkSync(managedDirectory, configDirectory);
+  const settingsFile = path.join(configDirectory, "settings.json");
+
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/node' '/hook.mjs' # louder-bridge",
+  });
+
+  const managedSettings = path.join(managedDirectory, "settings.json");
+  assert.equal(fs.lstatSync(configDirectory).isSymbolicLink(), true);
+  assert.equal(transaction.targetFile, fs.realpathSync(managedSettings));
+  assert.equal(transaction.existed, false);
+  assert.equal(transaction.changed, true);
+  assert.equal(
+    JSON.parse(fs.readFileSync(managedSettings, "utf8"))
+      .hooks.Stop[0].hooks[0].command.includes("hook.mjs"),
+    true,
+  );
+
+  rollbackClaudeSettingsUpdate(transaction);
+  assert.equal(fs.existsSync(managedSettings), false);
+  assert.equal(fs.lstatSync(configDirectory).isSymbolicLink(), true);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("retries creation if the configuration-directory symlink moves", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const firstDirectory = path.join(directory, "first");
+  const secondDirectory = path.join(directory, "second");
+  const configDirectory = path.join(directory, "config");
+  fs.mkdirSync(firstDirectory);
+  fs.mkdirSync(secondDirectory);
+  fs.symlinkSync(firstDirectory, configDirectory);
+  const settingsFile = path.join(configDirectory, "settings.json");
+
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/node' '/hook.mjs' # louder-bridge",
+    beforeWrite({ attempt }) {
+      if (attempt === 1) {
+        fs.unlinkSync(configDirectory);
+        fs.symlinkSync(secondDirectory, configDirectory);
+      }
+    },
+  });
+
+  assert.deepEqual(fs.readdirSync(firstDirectory), []);
+  const installed = path.join(secondDirectory, "settings.json");
+  assert.equal(transaction.targetFile, fs.realpathSync(installed));
+  assert.equal(transaction.existed, false);
+  assert.equal(transaction.changed, true);
+  assert.equal(
+    JSON.parse(fs.readFileSync(installed, "utf8"))
+      .hooks.Stop[0].hooks[0].command.includes("hook.mjs"),
+    true,
+  );
+
+  rollbackClaudeSettingsUpdate(transaction);
+  assert.equal(fs.existsSync(installed), false);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("does not create Claude settings when there are no hooks to remove", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    remove: true,
+  });
+
+  assert.equal(transaction.changed, false);
+  assert.equal(fs.existsSync(settingsFile), false);
+  rollbackClaudeSettingsUpdate(transaction);
+  assert.equal(fs.existsSync(settingsFile), false);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("does not rewrite settings that contain no bridge hooks", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const original = '{ "theme": "light" }\n';
+  fs.writeFileSync(settingsFile, original, { mode: 0o640 });
+  const originalIdentity = fs.statSync(settingsFile).ino;
+
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    remove: true,
+  });
+
+  assert.equal(transaction.changed, false);
+  assert.equal(fs.readFileSync(settingsFile, "utf8"), original);
+  assert.equal(fs.statSync(settingsFile).ino, originalIdentity);
+  assert.equal(fs.statSync(settingsFile).mode & 0o777, 0o640);
+
+  fs.writeFileSync(settingsFile, '{"theme":"dark"}\n');
+  rollbackClaudeSettingsUpdate(transaction);
+  assert.equal(fs.readFileSync(settingsFile, "utf8"), '{"theme":"dark"}\n');
+  fs.rmSync(directory, { recursive: true });
+});
+
 test("retries an update after another process replaces Claude settings", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
   const settingsFile = path.join(directory, "settings.json");
@@ -216,6 +322,19 @@ test("rejects a broken Claude settings symlink", () => {
   assert.throws(
     () => updateClaudeSettings({ settingsFile, command: "bridge hook" }),
     /points to a missing file/,
+  );
+  assert.equal(fs.lstatSync(settingsFile).isSymbolicLink(), true);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rejects a Claude settings symlink loop", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  fs.symlinkSync(settingsFile, settingsFile);
+
+  assert.throws(
+    () => updateClaudeSettings({ settingsFile, command: "bridge hook" }),
+    /settings path could not be resolved/,
   );
   assert.equal(fs.lstatSync(settingsFile).isSymbolicLink(), true);
   fs.rmSync(directory, { recursive: true });

@@ -81,6 +81,11 @@ rejects hard links and JSON roots other than an object. A symbolic link at the
 standard settings path remains supported when its target meets those checks.
 Setup leaves the file unchanged if a check fails.
 
+If hook removal finds no settings file or no Louder Bridge hooks, it changes
+nothing. For a symlinked configuration directory, setup resolves the target
+before creating settings and checks the link again immediately before
+creation.
+
 Before it replaces an existing settings file, setup checks the path,
 filesystem identity, and contents again. If another process changed the file,
 setup merges its hooks into the new version. When the file does not exist,

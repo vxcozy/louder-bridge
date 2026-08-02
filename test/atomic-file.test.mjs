@@ -57,3 +57,23 @@ test("checks the destination immediately before atomic replacement", () => {
   assert.deepEqual(fs.readdirSync(directory), ["settings.json"]);
   fs.rmSync(directory, { recursive: true });
 });
+
+test("checks the destination immediately before atomic creation", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-atomic-"),
+  );
+  const filename = path.join(directory, "settings.json");
+
+  assert.throws(
+    () =>
+      writeFileAtomicIfAbsent(filename, "created\n", {
+        beforeLink() {
+          throw new Error("destination changed");
+        },
+      }),
+    /destination changed/,
+  );
+  assert.equal(fs.existsSync(filename), false);
+  assert.deepEqual(fs.readdirSync(directory), []);
+  fs.rmSync(directory, { recursive: true });
+});

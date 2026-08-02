@@ -58,7 +58,7 @@ export function writeFileAtomic(
 export function writeFileAtomicIfAbsent(
   filename,
   contents,
-  { mode = 0o600 } = {},
+  { mode = 0o600, beforeLink = () => {} } = {},
 ) {
   const directory = path.dirname(filename);
   fs.mkdirSync(directory, { recursive: true });
@@ -72,6 +72,7 @@ export function writeFileAtomicIfAbsent(
     fs.fsyncSync(descriptor);
     fs.closeSync(descriptor);
     descriptor = undefined;
+    beforeLink();
     try {
       fs.linkSync(temporary, filename);
       created = true;

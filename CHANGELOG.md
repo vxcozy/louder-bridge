@@ -92,6 +92,10 @@ have not shipped appear under "Unreleased."
   from the latest settings up to five times instead of overwriting them.
 - Setup now rejects Claude settings files that are hard linked, owned by
   another user, or contain a JSON root other than an object.
+- Hook removal no longer creates an empty Claude settings file or rewrites a
+  file that has no Louder Bridge hooks.
+- Settings creation now resolves symlinked configuration directories and
+  checks the destination again immediately before creating the file.
 - Release automation uses reviewed notes supplied by the maintainer instead of
   generated release copy.
 - Ended Claude sessions now release their Agent Key slot and in-memory session
