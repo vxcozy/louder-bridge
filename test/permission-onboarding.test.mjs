@@ -41,7 +41,9 @@ test("opens the installed app for permission onboarding", async () => {
 
 test("can wait for onboarding to finish before committing setup", async () => {
   const calls = [];
+  const controller = new AbortController();
   await openOnboardingApplication("/Applications/Louder Bridge.app", {
+    signal: controller.signal,
     waitForExit: true,
     async run(command, args, options) {
       calls.push({ command, args, options });
@@ -52,7 +54,7 @@ test("can wait for onboarding to finish before committing setup", async () => {
     {
       command: "/usr/bin/open",
       args: ["-W", "-n", "/Applications/Louder Bridge.app"],
-      options: {},
+      options: { signal: controller.signal },
     },
   ]);
 });

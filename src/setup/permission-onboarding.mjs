@@ -12,10 +12,11 @@ export function needsPermissionOnboarding({
 
 export async function openOnboardingApplication(
   app,
-  { run = execFileAsync, waitForExit = false } = {},
+  { run = execFileAsync, signal, waitForExit = false } = {},
 ) {
   const args = waitForExit ? ["-W", "-n", app] : ["-n", app];
   const options = waitForExit ? {} : { timeout: 5000 };
+  if (signal) options.signal = signal;
   try {
     await run("/usr/bin/open", args, options);
   } catch (error) {

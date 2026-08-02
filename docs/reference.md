@@ -237,6 +237,7 @@ names, tool data, or transcripts. The health response omits session IDs.
 | `src/setup/application-bundle.mjs` | Self-contained app installation and rollback |
 | `src/setup/permission-onboarding.mjs` | Permission gate and first-launch handoff |
 | `src/setup/installed-status.mjs` | Offline app version and permission diagnostics |
+| `src/setup/transaction-signals.mjs` | Signal handling for interrupted source setup |
 | `src/setup/auth-token.mjs` | Local authentication-token lifecycle |
 | `src/logging.mjs` | Private bounded log files |
 

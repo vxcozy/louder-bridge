@@ -46,6 +46,7 @@ import {
   openOnboardingApplication,
 } from "./setup/permission-onboarding.mjs";
 import { installedApplicationStatus } from "./setup/installed-status.mjs";
+import { runInterruptibleSetup } from "./setup/transaction-signals.mjs";
 import {
   onboardingApplicationIsRunning,
   stopOnboardingApplication,
@@ -196,90 +197,110 @@ if (command === "help" || command === "--help" || command === "-h") {
   let settingsTransaction;
   let agent;
   let stoppedOnboarding = false;
-  try {
-    authentication = ensureAuthToken();
-    application = installApplicationBundle({
-      beforeReplace() {
-        stoppedOnboarding = stopOnboardingApplication();
+  const { error: setupError, signal: setupSignal } =
+    await runInterruptibleSetup({
+      async operation(signal) {
+        authentication = ensureAuthToken();
+        application = installApplicationBundle({
+          beforeReplace() {
+            stoppedOnboarding = stopOnboardingApplication();
+          },
+          prepare(staged) {
+            const sourceRoot = path.resolve(
+              path.dirname(fileURLToPath(import.meta.url)),
+              "..",
+            );
+            compileNativeLauncherAtomically({
+              sourceRoot,
+              output: staged.launcher,
+            });
+            signLocalApplication({
+              ...staged,
+              entitlements: path.join(
+                sourceRoot,
+                "release",
+                "node.entitlements.plist",
+              ),
+            });
+          },
+        });
+        settingsTransaction = beginClaudeSettingsUpdate({
+          command: bridgeHookCommand({
+            nodePath: application.node,
+            hookPath: application.hook,
+          }),
+        });
+        file = settingsTransaction.settingsFile;
+        agent = removeLaunchAgent();
+        await openOnboardingApplication(application.app, {
+          signal,
+          waitForExit: true,
+        });
+        if (!waitForLaunchAgent()) {
+          throw new Error(
+            "Louder Bridge closed before the background agent was ready.",
+          );
+        }
       },
-      prepare(staged) {
-        const sourceRoot = path.resolve(
-          path.dirname(fileURLToPath(import.meta.url)),
-          "..",
-        );
-        compileNativeLauncherAtomically({
-          sourceRoot,
-          output: staged.launcher,
-        });
-        signLocalApplication({
-          ...staged,
-          entitlements: path.join(
-            sourceRoot,
-            "release",
-            "node.entitlements.plist",
-          ),
-        });
+      async rollback(error) {
+        if (settingsTransaction) {
+          attemptRollback(
+            error,
+            "Claude settings could not be restored",
+            () => rollbackClaudeSettingsUpdate(settingsTransaction),
+          );
+        }
+        if (application) {
+          attemptRollback(
+            error,
+            "The previous app could not be restored",
+            () => rollbackApplicationBundle(application),
+          );
+        }
+        if (agent?.removed) {
+          attemptRollback(
+            error,
+            "The previous background agent could not be restored",
+            () => restoreRemovedLaunchAgent(agent),
+          );
+        }
+        if (stoppedOnboarding) {
+          try {
+            await openOnboardingApplication(installedApp);
+          } catch (rollbackError) {
+            error.message += ` The previous onboarding app could not be reopened: ${rollbackError.message}`;
+          }
+        }
+        if (authentication?.created) {
+          attemptRollback(
+            error,
+            "The new authentication token could not be removed",
+            () => removeAuthToken(),
+          );
+        }
       },
     });
-    settingsTransaction = beginClaudeSettingsUpdate({
-      command: bridgeHookCommand({
-        nodePath: application.node,
-        hookPath: application.hook,
-      }),
-    });
-    file = settingsTransaction.settingsFile;
-    agent = removeLaunchAgent();
-    await openOnboardingApplication(application.app, { waitForExit: true });
-    if (!waitForLaunchAgent()) {
-      throw new Error(
-        "Louder Bridge closed before the background agent was ready.",
+  if (setupError) {
+    if (setupSignal) {
+      console.error("Setup stopped. Its changes were rolled back.");
+      process.exitCode = setupSignal === "SIGINT" ? 130 : 143;
+    } else {
+      console.error(`Setup failed: ${setupError.message}`);
+      process.exitCode = 1;
+    }
+  } else {
+    try {
+      commitApplicationBundle(application);
+    } catch (error) {
+      console.warn(
+        `Could not remove the previous application backup: ${error.message}`,
       );
     }
-  } catch (error) {
-    if (settingsTransaction) {
-      attemptRollback(error, "Claude settings could not be restored", () => {
-        rollbackClaudeSettingsUpdate(settingsTransaction);
-      });
-    }
-    if (application) {
-      attemptRollback(error, "The previous app could not be restored", () => {
-        rollbackApplicationBundle(application);
-      });
-    }
-    if (agent?.removed) {
-      attemptRollback(
-        error,
-        "The previous background agent could not be restored",
-        () => restoreRemovedLaunchAgent(agent),
-      );
-    }
-    if (stoppedOnboarding) {
-      try {
-        await openOnboardingApplication(installedApp);
-      } catch (rollbackError) {
-        error.message += ` The previous onboarding app could not be reopened: ${rollbackError.message}`;
-      }
-    }
-    if (authentication?.created) {
-      attemptRollback(
-        error,
-        "The new authentication token could not be removed",
-        () => removeAuthToken(),
-      );
-    }
-    throw error;
+    console.log(`Application installed in ${application.app}.`);
+    console.log(`Claude Code hooks installed in ${file}.`);
+    console.log(`Background agent installed in ${launchAgentPaths().plist}.`);
+    console.log("Louder Bridge will connect when Claude Desktop opens.");
   }
-  try {
-    commitApplicationBundle(application);
-  } catch (error) {
-    console.warn(
-      `Could not remove the previous application backup: ${error.message}`,
-    );
-  }
-  console.log(`Application installed in ${application.app}.`);
-  console.log(`Claude Code hooks installed in ${file}.`);
-  console.log(`Background agent installed in ${launchAgentPaths().plist}.`);
-  console.log("Louder Bridge will connect when Claude Desktop opens.");
 } else if (command === "activate") {
   const runtime = applicationBundlePathsForCli(fileURLToPath(import.meta.url));
   const permission = inputMonitoringStatus({ launcher: runtime.launcher });
