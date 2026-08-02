@@ -125,6 +125,17 @@ if (
 if (!ciWorkflow.includes("npm ci") || !releaseWorkflow.includes("npm ci")) {
   failures.push("CI and release jobs must install from package-lock.json.");
 }
+if (
+  !ciWorkflow.includes("npm audit --omit=dev") ||
+  !releaseWorkflow.includes("npm audit --omit=dev")
+) {
+  failures.push("CI and release jobs must audit production dependencies.");
+}
+if (!releaseWorkflow.includes("LOUDER_RELEASE_BRANCH_REF:")) {
+  failures.push(
+    "The release workflow must verify tags against the default branch.",
+  );
+}
 if (!releaseWorkflow.includes("npm run release:credentials")) {
   failures.push("The release workflow must check signing credentials first.");
 }
@@ -208,6 +219,25 @@ if (
   failures.push(
     `Release tag ${process.env.GITHUB_REF_NAME} does not match package version ${metadata.version}.`,
   );
+}
+if (process.env.GITHUB_REF_TYPE === "tag") {
+  const branchRef = process.env.LOUDER_RELEASE_BRANCH_REF?.trim();
+  if (!branchRef) {
+    failures.push("The protected release branch reference is unavailable.");
+  } else {
+    const ancestry = spawnSync(
+      "/usr/bin/git",
+      ["merge-base", "--is-ancestor", "HEAD", branchRef],
+      { cwd: root, encoding: "utf8" },
+    );
+    if (ancestry.status === 1) {
+      failures.push(`The release tag commit is not part of ${branchRef}.`);
+    } else if (ancestry.status !== 0) {
+      failures.push(
+        `Could not verify the release tag against ${branchRef}: ${ancestry.stderr?.trim() || `exit ${ancestry.status}`}`,
+      );
+    }
+  }
 }
 if (metadata.engines?.node !== ">=22") {
   failures.push("package.json must require the supported Node baseline (>=22).");

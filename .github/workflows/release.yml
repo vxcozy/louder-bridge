@@ -12,6 +12,8 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     environment: production
+    env:
+      LOUDER_RELEASE_BRANCH_REF: origin/${{ github.event.repository.default_branch }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -37,6 +39,7 @@ jobs:
           npm test
           npm run authorship:check
           npm run security:check
+          npm audit --omit=dev
           npm run release:check
 
       - name: Import Developer ID certificate

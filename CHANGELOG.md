@@ -76,3 +76,5 @@ have not shipped appear under "Unreleased."
   protocol reference. The runtime entry includes the SHA-256 of the binary in
   the release archive.
 - Native release builds fail on compiler warnings.
+- Release tags must point to commits on the protected default branch, and CI
+  audits production dependencies before packaging.
