@@ -96,6 +96,8 @@ have not shipped appear under "Unreleased."
   file that has no Louder Bridge hooks.
 - Settings creation now resolves symlinked configuration directories and
   checks the destination again immediately before creating the file.
+- Setup now rejects Claude settings files larger than 16 MiB before reading or
+  parsing them.
 - Release automation uses reviewed notes supplied by the maintainer instead of
   generated release copy.
 - Ended Claude sessions now release their Agent Key slot and in-memory session

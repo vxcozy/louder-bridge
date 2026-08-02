@@ -7,6 +7,7 @@ import {
   addBridgeHooks,
   beginClaudeSettingsUpdate,
   bridgeHookCommand,
+  MAX_SETTINGS_BYTES,
   removeBridgeHooks,
   rollbackClaudeSettingsUpdate,
   updateClaudeSettings,
@@ -390,6 +391,23 @@ test("rejects Claude settings whose JSON root is not an object", () => {
     assert.equal(fs.readFileSync(settingsFile, "utf8"), contents);
     fs.rmSync(directory, { recursive: true });
   }
+});
+
+test("rejects oversized Claude settings without reading or replacing them", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  fs.writeFileSync(settingsFile, "{}\n");
+  fs.truncateSync(settingsFile, MAX_SETTINGS_BYTES + 1);
+  const before = fs.statSync(settingsFile);
+
+  assert.throws(
+    () => updateClaudeSettings({ settingsFile, command: "bridge hook" }),
+    /exceeds the 16 MiB setup limit/,
+  );
+  const after = fs.statSync(settingsFile);
+  assert.equal(after.ino, before.ino);
+  assert.equal(after.size, MAX_SETTINGS_BYTES + 1);
+  fs.rmSync(directory, { recursive: true });
 });
 
 test("rollback preserves Claude settings added during setup", () => {

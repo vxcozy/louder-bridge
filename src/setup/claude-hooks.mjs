@@ -23,6 +23,7 @@ const HOOK_EVENTS = [
 const HOOK_TAG = "# louder-bridge";
 const SETTINGS_WRITE_ATTEMPTS = 5;
 const SETTINGS_CONFLICT = "LOUDER_SETTINGS_CONFLICT";
+export const MAX_SETTINGS_BYTES = 16 * 1024 * 1024;
 
 function settingsConflict(message, cause) {
   const error = new Error(message, cause ? { cause } : undefined);
@@ -221,6 +222,9 @@ function readSettings(target, expectedUserId) {
         "Claude settings must be a regular file owned by the current user " +
           "and must not be hard linked.",
       );
+    }
+    if (metadata.size > MAX_SETTINGS_BYTES) {
+      throw new Error("Claude settings file exceeds the 16 MiB setup limit.");
     }
     const contents = fs.readFileSync(descriptor, "utf8");
     const settings = JSON.parse(contents);

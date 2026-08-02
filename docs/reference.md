@@ -76,10 +76,11 @@ Setup adds Louder Bridge command hooks to `~/.claude/settings.json`. It keeps
 unrelated settings and hooks, along with the existing file mode and any
 symbolic link at the settings path.
 
-Setup accepts only a regular settings file owned by the current macOS user. It
-rejects hard links and JSON roots other than an object. A symbolic link at the
-standard settings path remains supported when its target meets those checks.
-Setup leaves the file unchanged if a check fails.
+Setup accepts only a regular settings file owned by the current macOS user.
+Hard links and JSON roots other than an object are invalid. Files larger than
+16 MiB are refused before they are read. A symbolic link at the standard
+settings path remains supported when its target meets those checks. If any
+check fails, setup leaves the file unchanged.
 
 If hook removal finds no settings file or no Louder Bridge hooks, it changes
 nothing. For a symlinked configuration directory, setup resolves the target
