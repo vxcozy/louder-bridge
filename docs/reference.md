@@ -54,6 +54,7 @@ node src/cli.mjs version
 `activate` is the first-launch entry point used by the packaged app.
 If the agent is offline while the app waits for a macOS privacy decision,
 `status` reports that permission onboarding is still running.
+It exits with status 1 whenever the authenticated hook server is unavailable.
 
 Supported simulated states are `idle`, `running`, `needs_input`, `complete`,
 `error`, and `off`.
