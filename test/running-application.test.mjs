@@ -9,7 +9,13 @@ test("reports whether permission onboarding is still running", () => {
   const calls = [];
   const running = onboardingApplicationIsRunning({
     launcher: "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
-    run(command, args) {
+    run(command, args, options) {
+      assert.deepEqual(options, {
+        encoding: "utf8",
+        timeout: 5000,
+        maxBuffer: 64 * 1024,
+        windowsHide: true,
+      });
       calls.push([command, ...args]);
       return { status: 0, stdout: "123\n", stderr: "" };
     },
@@ -117,5 +123,24 @@ test("reports an onboarding app that will not exit", () => {
         },
       }),
     /did not close in time/,
+  );
+});
+
+test("reports a bounded onboarding process failure", () => {
+  assert.throws(
+    () =>
+      onboardingApplicationIsRunning({
+        run(command, args, options) {
+          assert.equal(command, "/usr/bin/pgrep");
+          assert.deepEqual(options, {
+            encoding: "utf8",
+            timeout: 5000,
+            maxBuffer: 64 * 1024,
+            windowsHide: true,
+          });
+          return { status: null, error: new Error("timed out") };
+        },
+      }),
+    /pgrep failed: timed out/,
   );
 });

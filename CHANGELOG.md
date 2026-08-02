@@ -72,6 +72,10 @@ have not shipped appear under "Unreleased."
 - Desktop process and permission checks stop after two seconds. Overlapping
   timer ticks now share one pending refresh instead of building an unbounded
   queue.
+- Launch-agent and onboarding process commands now have deadlines, so setup,
+  rollback, and uninstall do not wait forever on a stuck macOS command.
+- Setup rejects symlinked launch-agent files and log directories. Rollback
+  restores the previous launch-agent file mode.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of

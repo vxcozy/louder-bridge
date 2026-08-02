@@ -95,6 +95,12 @@ Desktop process and permission checks stop after two seconds. If one is still
 running when the next timer fires, the service keeps one pending refresh
 instead of adding another.
 
+Launch-agent commands stop after ten seconds, and onboarding process checks
+stop after five. Setup reads an existing launch-agent property list without
+following links and accepts only a single-link file owned by the current user.
+Rollback restores that file's previous mode. Setup also refuses to change log
+directory permissions through a symbolic link.
+
 The native launcher is compiled with strong stack protection, fortified libc
 calls, and fatal compiler and linker warnings. Package verification checks the
 compiled binary for the required hardening symbols.

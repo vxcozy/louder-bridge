@@ -51,7 +51,13 @@ test("installs and removes the launch agent without shell commands", () => {
     path.join(os.tmpdir(), "louder-bridge-launch-agent-"),
   );
   const calls = [];
-  const run = (command, args) => {
+  const run = (command, args, options) => {
+    assert.deepEqual(options, {
+      encoding: "utf8",
+      timeout: 10_000,
+      maxBuffer: 64 * 1024,
+      windowsHide: true,
+    });
     calls.push([command, ...args]);
     return { status: 0, stdout: "", stderr: "" };
   };
@@ -137,6 +143,26 @@ test("reports when the replacement launch agent never starts", () => {
   );
 });
 
+test("reports a bounded retry-sleep failure", () => {
+  const run = (command, args, options) => {
+    if (command === "/bin/sleep") {
+      assert.deepEqual(options, {
+        encoding: "utf8",
+        timeout: 2000,
+        maxBuffer: 64 * 1024,
+        windowsHide: true,
+      });
+      return { status: null, error: new Error("timed out") };
+    }
+    return { status: 0, stdout: "state = waiting\n", stderr: "" };
+  };
+
+  assert.throws(
+    () => waitForLaunchAgent({ userId: 501, run, attempts: 2 }),
+    /sleep failed: timed out/,
+  );
+});
+
 test("retries bootstrap while the previous agent is unloading", () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-launch-retry-"),
@@ -165,6 +191,7 @@ test("restores the previous launch agent after an install failure", () => {
   const paths = launchAgentPaths(homeDirectory);
   fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
   fs.writeFileSync(paths.plist, "previous plist");
+  fs.chmodSync(paths.plist, 0o600);
   let bootstraps = 0;
   const run = (command, args) => {
     if (args[0] === "print") {
@@ -184,6 +211,7 @@ test("restores the previous launch agent after an install failure", () => {
     /launchctl bootstrap failed/,
   );
   assert.equal(fs.readFileSync(paths.plist, "utf8"), "previous plist");
+  assert.equal(fs.statSync(paths.plist).mode & 0o777, 0o600);
   assert.equal(bootstraps, 4);
   fs.rmSync(homeDirectory, { recursive: true });
 });
@@ -195,6 +223,7 @@ test("restores a launch agent removed during a failed setup", () => {
   const paths = launchAgentPaths(homeDirectory);
   fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
   fs.writeFileSync(paths.plist, "previous plist");
+  fs.chmodSync(paths.plist, 0o600);
   const calls = [];
   const run = (command, args) => {
     calls.push([command, ...args]);
@@ -213,9 +242,57 @@ test("restores a launch agent removed during a failed setup", () => {
   restoreRemovedLaunchAgent(removal, { run });
 
   assert.equal(fs.readFileSync(paths.plist, "utf8"), "previous plist");
+  assert.equal(fs.statSync(paths.plist).mode & 0o777, 0o600);
   assert.deepEqual(
     calls.map((call) => call[1]),
     ["print", "bootout", "bootout", "bootstrap", "kickstart"],
   );
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("rejects a symlinked launch-agent property list", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-link-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  const target = path.join(homeDirectory, "unrelated.plist");
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(target, "unrelated");
+  fs.symlinkSync(target, paths.plist);
+  let calls = 0;
+
+  assert.throws(
+    () =>
+      installLaunchAgent({
+        homeDirectory,
+        userId: 501,
+        run() {
+          calls += 1;
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      }),
+    /launch agent is not a regular file/,
+  );
+  assert.equal(calls, 0);
+  assert.equal(fs.readFileSync(target, "utf8"), "unrelated");
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("does not change permissions through a symlinked log directory", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-log-link-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  const target = path.join(homeDirectory, "unrelated-logs");
+  fs.mkdirSync(path.dirname(paths.logs), { recursive: true });
+  fs.mkdirSync(target, { mode: 0o755 });
+  fs.chmodSync(target, 0o755);
+  fs.symlinkSync(target, paths.logs);
+
+  assert.throws(
+    () => installLaunchAgent({ homeDirectory, userId: 501 }),
+    /log storage is not a user-owned directory/,
+  );
+  assert.equal(fs.statSync(target).mode & 0o777, 0o755);
   fs.rmSync(homeDirectory, { recursive: true });
 });

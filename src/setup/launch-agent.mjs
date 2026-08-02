@@ -10,6 +10,83 @@ import { applicationBundlePaths } from "./application-bundle.mjs";
 import { writeFileAtomic } from "./atomic-file.mjs";
 
 export const LAUNCH_AGENT_LABEL = "app.louder-bridge.agent";
+const MAX_PLIST_BYTES = 1024 * 1024;
+const COMMAND_OPTIONS = {
+  encoding: "utf8",
+  timeout: 10_000,
+  maxBuffer: 64 * 1024,
+  windowsHide: true,
+};
+const SLEEP_OPTIONS = { ...COMMAND_OPTIONS, timeout: 2000 };
+
+function commandError(command, result) {
+  const detail =
+    result?.error?.message ||
+    result?.stderr?.trim() ||
+    result?.stdout?.trim() ||
+    `exit ${result?.status ?? "unknown"}`;
+  return new Error(`${command} failed: ${detail}`);
+}
+
+function prepareLogDirectory(directory) {
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      directory,
+      fs.constants.O_RDONLY |
+        fs.constants.O_DIRECTORY |
+        fs.constants.O_NOFOLLOW,
+    );
+    const entry = fs.fstatSync(descriptor);
+    if (!entry.isDirectory() || entry.uid !== process.getuid()) {
+      throw new Error("not a user-owned directory");
+    }
+    fs.fchmodSync(descriptor, 0o700);
+  } catch (error) {
+    throw new Error(
+      "Louder Bridge log storage is not a user-owned directory.",
+      { cause: error },
+    );
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+function readLaunchAgentPlist(filename) {
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      filename,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+    );
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw new Error(
+      "The existing Louder Bridge launch agent is not a regular file.",
+      { cause: error },
+    );
+  }
+  try {
+    const entry = fs.fstatSync(descriptor);
+    if (
+      !entry.isFile() ||
+      entry.uid !== process.getuid() ||
+      entry.nlink !== 1 ||
+      entry.size > MAX_PLIST_BYTES
+    ) {
+      throw new Error(
+        "The existing Louder Bridge launch agent is not a regular user-owned file.",
+      );
+    }
+    return {
+      contents: fs.readFileSync(descriptor, "utf8"),
+      mode: entry.mode & 0o777,
+    };
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
 
 function xmlEscape(value) {
   return String(value)
@@ -88,10 +165,9 @@ ${environmentXml}
 }
 
 function runLaunchctl(args, { allowFailure = false, run = spawnSync } = {}) {
-  const result = run("/bin/launchctl", args, { encoding: "utf8" });
+  const result = run("/bin/launchctl", args, COMMAND_OPTIONS);
   if (!allowFailure && result.status !== 0) {
-    const detail = result.stderr?.trim() || `exit ${result.status}`;
-    throw new Error(`launchctl ${args[0]} failed: ${detail}`);
+    throw commandError(`launchctl ${args[0]}`, result);
   }
   return result;
 }
@@ -107,8 +183,7 @@ function bootoutLaunchAgent(serviceTarget, run) {
       `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
     )
   ) {
-    const detail = result.stderr?.trim() || `exit ${result.status}`;
-    throw new Error(`launchctl bootout failed: ${detail}`);
+    throw commandError("launchctl bootout", result);
   }
 }
 
@@ -120,10 +195,12 @@ function bootstrapLaunchAgent(userId, plist, run) {
       run,
     });
     if (result.status === 0) return;
-    if (attempt < 2) run("/bin/sleep", ["0.5"], { encoding: "utf8" });
+    if (attempt < 2) {
+      const waited = run("/bin/sleep", ["0.5"], SLEEP_OPTIONS);
+      if (waited.status !== 0) throw commandError("sleep", waited);
+    }
   }
-  const detail = result.stderr?.trim() || `exit ${result.status}`;
-  throw new Error(`launchctl bootstrap failed: ${detail}`);
+  throw commandError("launchctl bootstrap", result);
 }
 
 export function installLaunchAgent({
@@ -136,12 +213,10 @@ export function installLaunchAgent({
     throw new Error("The background service currently requires macOS.");
   }
   const paths = launchAgentPaths(homeDirectory);
-  fs.mkdirSync(paths.logs, { recursive: true, mode: 0o700 });
-  fs.chmodSync(paths.logs, 0o700);
+  prepareLogDirectory(paths.logs);
   const serviceTarget = `gui/${userId}/${LAUNCH_AGENT_LABEL}`;
-  const previousPlist = fs.existsSync(paths.plist)
-    ? fs.readFileSync(paths.plist, "utf8")
-    : null;
+  const previous = readLaunchAgentPlist(paths.plist);
+  const previousPlist = previous?.contents ?? null;
   const wasLoaded =
     runLaunchctl(["print", serviceTarget], {
       allowFailure: true,
@@ -165,7 +240,7 @@ export function installLaunchAgent({
     if (previousPlist === null) {
       if (fs.existsSync(paths.plist)) fs.unlinkSync(paths.plist);
     } else {
-      writeFileAtomic(paths.plist, previousPlist, { mode: 0o644 });
+      writeFileAtomic(paths.plist, previousPlist, { mode: previous.mode });
       if (wasLoaded) {
         try {
           bootstrapLaunchAgent(userId, paths.plist, run);
@@ -191,9 +266,8 @@ export function removeLaunchAgent({
   if (process.platform !== "darwin") return launchAgentPaths(homeDirectory);
   const paths = launchAgentPaths(homeDirectory);
   const serviceTarget = `gui/${userId}/${LAUNCH_AGENT_LABEL}`;
-  const previousPlist = fs.existsSync(paths.plist)
-    ? fs.readFileSync(paths.plist, "utf8")
-    : null;
+  const previous = readLaunchAgentPlist(paths.plist);
+  const previousPlist = previous?.contents ?? null;
   const wasLoaded =
     runLaunchctl(["print", serviceTarget], {
       allowFailure: true,
@@ -219,6 +293,7 @@ export function removeLaunchAgent({
   return {
     ...paths,
     previousPlist,
+    previousMode: previous?.mode ?? null,
     wasLoaded,
     userId,
     removed: true,
@@ -237,7 +312,9 @@ export function restoreRemovedLaunchAgent(
     if (fs.existsSync(removal.plist)) fs.unlinkSync(removal.plist);
     return removal;
   }
-  writeFileAtomic(removal.plist, removal.previousPlist, { mode: 0o644 });
+  writeFileAtomic(removal.plist, removal.previousPlist, {
+    mode: removal.previousMode,
+  });
   if (removal.wasLoaded) {
     bootstrapLaunchAgent(removal.userId, removal.plist, run);
     runLaunchctl(["kickstart", "-k", serviceTarget], { run });
@@ -268,7 +345,7 @@ export function waitForLaunchAgent({
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (launchAgentIsRunning({ userId, run })) return true;
     if (attempt + 1 < attempts) {
-      const waited = run("/bin/sleep", ["0.1"], { encoding: "utf8" });
+      const waited = run("/bin/sleep", ["0.1"], SLEEP_OPTIONS);
       if (waited.status !== 0) throw commandError("sleep", waited);
     }
   }
