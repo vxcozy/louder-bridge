@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  applicationInfoPlist,
   applicationBundlePaths,
   applicationBundlePathsForCli,
   commitApplicationBundle,
@@ -11,6 +12,15 @@ import {
   rollbackApplicationBundle,
   stageApplicationBundleRemoval,
 } from "../src/setup/application-bundle.mjs";
+
+function writeOwnedBundle(app, marker) {
+  fs.mkdirSync(path.join(app, "Contents"), { recursive: true });
+  fs.writeFileSync(
+    path.join(app, "Contents", "Info.plist"),
+    applicationInfoPlist({ version: "0.9.0" }),
+  );
+  if (marker) fs.writeFileSync(path.join(app, marker), marker);
+}
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "louder-bundle-"));
@@ -105,7 +115,7 @@ test("derives installed runtime paths from its CLI module", () => {
 test("can roll back or commit an application update", () => {
   const { root, home, source, node } = fixture();
   const paths = applicationBundlePaths(home);
-  fs.mkdirSync(paths.app, { recursive: true });
+  writeOwnedBundle(paths.app);
   fs.writeFileSync(path.join(paths.app, "old"), "old");
 
   const rolledBack = installApplicationBundle({
@@ -174,7 +184,7 @@ test("prepares the complete bundle before replacing the installed app", () => {
 test("keeps the installed app when the pre-replacement handoff fails", () => {
   const { root, home, source, node } = fixture();
   const paths = applicationBundlePaths(home);
-  fs.mkdirSync(paths.app, { recursive: true });
+  writeOwnedBundle(paths.app);
   fs.writeFileSync(path.join(paths.app, "marker"), "previous app");
 
   assert.throws(
@@ -211,7 +221,7 @@ test("keeps the installed app when the pre-replacement handoff fails", () => {
 test("stages application removal so it can be restored", () => {
   const { root, home } = fixture();
   const paths = applicationBundlePaths(home);
-  fs.mkdirSync(paths.app, { recursive: true });
+  writeOwnedBundle(paths.app);
   fs.writeFileSync(path.join(paths.app, "marker"), "present");
 
   const removal = stageApplicationBundleRemoval({ homeDirectory: home });
@@ -221,5 +231,139 @@ test("stages application removal so it can be restored", () => {
     fs.readFileSync(path.join(paths.app, "marker"), "utf8"),
     "present",
   );
+  fs.rmSync(root, { recursive: true });
+});
+
+test("refuses to replace an unrelated application directory", () => {
+  const { root, home, source, node } = fixture();
+  const paths = applicationBundlePaths(home);
+  fs.mkdirSync(paths.app, { recursive: true });
+  fs.writeFileSync(path.join(paths.app, "marker"), "unrelated app");
+  let handoffCalled = false;
+
+  assert.throws(
+    () =>
+      installApplicationBundle({
+        homeDirectory: home,
+        sourceRoot: source,
+        nodePath: node,
+        beforeReplace() {
+          handoffCalled = true;
+        },
+      }),
+    /does not match Louder Bridge/,
+  );
+
+  assert.equal(handoffCalled, false);
+  assert.equal(
+    fs.readFileSync(path.join(paths.app, "marker"), "utf8"),
+    "unrelated app",
+  );
+  fs.rmSync(root, { recursive: true });
+});
+
+test("refuses to stage an unrelated application or symlink for removal", () => {
+  const { root, home } = fixture();
+  const paths = applicationBundlePaths(home);
+  const unrelated = path.join(root, "unrelated");
+  fs.mkdirSync(unrelated);
+  fs.mkdirSync(path.dirname(paths.app), { recursive: true });
+  fs.symlinkSync(unrelated, paths.app);
+
+  assert.throws(
+    () => stageApplicationBundleRemoval({ homeDirectory: home }),
+    /does not match Louder Bridge/,
+  );
+  assert.equal(fs.lstatSync(paths.app).isSymbolicLink(), true);
+  assert.equal(fs.existsSync(unrelated), true);
+  fs.rmSync(root, { recursive: true });
+});
+
+test("rollback leaves a replacement at the application path untouched", () => {
+  const { root, home, source, node } = fixture();
+  const paths = applicationBundlePaths(home);
+  writeOwnedBundle(paths.app, "previous");
+  const transaction = installApplicationBundle({
+    homeDirectory: home,
+    sourceRoot: source,
+    nodePath: node,
+  });
+  const installedElsewhere = path.join(root, "installed-elsewhere");
+  fs.renameSync(paths.app, installedElsewhere);
+  fs.mkdirSync(paths.app);
+  fs.writeFileSync(path.join(paths.app, "marker"), "replacement");
+
+  assert.throws(
+    () => rollbackApplicationBundle(transaction),
+    /changed during rollback.*left untouched/,
+  );
+  assert.equal(
+    fs.readFileSync(path.join(paths.app, "marker"), "utf8"),
+    "replacement",
+  );
+  assert.equal(fs.existsSync(transaction.backup), true);
+  fs.rmSync(root, { recursive: true });
+});
+
+test("commit leaves a changed application backup untouched", () => {
+  const { root, home, source, node } = fixture();
+  const paths = applicationBundlePaths(home);
+  writeOwnedBundle(paths.app, "previous");
+  const transaction = installApplicationBundle({
+    homeDirectory: home,
+    sourceRoot: source,
+    nodePath: node,
+  });
+  fs.renameSync(transaction.backup, path.join(root, "original-backup"));
+  fs.mkdirSync(transaction.backup);
+  fs.writeFileSync(path.join(transaction.backup, "marker"), "replacement");
+
+  assert.throws(
+    () => commitApplicationBundle(transaction),
+    /backup changed.*left untouched/,
+  );
+  assert.equal(
+    fs.readFileSync(path.join(transaction.backup, "marker"), "utf8"),
+    "replacement",
+  );
+  fs.rmSync(root, { recursive: true });
+});
+
+test("rollback keeps the installed app when its backup is missing", () => {
+  const { root, home, source, node } = fixture();
+  const paths = applicationBundlePaths(home);
+  writeOwnedBundle(paths.app, "previous");
+  const transaction = installApplicationBundle({
+    homeDirectory: home,
+    sourceRoot: source,
+    nodePath: node,
+  });
+  fs.renameSync(transaction.backup, path.join(root, "missing-backup"));
+
+  assert.throws(
+    () => rollbackApplicationBundle(transaction),
+    /backup is missing.*installed app untouched/,
+  );
+  assert.equal(fs.existsSync(paths.cli), true);
+  fs.rmSync(root, { recursive: true });
+});
+
+test("removal rollback does not delete an item that appeared later", () => {
+  const { root, home } = fixture();
+  const paths = applicationBundlePaths(home);
+  writeOwnedBundle(paths.app, "original");
+  const transaction = stageApplicationBundleRemoval({ homeDirectory: home });
+  fs.mkdirSync(paths.app);
+  fs.writeFileSync(path.join(paths.app, "marker"), "new item");
+
+  assert.throws(
+    () => rollbackApplicationBundle(transaction),
+    /became occupied.*left untouched/,
+  );
+  assert.equal(
+    fs.readFileSync(path.join(paths.app, "marker"), "utf8"),
+    "new item",
+  );
+  assert.equal(fs.existsSync(transaction.backup), true);
   fs.rmSync(root, { recursive: true });
 });

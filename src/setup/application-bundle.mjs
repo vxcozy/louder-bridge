@@ -6,6 +6,112 @@ import { fileURLToPath } from "node:url";
 import { writeFileAtomic } from "./atomic-file.mjs";
 
 const APP_NAME = "Louder Bridge.app";
+const MAX_INFO_PLIST_BYTES = 1024 * 1024;
+const BUNDLE_IDENTIFIER_PATTERN =
+  /<key>\s*CFBundleIdentifier\s*<\/key>\s*<string>\s*app\.louder-bridge\s*<\/string>/;
+const BUNDLE_EXECUTABLE_PATTERN =
+  /<key>\s*CFBundleExecutable\s*<\/key>\s*<string>\s*LouderBridge\s*<\/string>/;
+
+function pathEntry(filename) {
+  try {
+    return fs.lstatSync(filename);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function bundleIdentity(entry) {
+  return { device: entry.dev, inode: entry.ino };
+}
+
+function sameBundle(expected, actual) {
+  return Boolean(
+    expected &&
+      actual &&
+      expected.device === actual.device &&
+      expected.inode === actual.inode,
+  );
+}
+
+function invalidBundleError() {
+  return new Error(
+    "Setup found an app at the Louder Bridge install location, but its bundle identifier or executable does not match Louder Bridge.",
+  );
+}
+
+function inspectApplicationBundle(app) {
+  const entry = pathEntry(app);
+  if (!entry || !entry.isDirectory() || entry.isSymbolicLink()) {
+    throw invalidBundleError();
+  }
+
+  const contents = pathEntry(path.join(app, "Contents"));
+  if (!contents || !contents.isDirectory() || contents.isSymbolicLink()) {
+    throw invalidBundleError();
+  }
+
+  const infoPlist = path.join(app, "Contents", "Info.plist");
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      infoPlist,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+    );
+    const metadata = fs.fstatSync(descriptor);
+    if (
+      !metadata.isFile() ||
+      metadata.nlink !== 1 ||
+      metadata.size < 1 ||
+      metadata.size > MAX_INFO_PLIST_BYTES
+    ) {
+      throw invalidBundleError();
+    }
+    const plist = fs.readFileSync(descriptor, "utf8");
+    const current = pathEntry(app);
+    if (
+      !current ||
+      !sameBundle(bundleIdentity(entry), bundleIdentity(current)) ||
+      !BUNDLE_IDENTIFIER_PATTERN.test(plist) ||
+      !BUNDLE_EXECUTABLE_PATTERN.test(plist)
+    ) {
+      throw invalidBundleError();
+    }
+  } catch (error) {
+    if (error?.message?.includes("does not match Louder Bridge")) {
+      throw error;
+    }
+    throw invalidBundleError();
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+
+  return bundleIdentity(entry);
+}
+
+function requireBundle(app, identity, message) {
+  let current;
+  try {
+    current = inspectApplicationBundle(app);
+  } catch {
+    throw new Error(message);
+  }
+  if (!sameBundle(identity, current)) throw new Error(message);
+  return current;
+}
+
+function requireInstallPathState(app, identity) {
+  const current = pathEntry(app);
+  if (!identity && !current) return;
+  if (!identity || !current) {
+    throw new Error("The application path changed during setup.");
+  }
+  requireBundle(
+    app,
+    identity,
+    "The application path changed during setup.",
+  );
+}
 
 function xmlEscape(value) {
   return String(value)
@@ -100,6 +206,10 @@ export function installApplicationBundle({
     throw new Error("The application bundle currently requires macOS.");
   }
   const paths = applicationBundlePaths(homeDirectory);
+  const existingEntry = pathEntry(paths.app);
+  const existingIdentity = existingEntry
+    ? inspectApplicationBundle(paths.app)
+    : null;
   const sourceDirectory = path.join(sourceRoot, "src");
   const packageFile = path.join(sourceRoot, "package.json");
   const projectLicense = path.join(sourceRoot, "LICENSE");
@@ -128,11 +238,15 @@ export function installApplicationBundle({
   const staging = path.join(parent, `.${APP_NAME}.${randomUUID()}.tmp`);
   const backup = path.join(parent, `.${APP_NAME}.${randomUUID()}.previous`);
   fs.mkdirSync(parent, { recursive: true });
+  let stagingDirectoryIdentity;
+  let stagedIdentity;
+  let backupIdentity;
 
   try {
     const staged = applicationBundlePathsForApp(staging);
 
     fs.mkdirSync(path.dirname(staged.node), { recursive: true });
+    stagingDirectoryIdentity = bundleIdentity(fs.lstatSync(staging));
     fs.mkdirSync(staged.resources, { recursive: true });
     fs.copyFileSync(nodePath, staged.node);
     fs.chmodSync(staged.node, 0o755);
@@ -163,37 +277,116 @@ export function installApplicationBundle({
     });
     writeFileAtomic(staged.launcher, launcherScript(), { mode: 0o755 });
     prepare(staged);
+    stagedIdentity = inspectApplicationBundle(staging);
+    requireInstallPathState(paths.app, existingIdentity);
     beforeReplace(staged);
+    requireInstallPathState(paths.app, existingIdentity);
 
-    if (fs.existsSync(paths.app)) fs.renameSync(paths.app, backup);
+    if (existingIdentity) {
+      requireBundle(
+        paths.app,
+        existingIdentity,
+        "The installed application changed before it could be replaced.",
+      );
+      fs.renameSync(paths.app, backup);
+      backupIdentity = requireBundle(
+        backup,
+        existingIdentity,
+        "The previous application changed while setup was moving it into backup.",
+      );
+    }
     try {
       fs.renameSync(staging, paths.app);
+      requireBundle(
+        paths.app,
+        stagedIdentity,
+        "The installed application changed before setup could finish.",
+      );
     } catch (error) {
-      if (fs.existsSync(backup)) fs.renameSync(backup, paths.app);
+      if (backupIdentity && pathEntry(backup)) {
+        requireBundle(
+          backup,
+          backupIdentity,
+          "The previous application backup changed before setup could restore it.",
+        );
+        if (pathEntry(paths.app)) {
+          throw new Error(
+            "Setup could not install Louder Bridge. The previous app remains in backup because the application path is occupied.",
+            { cause: error },
+          );
+        }
+        fs.renameSync(backup, paths.app);
+      }
       throw error;
     }
   } catch (error) {
-    if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true });
+    const stagingEntry = pathEntry(staging);
+    if (stagingEntry) {
+      if (
+        !sameBundle(stagingDirectoryIdentity, bundleIdentity(stagingEntry))
+      ) {
+        throw new Error(
+          "Setup left its staging path untouched because it changed unexpectedly.",
+          { cause: error },
+        );
+      }
+      fs.rmSync(staging, { recursive: true });
+    }
     throw error;
   }
 
   return {
     ...paths,
-    backup: fs.existsSync(backup) ? backup : null,
+    kind: "install",
+    installedIdentity: stagedIdentity,
+    backup: pathEntry(backup) ? backup : null,
+    backupIdentity,
   };
 }
 
 export function commitApplicationBundle(transaction) {
-  if (transaction.backup && fs.existsSync(transaction.backup)) {
+  if (transaction.backup && pathEntry(transaction.backup)) {
+    requireBundle(
+      transaction.backup,
+      transaction.backupIdentity,
+      "The application backup changed before setup could remove it. It was left untouched.",
+    );
     fs.rmSync(transaction.backup, { recursive: true });
   }
 }
 
 export function rollbackApplicationBundle(transaction) {
-  if (fs.existsSync(transaction.app)) {
+  if (transaction.backup && pathEntry(transaction.backup)) {
+    requireBundle(
+      transaction.backup,
+      transaction.backupIdentity,
+      "The application backup changed during rollback. It was left untouched.",
+    );
+  } else if (transaction.backup) {
+    throw new Error(
+      "The application backup is missing, so rollback left the installed app untouched.",
+    );
+  }
+
+  if (pathEntry(transaction.app)) {
+    if (transaction.kind !== "install") {
+      throw new Error(
+        "The application path became occupied during rollback. The new item was left untouched.",
+      );
+    }
+    requireBundle(
+      transaction.app,
+      transaction.installedIdentity,
+      "The installed application changed during rollback. It was left untouched.",
+    );
     fs.rmSync(transaction.app, { recursive: true });
   }
-  if (transaction.backup && fs.existsSync(transaction.backup)) {
+  if (transaction.backup) {
+    requireBundle(
+      transaction.backup,
+      transaction.backupIdentity,
+      "The application backup changed during rollback. It was left untouched.",
+    );
     fs.renameSync(transaction.backup, transaction.app);
   }
 }
@@ -203,19 +396,46 @@ export function stageApplicationBundleRemoval({
   app = applicationBundlePaths(homeDirectory).app,
 } = {}) {
   const paths = applicationBundlePathsForApp(app);
-  if (!fs.existsSync(paths.app)) return { ...paths, backup: null };
+  const entry = pathEntry(paths.app);
+  if (!entry) {
+    return {
+      ...paths,
+      kind: "removal",
+      backup: null,
+      backupIdentity: null,
+    };
+  }
+  const identity = inspectApplicationBundle(paths.app);
   const backup = path.join(
     path.dirname(paths.app),
     `.${APP_NAME}.${randomUUID()}.removing`,
   );
+  requireBundle(
+    paths.app,
+    identity,
+    "The installed application changed before removal could begin.",
+  );
   fs.renameSync(paths.app, backup);
-  return { ...paths, backup };
+  const backupIdentity = requireBundle(
+    backup,
+    identity,
+    "The application changed while removal was moving it into backup.",
+  );
+  return { ...paths, kind: "removal", backup, backupIdentity };
 }
 
 export function removeApplicationBundle({
   homeDirectory = os.homedir(),
 } = {}) {
   const paths = applicationBundlePaths(homeDirectory);
-  if (fs.existsSync(paths.app)) fs.rmSync(paths.app, { recursive: true });
+  if (pathEntry(paths.app)) {
+    const identity = inspectApplicationBundle(paths.app);
+    requireBundle(
+      paths.app,
+      identity,
+      "The installed application changed before it could be removed.",
+    );
+    fs.rmSync(paths.app, { recursive: true });
+  }
   return paths;
 }

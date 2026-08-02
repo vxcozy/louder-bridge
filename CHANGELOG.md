@@ -76,6 +76,9 @@ have not shipped appear under "Unreleased."
   rollback, and uninstall do not wait forever on a stuck macOS command.
 - Setup rejects symlinked launch-agent files and log directories. Rollback
   restores the previous launch-agent file mode.
+- Setup and uninstall verify the app's bundle identity before replacing or
+  removing it. Rollback and backup cleanup leave a path alone if it no longer
+  points to the bundle recorded at the start of the transaction.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of
