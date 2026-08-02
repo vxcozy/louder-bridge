@@ -60,6 +60,10 @@ have not shipped appear under "Unreleased."
   before restoring the previous application bundle.
 - Command failures no longer print stack traces or source checkout paths, and
   `status` exits unsuccessfully when the background service is unavailable.
+- The loopback API returns fixed error envelopes and uses 405 for unsupported
+  methods on known routes.
+- Incomplete loopback requests close after five seconds. The server accepts at
+  most 64 connections and closes each one after 100 requests.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of

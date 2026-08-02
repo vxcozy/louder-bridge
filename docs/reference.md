@@ -191,6 +191,23 @@ Returns bridge status and the six current slot states:
 All requests require `Authorization: Bearer <local-token>`. Use `npm run
 status` instead of reading the token directly.
 
+Errors use the same JSON shape: `{"ok":false,"error":"..."}`. Known routes
+return 405 for the wrong method and include an `Allow` header.
+
+| Status | Meaning |
+|---|---|
+| 400 | The request body is not valid JSON |
+| 401 | The bearer token is missing or invalid |
+| 404 | The route does not exist |
+| 405 | The route does not accept that method |
+| 413 | The request body exceeds 64 KiB |
+| 415 | The hook request is not JSON |
+| 500 | The bridge could not handle the request |
+
+Headers and request bodies have a five-second deadline. The server accepts at
+most 64 simultaneous connections and closes a reused connection after 100
+requests.
+
 ### `POST /hook`
 
 Accepts a Claude hook event as JSON. Request bodies are limited to 64 KiB.

@@ -57,6 +57,13 @@ test("reports service and device health", async (context) => {
   context.after(() => bridge.stop());
   bridge.setRuntimeStatus({ claudeDesktop: "open" });
 
+  assert.equal(bridge.server.requestTimeout, 5000);
+  assert.equal(bridge.server.headersTimeout, 5000);
+  assert.equal(bridge.server.keepAliveTimeout, 1000);
+  assert.equal(bridge.server.connectionsCheckingInterval, 1000);
+  assert.equal(bridge.server.maxConnections, 64);
+  assert.equal(bridge.server.maxRequestsPerSocket, 100);
+
   const response = await fetch(`${bridgeUrl(bridge)}/health`, {
     headers: { authorization: `Bearer ${authToken}` },
   });
@@ -92,6 +99,59 @@ test("reports service and device health", async (context) => {
       selected: false,
     })),
   });
+});
+
+test("closes an incomplete request when its deadline expires", async (context) => {
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+    httpLimits: {
+      requestTimeoutMs: 50,
+      headersTimeoutMs: 50,
+      keepAliveTimeoutMs: 50,
+      connectionsCheckingIntervalMs: 10,
+      maxConnections: 4,
+      maxRequestsPerSocket: 4,
+    },
+  });
+  context.after(() => bridge.stop());
+
+  const socket = net.connect(bridge.server.address().port, "127.0.0.1");
+  context.after(() => socket.destroy());
+  let received = "";
+  socket.setEncoding("utf8");
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  const closed = new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("The incomplete request stayed open.")),
+      1000,
+    );
+    socket.once("close", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.once("error", reject);
+  });
+  socket.write(
+    [
+      "POST /hook HTTP/1.1",
+      `Host: 127.0.0.1:${bridge.server.address().port}`,
+      `Authorization: Bearer ${authToken}`,
+      "Content-Type: application/json",
+      "Content-Length: 100",
+      "",
+      "{",
+    ].join("\r\n"),
+  );
+
+  await closed;
+  assert.match(received, /^HTTP\/1\.1 408 Request Timeout/m);
 });
 
 test("contains health adapter failures without exposing their details", async (context) => {
@@ -255,7 +315,58 @@ test("rejects requests without the private bearer token", async (context) => {
 
   const response = await fetch(`${bridgeUrl(bridge)}/health`);
   assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), { ok: false });
+  assert.equal(response.headers.get("www-authenticate"), "Bearer");
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: "Authentication required.",
+  });
+
+  const invalid = await fetch(`${bridgeUrl(bridge)}/health`, {
+    headers: { authorization: "Bearer wrong-token" },
+  });
+  assert.equal(invalid.status, 401);
+  assert.deepEqual(await invalid.json(), {
+    ok: false,
+    error: "Authentication required.",
+  });
+});
+
+test("distinguishes unknown routes from unsupported methods", async (context) => {
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+  });
+  context.after(() => bridge.stop());
+  const headers = { authorization: `Bearer ${authToken}` };
+
+  const missing = await fetch(`${bridgeUrl(bridge)}/missing`, { headers });
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), {
+    ok: false,
+    error: "Route not found.",
+  });
+
+  const healthMethod = await fetch(`${bridgeUrl(bridge)}/health`, {
+    method: "POST",
+    headers,
+  });
+  assert.equal(healthMethod.status, 405);
+  assert.equal(healthMethod.headers.get("allow"), "GET");
+  assert.deepEqual(await healthMethod.json(), {
+    ok: false,
+    error: "Method not allowed.",
+  });
+
+  const hookMethod = await fetch(`${bridgeUrl(bridge)}/hook`, { headers });
+  assert.equal(hookMethod.status, 405);
+  assert.equal(hookMethod.headers.get("allow"), "POST");
+  assert.deepEqual(await hookMethod.json(), {
+    ok: false,
+    error: "Method not allowed.",
+  });
 });
 
 test("rejects oversized and non-JSON hook requests", async (context) => {
@@ -275,6 +386,10 @@ test("rejects oversized and non-JSON hook requests", async (context) => {
     body: "{}",
   });
   assert.equal(unsupported.status, 415);
+  assert.deepEqual(await unsupported.json(), {
+    ok: false,
+    error: "Content-Type must be application/json.",
+  });
 
   const misleading = await fetch(`${bridgeUrl(bridge)}/hook`, {
     method: "POST",
@@ -282,6 +397,10 @@ test("rejects oversized and non-JSON hook requests", async (context) => {
     body: "{}",
   });
   assert.equal(misleading.status, 415);
+  assert.deepEqual(await misleading.json(), {
+    ok: false,
+    error: "Content-Type must be application/json.",
+  });
 
   const invalid = await fetch(`${bridgeUrl(bridge)}/hook`, {
     method: "POST",
@@ -300,6 +419,10 @@ test("rejects oversized and non-JSON hook requests", async (context) => {
     body: JSON.stringify({ value: "x".repeat(70 * 1024) }),
   });
   assert.equal(oversized.status, 413);
+  assert.deepEqual(await oversized.json(), {
+    ok: false,
+    error: "Request body exceeds 64 KiB.",
+  });
 });
 
 test("records empty Agent Key presses without exposing session data", async (context) => {

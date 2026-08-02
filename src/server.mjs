@@ -14,6 +14,14 @@ import { applicationMetadata } from "./runtime/metadata.mjs";
 import { SessionStore } from "./state/session-store.mjs";
 
 const MAX_BODY_BYTES = 64 * 1024;
+const DEFAULT_HTTP_LIMITS = {
+  requestTimeoutMs: 5000,
+  headersTimeoutMs: 5000,
+  keepAliveTimeoutMs: 1000,
+  connectionsCheckingIntervalMs: 1000,
+  maxConnections: 64,
+  maxRequestsPerSocket: 100,
+};
 function isAuthorized(request, authToken) {
   const prefix = "Bearer ";
   const header = request.headers.authorization;
@@ -37,6 +45,12 @@ class HttpError extends Error {
     super(message);
     this.statusCode = statusCode;
   }
+}
+
+function sendJsonError(response, statusCode, error, { allow } = {}) {
+  response.statusCode = statusCode;
+  if (allow) response.setHeader("allow", allow);
+  response.end(JSON.stringify({ ok: false, error }));
 }
 
 function readJson(request) {
@@ -87,11 +101,13 @@ export async function startBridge({
   runtimeMode = "manual",
   authToken,
   now = () => new Date(),
+  httpLimits = {},
 } = {}) {
   assertLocalAddress(host, port);
   if (typeof authToken !== "string" || authToken.length < 32) {
     throw new Error("A Louder Bridge authentication token is required.");
   }
+  const resolvedHttpLimits = { ...DEFAULT_HTTP_LIMITS, ...httpLimits };
   const store = new SessionStore();
   let device = null;
   let deviceRequested = autoConnectDevice;
@@ -259,32 +275,37 @@ export async function startBridge({
     response.setHeader("content-type", "application/json");
     response.setHeader("cache-control", "no-store");
     if (!isAuthorized(request, authToken)) {
-      response.statusCode = 401;
       response.setHeader("www-authenticate", "Bearer");
-      response.end(JSON.stringify({ ok: false }));
+      sendJsonError(response, 401, "Authentication required.");
       return;
     }
-    if (request.method === "GET" && request.url === "/health") {
+    if (request.url === "/health") {
+      if (request.method !== "GET") {
+        sendJsonError(response, 405, "Method not allowed.", { allow: "GET" });
+        return;
+      }
       try {
         response.end(JSON.stringify(health()));
       } catch (error) {
         logger.error("Health request failed.", error);
-        response.statusCode = 500;
-        response.end(JSON.stringify({
-          ok: false,
-          error: "Health request failed.",
-        }));
+        sendJsonError(response, 500, "Health request failed.");
       }
       return;
     }
-    if (request.method !== "POST" || request.url !== "/hook") {
-      response.statusCode = 404;
-      response.end(JSON.stringify({ ok: false }));
+    if (request.url !== "/hook") {
+      sendJsonError(response, 404, "Route not found.");
+      return;
+    }
+    if (request.method !== "POST") {
+      sendJsonError(response, 405, "Method not allowed.", { allow: "POST" });
       return;
     }
     if (requestMediaType(request) !== "application/json") {
-      response.statusCode = 415;
-      response.end(JSON.stringify({ ok: false }));
+      sendJsonError(
+        response,
+        415,
+        "Content-Type must be application/json.",
+      );
       return;
     }
     try {
@@ -298,19 +319,21 @@ export async function startBridge({
       response.end(JSON.stringify({ ok: true }));
     } catch (error) {
       const expected = error instanceof HttpError;
-      response.statusCode = expected ? error.statusCode : 500;
       if (!expected) logger.error("Hook request failed.", error);
-      response.end(
-        JSON.stringify({
-          ok: false,
-          error: expected ? error.message : "Hook request failed.",
-        }),
+      sendJsonError(
+        response,
+        expected ? error.statusCode : 500,
+        expected ? error.message : "Hook request failed.",
       );
     }
   });
-  server.requestTimeout = 5000;
-  server.headersTimeout = 5000;
-  server.keepAliveTimeout = 1000;
+  server.requestTimeout = resolvedHttpLimits.requestTimeoutMs;
+  server.headersTimeout = resolvedHttpLimits.headersTimeoutMs;
+  server.keepAliveTimeout = resolvedHttpLimits.keepAliveTimeoutMs;
+  server.connectionsCheckingInterval =
+    resolvedHttpLimits.connectionsCheckingIntervalMs;
+  server.maxConnections = resolvedHttpLimits.maxConnections;
+  server.maxRequestsPerSocket = resolvedHttpLimits.maxRequestsPerSocket;
   server.maxHeadersCount = 32;
 
   await new Promise((resolve, reject) => {
