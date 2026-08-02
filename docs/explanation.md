@@ -78,14 +78,16 @@ The Micro has six physical Agent Keys, while Claude Desktop can have more than
 six sessions. Louder Bridge therefore maintains a small working set:
 
 1. New sessions fill unused slots from left to right.
-2. Existing sessions keep their physical position.
+2. Existing sessions keep their physical position until they end.
 3. When the set is full, an inactive session is replaced before a session that
    is running or waiting for input.
 4. Among equally active candidates, the least recently updated session is
    replaced.
 
 Stable positions make the keys easier to remember. A session does not jump to
-another key merely because a different session produced a newer event.
+another key merely because a different session produced a newer event. A
+`SessionEnd` hook turns off the light, removes the in-memory session details,
+and frees the key for another session.
 
 Assignments live only in memory. Restarting the bridge clears them, so old
 Claude session IDs are not kept on disk.

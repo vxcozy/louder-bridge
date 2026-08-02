@@ -95,6 +95,10 @@ for (const relative of [
 const metadata = JSON.parse(
   fs.readFileSync(path.join(root, "package.json"), "utf8"),
 );
+const releaseNotes = `release-notes/v${metadata.version}.md`;
+if (!fs.existsSync(path.join(root, releaseNotes))) {
+  failures.push(`Missing reviewed release notes: ${releaseNotes}`);
+}
 function readIfPresent(relative) {
   const filename = path.join(root, relative);
   return fs.existsSync(filename) ? fs.readFileSync(filename, "utf8") : "";
@@ -102,6 +106,7 @@ function readIfPresent(relative) {
 
 const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const releaseWorkflow = readIfPresent(".github/workflows/release.yml");
+const codeOwners = readIfPresent(".github/CODEOWNERS");
 const nodeEntitlements = readIfPresent("release/node.entitlements.plist");
 const actionPins = {
   "actions/checkout": "d23441a48e516b6c34aea4fa41551a30e30af803",
@@ -122,6 +127,26 @@ if (!ciWorkflow.includes("npm ci") || !releaseWorkflow.includes("npm ci")) {
 }
 if (!releaseWorkflow.includes("npm run release:credentials")) {
   failures.push("The release workflow must check signing credentials first.");
+}
+if (!codeOwners.includes("release-notes/** @vxcozy")) {
+  failures.push("Release notes must require maintainer review.");
+}
+if (
+  (releaseWorkflow.match(/umask 077/g) ?? []).length < 2 ||
+  (releaseWorkflow.includes("security import") &&
+    !releaseWorkflow.includes("-T /usr/bin/codesign")
+  )
+) {
+  failures.push(
+    "The release workflow must restrict temporary credentials to the signing process.",
+  );
+}
+if (
+  !releaseWorkflow.includes("if: always()") ||
+  !releaseWorkflow.includes("security delete-keychain") ||
+  !releaseWorkflow.includes("AuthKey_*.p8")
+) {
+  failures.push("The release workflow must remove temporary signing credentials.");
 }
 if ((ciWorkflow.match(/fetch-depth:\s*0/g) ?? []).length < 2) {
   failures.push("CI jobs must fetch full history for attribution checks.");
@@ -150,6 +175,14 @@ for (const [action, revision] of Object.entries(actionPins)) {
 if (!releaseWorkflow.includes("--draft")) {
   failures.push(
     "The release workflow must create a draft for physical qualification.",
+  );
+}
+if (
+  !releaseWorkflow.includes('--notes-file "$NOTES_FILE"') ||
+  releaseWorkflow.includes("--generate-notes")
+) {
+  failures.push(
+    "The release workflow must use reviewed notes instead of generated notes.",
   );
 }
 if (releaseWorkflow.includes("LOUDER_SKIP_RUNTIME_AVAILABILITY_CHECK")) {

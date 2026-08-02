@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createRotatingLogger } from "../src/logging.mjs";
+import {
+  createRotatingLogger,
+  prepareRotatingLogs,
+} from "../src/logging.mjs";
 
 test("writes private timestamped logs and keeps bounded backups", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
@@ -74,8 +77,12 @@ test("removes stack frames and local paths from existing logs", () => {
     stderr,
     [
       "Error: device failed",
+      "/Applications/Example.app/Contents/Resources/runtime.js:183",
+      "        const native = await binding.openDevice();",
+      "                                     ^",
       "    at connect (file:///Users/example/private-project/src/device.mjs:4:2)",
       "/private/var/folders/example/TemporaryItems/report.txt",
+      "Node.js v22.0.0",
       "A safe diagnostic remains.",
       "",
     ].join("\n"),
@@ -87,6 +94,43 @@ test("removes stack frames and local paths from existing logs", () => {
     fs.readFileSync(stderr, "utf8"),
     "Error: device failed\nA safe diagnostic remains.\n",
   );
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("scrubs existing logs before the service creates a logger", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
+  const stdout = path.join(directory, "bridge.log");
+  const stderr = path.join(directory, "bridge-error.log");
+  fs.writeFileSync(stdout, "Slot 1: running (private-project)\n");
+  fs.writeFileSync(
+    stderr,
+    "    at connect (file:///Users/example/private/source.mjs:1:1)\n",
+  );
+
+  prepareRotatingLogs({ stdout, stderr });
+
+  assert.equal(fs.readFileSync(stdout, "utf8"), "Slot 1: running\n");
+  assert.equal(fs.readFileSync(stderr, "utf8"), "");
+  assert.equal(fs.statSync(directory).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(stdout).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(stderr).mode & 0o777, 0o600);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("does not follow a symlink in the log directory", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
+  const target = path.join(directory, "unrelated.txt");
+  const stdout = path.join(directory, "bridge.log");
+  const stderr = path.join(directory, "bridge-error.log");
+  fs.writeFileSync(target, "leave this alone\n");
+  fs.symlinkSync(target, stdout);
+
+  assert.throws(
+    () => prepareRotatingLogs({ stdout, stderr }),
+    /log is not a regular file/,
+  );
+  assert.equal(fs.readFileSync(target, "utf8"), "leave this alone\n");
+  assert.equal(fs.lstatSync(stdout).isSymbolicLink(), true);
   fs.rmSync(directory, { recursive: true });
 });
 

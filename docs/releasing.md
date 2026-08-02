@@ -22,7 +22,12 @@ allowed to prepare releases.
 
 ## Qualify the source
 
-Choose a semantic version, update `package.json` and `CHANGELOG.md`, then run:
+Choose a semantic version and update `package.json` and `CHANGELOG.md`. Write
+the public notes in `release-notes/v<version>.md`, then run `/humanizer` on the
+complete file. The release workflow uses that file as written. It does not
+generate public copy.
+
+Run the source checks:
 
 ```bash
 npm test
@@ -92,9 +97,10 @@ clean install, an upgrade, both first-launch permissions, login startup, Micro
 power cycling, Claude lifecycle states, Agent Key navigation, push-to-talk,
 and removal.
 
-Record the tested component versions in the draft notes. Run `/humanizer` on
-the complete notes, then have another maintainer review them and the other
-public text in the release.
+Record the tested component versions in the draft notes. If qualification
+changes the notes, run `/humanizer` again and update the draft with the reviewed
+file. Another maintainer must review the notes and the other public text in the
+release.
 
 Publish the draft only when the checklist passes. Keep the notarized ZIP, its
 checksum, the SPDX SBOM, and the previous release available for rollback:

@@ -10,6 +10,21 @@ function commandError(command, result) {
   return new Error(`${command} failed: ${detail}`);
 }
 
+export function onboardingApplicationIsRunning({
+  launcher = applicationBundlePaths().launcher,
+  run = spawnSync,
+} = {}) {
+  const pattern = `^${escapeExtendedRegex(launcher)}$`;
+  const result = run(
+    "/usr/bin/pgrep",
+    ["-f", pattern],
+    { encoding: "utf8" },
+  );
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw commandError("pgrep", result);
+}
+
 export function stopOnboardingApplication({
   launcher = applicationBundlePaths().launcher,
   run = spawnSync,

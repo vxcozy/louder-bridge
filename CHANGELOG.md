@@ -48,6 +48,18 @@ have not shipped appear under "Unreleased."
 - ChatGPT is no longer required for Codex Micro access.
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.
+- Source setup sanitizes older logs before permission onboarding starts.
+- Claude settings updates preserve symlinks and existing file permissions.
+- Release automation uses reviewed notes supplied by the maintainer instead of
+  generated release copy.
+- Ended Claude sessions now release their Agent Key slot and in-memory session
+  details.
+- First-run instructions now grant macOS permissions before checking the
+  background agent.
+- Hook configuration now rejects non-loopback destinations before it edits
+  Claude settings, and IPv6 loopback URLs are formatted correctly.
+- Status now distinguishes permission onboarding from a stopped background
+  agent.
 
 ### Security
 

@@ -1,6 +1,10 @@
 import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { BRIDGE_HOST, BRIDGE_PORT } from "./config.mjs";
+import {
+  assertLocalAddress,
+  BRIDGE_HOST,
+  BRIDGE_PORT,
+} from "./config.mjs";
 import { createClaudeNavigator } from "./claude/navigator.mjs";
 import { createClaudeSubmit } from "./claude/submit.mjs";
 import { createClaudeVoice } from "./claude/voice.mjs";
@@ -10,19 +14,6 @@ import { applicationMetadata } from "./runtime/metadata.mjs";
 import { SessionStore } from "./state/session-store.mjs";
 
 const MAX_BODY_BYTES = 64 * 1024;
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
-
-function assertLocalAddress(host, port) {
-  if (!LOOPBACK_HOSTS.has(host)) {
-    throw new Error(
-      `Refusing to expose Louder Bridge on non-loopback address "${host}".`,
-    );
-  }
-  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    throw new Error(`Invalid Louder Bridge port "${port}".`);
-  }
-}
-
 function isAuthorized(request, authToken) {
   const prefix = "Bearer ";
   const header = request.headers.authorization;

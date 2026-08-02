@@ -45,13 +45,14 @@ jobs:
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          umask 077
           CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/louder-bridge.keychain-db"
           printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
@@ -67,6 +68,7 @@ jobs:
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_PRIVATE_KEY: ${{ secrets.APPLE_NOTARY_PRIVATE_KEY }}
         run: |
+          umask 077
           export APPLE_NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           printf '%s' "$APPLE_NOTARY_PRIVATE_KEY" > "$APPLE_NOTARY_KEY_PATH"
           npm run release:notarize
@@ -80,6 +82,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          NOTES_FILE="release-notes/${GITHUB_REF_NAME}.md"
+          if [[ ! -f "$NOTES_FILE" ]]; then
+            echo "Release notes are missing: $NOTES_FILE" >&2
+            exit 1
+          fi
           RELEASE_TYPE=()
           case "$GITHUB_REF_NAME" in
             v0.*) RELEASE_TYPE=(--prerelease) ;;
@@ -89,5 +96,11 @@ jobs:
             dist/*.sha256 \
             dist/*.spdx.json \
             --draft \
-            --generate-notes \
+            --notes-file "$NOTES_FILE" \
             "${RELEASE_TYPE[@]}"
+
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/louder-bridge.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP"/AuthKey_*.p8

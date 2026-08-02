@@ -65,6 +65,25 @@ test("does not allocate a slot for an unknown ended session", () => {
   assert.equal(store.snapshot().every((slot) => slot.id === null), true);
 });
 
+test("releases the slot and selection when a session ends", () => {
+  const store = new SessionStore();
+  store.apply({
+    session_id: "session-a",
+    hook_event_name: "SessionStart",
+  });
+  store.select(0);
+
+  const ended = store.apply({
+    session_id: "session-a",
+    hook_event_name: "SessionEnd",
+  });
+
+  assert.equal(ended.state, "off");
+  assert.equal(store.snapshot()[0].id, null);
+  assert.equal(store.snapshot()[0].selected, false);
+  assert.equal(store.select(0), null);
+});
+
 test("clears selection when the selected inactive slot is evicted", () => {
   let time = 1;
   const store = new SessionStore({ now: () => time++ });

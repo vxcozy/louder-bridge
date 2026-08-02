@@ -8,7 +8,10 @@ import { inputMonitoringStatus } from "./macos/input-monitoring.mjs";
 import { applicationMetadata } from "./runtime/metadata.mjs";
 import { startBridge } from "./server.mjs";
 import { startDesktopService } from "./service.mjs";
-import { createRotatingLogger } from "./logging.mjs";
+import {
+  createRotatingLogger,
+  prepareRotatingLogs,
+} from "./logging.mjs";
 import { accessibilityStatus } from "./macos/accessibility.mjs";
 import { platformSupport } from "./macos/platform.mjs";
 import {
@@ -41,7 +44,10 @@ import {
   needsPermissionOnboarding,
   openOnboardingApplication,
 } from "./setup/permission-onboarding.mjs";
-import { stopOnboardingApplication } from "./setup/running-application.mjs";
+import {
+  onboardingApplicationIsRunning,
+  stopOnboardingApplication,
+} from "./setup/running-application.mjs";
 import {
   installLaunchAgent,
   launchAgentIsRunning,
@@ -183,6 +189,7 @@ if (command === "help" || command === "--help" || command === "-h") {
 } else if (command === "setup") {
   const platform = platformSupport();
   if (!platform.supported) throw new Error(platform.error);
+  prepareRotatingLogs(launchAgentPaths());
   const settingsSnapshot = snapshotClaudeSettings();
   const installedApp = applicationBundlePaths().app;
   let application;
@@ -286,6 +293,7 @@ if (command === "help" || command === "--help" || command === "-h") {
   let file;
   let agent;
   try {
+    prepareRotatingLogs(launchAgentPaths());
     authentication = ensureAuthToken();
     file = updateClaudeSettings({
       command: bridgeHookCommand({
@@ -412,9 +420,19 @@ if (command === "help" || command === "--help" || command === "-h") {
   console.log(`Claude Code hooks removed from ${file}.`);
 } else if (command === "status") {
   const paths = launchAgentPaths();
+  const agentRunning = launchAgentIsRunning();
   console.log(
-    `Background agent: ${launchAgentIsRunning() ? "running" : "not running"}`,
+    `Background agent: ${agentRunning ? "running" : "not running"}`,
   );
+  if (!agentRunning) {
+    try {
+      if (onboardingApplicationIsRunning()) {
+        console.log("Permission onboarding: waiting for macOS approval");
+      }
+    } catch (error) {
+      console.log(`Permission onboarding: unavailable (${error.message})`);
+    }
+  }
   try {
     const authToken = readAuthToken();
     const response = await fetch(`${BRIDGE_URL}/health`, {

@@ -52,6 +52,8 @@ node src/cli.mjs version
 
 `service` is the internal entry point used by the macOS launch agent.
 `activate` is the first-launch entry point used by the packaged app.
+If the agent is offline while the app waits for a macOS privacy decision,
+`status` reports that permission onboarding is still running.
 
 Supported simulated states are `idle`, `running`, `needs_input`, `complete`,
 `error`, and `off`.
@@ -205,7 +207,9 @@ not forwarded by the hook process.
 
 - The bridge exposes six slots numbered 1–6 to users and 0–5 internally.
 - A new session takes the first unused slot.
-- A known session keeps its slot for the life of the bridge process.
+- A known session keeps its slot until Claude sends `SessionEnd`.
+- An ended session releases its slot and is no longer available through its
+  Agent Key.
 - When all slots are occupied, the oldest inactive session is replaced first.
 - Sessions in `running` or `needs_input` state are treated as active.
 - Pressing an assigned Agent Key selects its slot and opens its Claude session.

@@ -1,6 +1,48 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stopOnboardingApplication } from "../src/setup/running-application.mjs";
+import {
+  onboardingApplicationIsRunning,
+  stopOnboardingApplication,
+} from "../src/setup/running-application.mjs";
+
+test("reports whether permission onboarding is still running", () => {
+  const calls = [];
+  const running = onboardingApplicationIsRunning({
+    launcher: "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
+    run(command, args) {
+      calls.push([command, ...args]);
+      return { status: 0, stdout: "123\n", stderr: "" };
+    },
+  });
+  assert.equal(running, true);
+  assert.deepEqual(calls, [
+    [
+      "/usr/bin/pgrep",
+      "-f",
+      "^/Applications/Louder Bridge\\.app/Contents/MacOS/LouderBridge$",
+    ],
+  ]);
+});
+
+test("reports a stopped or unreadable onboarding process", () => {
+  assert.equal(
+    onboardingApplicationIsRunning({
+      run() {
+        return { status: 1, stdout: "", stderr: "" };
+      },
+    }),
+    false,
+  );
+  assert.throws(
+    () =>
+      onboardingApplicationIsRunning({
+        run() {
+          return { status: 2, stdout: "", stderr: "permission denied" };
+        },
+      }),
+    /pgrep failed: permission denied/,
+  );
+});
 
 test("stops an existing onboarding app and waits for it to exit", () => {
   const calls = [];

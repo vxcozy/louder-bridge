@@ -88,6 +88,19 @@ export class SessionStore {
       this.slotSessions[slot] = event.session_id;
     }
 
+    if (state === "off") {
+      const ended = {
+        ...session,
+        state,
+        cwd: event.cwd ?? session.cwd,
+        updatedAt: this.now(),
+      };
+      this.sessions.delete(event.session_id);
+      this.slotSessions[session.slot] = null;
+      if (this.selectedSlot === session.slot) this.selectedSlot = null;
+      return ended;
+    }
+
     session.state = state;
     session.cwd = event.cwd ?? session.cwd;
     session.updatedAt = this.now();

@@ -8,6 +8,8 @@ const LEGACY_CONTEXT_SUFFIX =
 const LEGACY_PRIVATE_PATH_LINE =
   /(?:file:\/\/)?\/(?:Users\/|private\/var\/folders\/|var\/folders\/)/;
 const LEGACY_STACK_LINE = /^\s*at\s+/;
+const LEGACY_SOURCE_LINE = /^(?:file:\/\/)?\/.*\.(?:[cm]?js|mjs):\d+/;
+const LEGACY_STACK_DETAIL_LINE = /^(?:\s{2,}\S|Node\.js v\d)/;
 const PRIVATE_PATH_ROOTS = [
   "file:///Users/",
   "/Users/",
@@ -53,7 +55,16 @@ function rotate(filename, backups) {
 }
 
 function scrubLegacyContext(filename) {
-  if (!fs.existsSync(filename)) return;
+  let stat;
+  try {
+    stat = fs.lstatSync(filename);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error(`Louder Bridge log is not a regular file: ${filename}`);
+  }
   const contents = fs.readFileSync(filename, "utf8");
   const scrubbed = contents
     .replace(LEGACY_CONTEXT_SUFFIX, "$1")
@@ -61,7 +72,9 @@ function scrubLegacyContext(filename) {
     .filter(
       (line) =>
         !LEGACY_PRIVATE_PATH_LINE.test(line) &&
-        !LEGACY_STACK_LINE.test(line),
+        !LEGACY_STACK_LINE.test(line) &&
+        !LEGACY_SOURCE_LINE.test(line) &&
+        !LEGACY_STACK_DETAIL_LINE.test(line),
     )
     .join("\n");
   if (scrubbed !== contents) {
@@ -70,18 +83,13 @@ function scrubLegacyContext(filename) {
   fs.chmodSync(filename, 0o600);
 }
 
-export function createRotatingLogger({
+export function prepareRotatingLogs({
   stdout,
   stderr,
-  maxBytes = 1024 * 1024,
   backups = 3,
-  now = () => new Date(),
 } = {}) {
   if (!stdout || !stderr) {
     throw new Error("Rotating logger requires stdout and stderr paths.");
-  }
-  if (!Number.isInteger(maxBytes) || maxBytes < 1) {
-    throw new Error("Rotating logger maxBytes must be a positive integer.");
   }
   if (!Number.isInteger(backups) || backups < 1) {
     throw new Error("Rotating logger backups must be a positive integer.");
@@ -94,6 +102,19 @@ export function createRotatingLogger({
       scrubLegacyContext(index === 0 ? filename : `${filename}.${index}`);
     }
   }
+}
+
+export function createRotatingLogger({
+  stdout,
+  stderr,
+  maxBytes = 1024 * 1024,
+  backups = 3,
+  now = () => new Date(),
+} = {}) {
+  if (!Number.isInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("Rotating logger maxBytes must be a positive integer.");
+  }
+  prepareRotatingLogs({ stdout, stderr, backups });
 
   function write(filename, level, values) {
     const message = values.map(formatPart).join(" ");

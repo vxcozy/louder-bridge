@@ -19,6 +19,35 @@ const HOOK_EVENTS = [
 ];
 const HOOK_TAG = "# louder-bridge";
 
+function resolveSettingsTarget(settingsFile) {
+  let entry;
+  try {
+    entry = fs.lstatSync(settingsFile);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return { file: settingsFile, existed: false, mode: 0o600 };
+    }
+    throw error;
+  }
+
+  let file = settingsFile;
+  if (entry.isSymbolicLink()) {
+    try {
+      file = fs.realpathSync(settingsFile);
+    } catch (error) {
+      throw new Error(
+        `Claude settings points to a missing file: ${settingsFile}`,
+        { cause: error },
+      );
+    }
+    entry = fs.statSync(file);
+  }
+  if (!entry.isFile()) {
+    throw new Error(`Claude settings is not a regular file: ${settingsFile}`);
+  }
+  return { file, existed: true, mode: entry.mode & 0o777 };
+}
+
 function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
@@ -88,31 +117,40 @@ export function removeBridgeHooks(settings) {
   return output;
 }
 
-export function updateClaudeSettings({ remove = false, command } = {}) {
-  const settingsFile = claudeSettingsPath();
+export function updateClaudeSettings({
+  remove = false,
+  command,
+  settingsFile = claudeSettingsPath(),
+} = {}) {
+  const target = resolveSettingsTarget(settingsFile);
   let settings = {};
-  if (fs.existsSync(settingsFile)) {
-    settings = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+  if (target.existed) {
+    settings = JSON.parse(fs.readFileSync(target.file, "utf8"));
   }
   const updated = remove
     ? removeBridgeHooks(settings)
     : addBridgeHooks(settings, command);
-  writeFileAtomic(settingsFile, `${JSON.stringify(updated, null, 2)}\n`);
+  writeFileAtomic(
+    target.file,
+    `${JSON.stringify(updated, null, 2)}\n`,
+    { mode: target.mode },
+  );
   return settingsFile;
 }
 
 export function snapshotClaudeSettings(settingsFile = claudeSettingsPath()) {
-  const existed = fs.existsSync(settingsFile);
+  const target = resolveSettingsTarget(settingsFile);
   return {
-    file: settingsFile,
-    existed,
-    contents: existed ? fs.readFileSync(settingsFile, "utf8") : null,
+    file: target.file,
+    existed: target.existed,
+    contents: target.existed ? fs.readFileSync(target.file, "utf8") : null,
+    mode: target.mode,
   };
 }
 
 export function restoreClaudeSettings(snapshot) {
   if (snapshot.existed) {
-    writeFileAtomic(snapshot.file, snapshot.contents);
+    writeFileAtomic(snapshot.file, snapshot.contents, { mode: snapshot.mode });
   } else if (fs.existsSync(snapshot.file)) {
     fs.unlinkSync(snapshot.file);
   }
