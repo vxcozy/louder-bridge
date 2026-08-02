@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
+import { EventEmitter, once } from "node:events";
+import { PassThrough, Writable } from "node:stream";
 import {
   inspectNativeMicroRuntime,
   NativeMicroTransport,
@@ -154,6 +154,43 @@ test("forces an unresponsive native driver to exit before closing", async () => 
 
   assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
   assert.equal(child.signalCode, "SIGKILL");
+});
+
+test("disconnects and terminates a driver that stops accepting commands", async () => {
+  const child = new FakeChild();
+  child.stdin = new Writable({
+    write() {},
+  });
+  const disconnects = [];
+  const transport = new NativeMicroTransport({
+    launcher: "/bin/ls",
+    spawnProcess: () => child,
+    commandTimeoutMs: 5,
+    closeTimeoutMs: 1,
+  });
+  const connected = transport.connect({
+    onDisconnect(error) {
+      disconnects.push(error?.message ?? "clean");
+    },
+  });
+  child.stdout.write(
+    '{"_louder":{"type":"connected","transport":"USB","status":{"version":"v0.4.1"}}}\n',
+  );
+  await connected;
+  const exited = once(child, "exit");
+
+  await assert.rejects(
+    transport.send({ m: "v.oai.thstatus", p: [] }),
+    /did not accept a command in time/,
+  );
+  await exited;
+
+  assert.deepEqual(disconnects, [
+    "Codex Micro did not accept a command in time.",
+  ]);
+  assert.equal(transport.child, null);
+  assert.equal(transport.connected, false);
+  assert.equal(child.signalCode, "SIGTERM");
 });
 
 test("encodes thread lights with the Codex Micro protocol fields", () => {

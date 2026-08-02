@@ -60,6 +60,14 @@ class FakeTransport {
   }
 }
 
+class DisconnectingSendTransport extends FakeTransport {
+  async send() {
+    const error = new Error("native driver stopped accepting commands");
+    this.disconnected(error);
+    throw error;
+  }
+}
+
 function testDevice(transports, options = {}) {
   let index = 0;
   return new WorkLouderDevice({
@@ -256,6 +264,37 @@ test("reports a native driver crash after connecting", async () => {
   assert.equal(device.status().state, "error");
   assert.equal(device.status().error, "native driver crashed");
   assert.match(errors[0], /native driver crashed/);
+  await device.stop();
+});
+
+test("reconnects after the native driver stops accepting commands", async () => {
+  const first = new DisconnectingSendTransport();
+  const second = new FakeTransport();
+  const errors = [];
+  const device = testDevice([first, second], {
+    logger: {
+      info() {},
+      error(message) {
+        errors.push(message);
+      },
+    },
+  });
+
+  await device.start();
+  await assert.rejects(
+    device.render([{ slot: 0, state: "running", selected: false }]),
+    /stopped accepting commands/,
+  );
+  await waitForImmediate();
+
+  assert.equal(device.transport, null);
+  assert.equal(device.status().state, "error");
+  assert.match(device.status().error, /stopped accepting commands/);
+  await device.connect();
+  assert.equal(device.transport, second);
+  assert.equal(device.status().state, "connected");
+  assert.equal(device.status().error, null);
+  assert.equal(errors.length, 1);
   await device.stop();
 });
 

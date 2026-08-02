@@ -64,6 +64,9 @@ have not shipped appear under "Unreleased."
   methods on known routes.
 - Incomplete loopback requests close after five seconds. The server accepts at
   most 64 connections and closes each one after 100 requests.
+- A native driver that stops accepting commands is treated as disconnected
+  after one second. The bridge closes that process, then the device service
+  reconnects through its normal retry loop.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
 - Release automation uses reviewed notes supplied by the maintainer instead of

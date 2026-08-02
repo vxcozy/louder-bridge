@@ -3,6 +3,7 @@ import { isNativeExecutable } from "../macos/native-executable.mjs";
 
 const MAX_LINE_BYTES = 64 * 1024;
 const STARTUP_TIMEOUT_MS = 3000;
+const COMMAND_TIMEOUT_MS = 1000;
 const CLOSE_TIMEOUT_MS = 1000;
 const RUNTIME_ID = "native-iokit-protocol";
 const RUNTIME_SUPPORT = "experimental";
@@ -42,11 +43,13 @@ export class NativeMicroTransport {
     launcher = process.env.LOUDER_BRIDGE_LAUNCHER,
     spawnProcess = spawn,
     startupTimeoutMs = STARTUP_TIMEOUT_MS,
+    commandTimeoutMs = COMMAND_TIMEOUT_MS,
     closeTimeoutMs = CLOSE_TIMEOUT_MS,
   } = {}) {
     this.launcher = launcher;
     this.spawnProcess = spawnProcess;
     this.startupTimeoutMs = startupTimeoutMs;
+    this.commandTimeoutMs = commandTimeoutMs;
     this.closeTimeoutMs = closeTimeoutMs;
     this.child = null;
     this.connected = false;
@@ -183,7 +186,8 @@ export class NativeMicroTransport {
   }
 
   async send(message) {
-    if (!this.child || !this.connected || this.child.stdin.destroyed) {
+    const child = this.child;
+    if (!child || !this.connected || child.stdin.destroyed) {
       throw new Error("Codex Micro is not connected.");
     }
     const line = `${JSON.stringify(message)}\n`;
@@ -191,9 +195,33 @@ export class NativeMicroTransport {
       throw new Error("Codex Micro command exceeds 64 KiB.");
     }
     await new Promise((resolve, reject) => {
-      this.child.stdin.write(line, (error) => {
+      let settled = false;
+      const settle = (error) => {
+        if (settled) return false;
+        settled = true;
+        clearTimeout(timer);
+        child.off("exit", onExit);
         if (error) reject(error);
         else resolve();
+        return true;
+      };
+      const recover = (error) => {
+        if (!settle(error)) return;
+        this.reportDisconnect(error);
+        if (this.child === child) this.close().catch(() => {});
+      };
+      const onExit = () => {
+        settle(
+          new Error("Codex Micro disconnected before accepting a command."),
+        );
+      };
+      const timer = setTimeout(() => {
+        recover(new Error("Codex Micro did not accept a command in time."));
+      }, this.commandTimeoutMs);
+      child.once("exit", onExit);
+      child.stdin.write(line, (error) => {
+        if (error) recover(error);
+        else settle();
       });
     });
   }
