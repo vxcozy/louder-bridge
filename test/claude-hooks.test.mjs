@@ -58,6 +58,27 @@ test("preserves unrelated commands that mention the bridge tag", () => {
   assert.deepEqual(removeBridgeHooks(settings), settings);
 });
 
+test("replaces and removes hooks whose install path contains an apostrophe", () => {
+  const oldCommand = bridgeHookCommand({
+    nodePath: "/Users/o'connor/Applications/Louder Bridge.app/Contents/MacOS/node",
+    hookPath:
+      "/Users/o'connor/Applications/Louder Bridge.app/Contents/Resources/app/src/hook.mjs",
+  });
+  const newCommand = bridgeHookCommand({
+    nodePath: "/Applications/Louder Bridge.app/Contents/MacOS/node",
+    hookPath:
+      "/Applications/Louder Bridge.app/Contents/Resources/app/src/hook.mjs",
+  });
+  const installed = addBridgeHooks({}, oldCommand);
+
+  const upgraded = addBridgeHooks(installed, newCommand);
+  for (const groups of Object.values(upgraded.hooks)) {
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].hooks[0].command, newCommand);
+  }
+  assert.deepEqual(removeBridgeHooks(installed), {});
+});
+
 test("hook command captures the configured bridge address", () => {
   const command = bridgeHookCommand();
   assert.match(command, /LOUDER_BRIDGE_HOST=127\.0\.0\.1/);

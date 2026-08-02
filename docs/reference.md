@@ -86,6 +86,9 @@ Source setup installs a self-contained application in the current user's
 Applications directory. A packaged release can run from the system Applications
 directory. The generated property list points to that installed bundle, not to
 the source checkout. Each log is capped at 1 MiB and retains three backups.
+The logger rejects symbolic links and multiply linked files during startup and
+while the agent is running. It changes file and directory permissions through
+open file descriptors.
 
 The hook server requires a random bearer token. Setup stores it in the current
 user's Application Support directory with mode `0600`. The token is never

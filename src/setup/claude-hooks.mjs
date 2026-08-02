@@ -73,9 +73,8 @@ function isBridgeHook(hook) {
   if (hook?.type !== "command" || typeof hook.command !== "string") {
     return false;
   }
-  const invokesHookScript = /(?:^|\s)'[^']*\/hook\.mjs'(?:\s|$)/.test(
-    hook.command,
-  );
+  const invokesHookScript =
+    /(?:^|\s)'(?:[^']|'\\'')*\/hook\.mjs'(?:\s|$)/.test(hook.command);
   const hasBridgeTag = /(?:^|\s)(?:'# louder-bridge'|# louder-bridge)\s*$/.test(
     hook.command,
   );

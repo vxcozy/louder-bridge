@@ -134,6 +134,78 @@ test("does not follow a symlink in the log directory", () => {
   fs.rmSync(directory, { recursive: true });
 });
 
+test("rejects a symlinked log storage directory", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
+  const target = path.join(directory, "unrelated");
+  const logs = path.join(directory, "logs");
+  fs.mkdirSync(target);
+  fs.symlinkSync(target, logs);
+
+  assert.throws(
+    () => prepareRotatingLogs({
+      stdout: path.join(logs, "bridge.log"),
+      stderr: path.join(logs, "bridge-error.log"),
+    }),
+    /log storage is not a regular directory/,
+  );
+  assert.deepEqual(fs.readdirSync(target), []);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rejects a multiply linked log file", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
+  const target = path.join(directory, "unrelated.txt");
+  const stdout = path.join(directory, "bridge.log");
+  const stderr = path.join(directory, "bridge-error.log");
+  fs.writeFileSync(target, "leave this alone\n");
+  fs.linkSync(target, stdout);
+
+  assert.throws(
+    () => prepareRotatingLogs({ stdout, stderr }),
+    /log is not a regular file/,
+  );
+  assert.equal(fs.readFileSync(target, "utf8"), "leave this alone\n");
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("does not follow a log file replaced after logger creation", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
+  const target = path.join(directory, "unrelated.txt");
+  const stdout = path.join(directory, "bridge.log");
+  const stderr = path.join(directory, "bridge-error.log");
+  const logger = createRotatingLogger({ stdout, stderr });
+  logger.info("first entry");
+  fs.writeFileSync(target, "leave this alone\n");
+  fs.unlinkSync(stdout);
+  fs.symlinkSync(target, stdout);
+
+  logger.info("second entry");
+
+  assert.equal(fs.readFileSync(target, "utf8"), "leave this alone\n");
+  assert.equal(fs.lstatSync(stdout).isSymbolicLink(), true);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("does not follow a log directory replaced after logger creation", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
+  const logs = path.join(directory, "logs");
+  const movedLogs = path.join(directory, "previous-logs");
+  const target = path.join(directory, "unrelated");
+  const stdout = path.join(logs, "bridge.log");
+  const stderr = path.join(logs, "bridge-error.log");
+  fs.mkdirSync(logs);
+  fs.mkdirSync(target);
+  const logger = createRotatingLogger({ stdout, stderr });
+  fs.renameSync(logs, movedLogs);
+  fs.symlinkSync(target, logs);
+
+  logger.info("do not write this");
+
+  assert.deepEqual(fs.readdirSync(target), []);
+  assert.equal(fs.lstatSync(logs).isSymbolicLink(), true);
+  fs.rmSync(directory, { recursive: true });
+});
+
 test("keeps new log entries on one line and omits local paths", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-logs-"));
   const stdout = path.join(directory, "bridge.log");

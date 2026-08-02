@@ -78,6 +78,8 @@ have not shipped appear under "Unreleased."
   setup. Installed-app checks still verify the bundled driver itself.
 - Setup, activation, and uninstall rollback only their own Claude hooks. They
   preserve unrelated settings written while the operation is running.
+- Hook upgrades and removal now work when the installation path contains an
+  apostrophe.
 - Voice cleanup now waits for the native dictation helper to exit and escalates
   termination if it remains stuck.
 
@@ -87,6 +89,9 @@ have not shipped appear under "Unreleased."
   file.
 - Authentication tokens are now created atomically, validated without
   following links, and permissioned through open file descriptors.
+- Log reads and writes now reject symbolic links and multiply linked files.
+  The logger changes log and directory permissions through open file
+  descriptors.
 - The bridge refuses non-loopback bind addresses.
 - Hook payloads contain only the session ID, lifecycle event, and notification
   type. Health diagnostics omit session IDs and working directories.

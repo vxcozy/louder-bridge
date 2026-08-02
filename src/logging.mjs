@@ -50,6 +50,57 @@ function formatPart(value) {
   return sanitizePart(inspect(value, { breakLength: Infinity, depth: 4 }));
 }
 
+function preparePrivateDirectory(directory) {
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      directory,
+      fs.constants.O_RDONLY |
+        fs.constants.O_DIRECTORY |
+        fs.constants.O_NOFOLLOW,
+    );
+    if (!fs.fstatSync(descriptor).isDirectory()) {
+      throw new Error("not a directory");
+    }
+    fs.fchmodSync(descriptor, 0o700);
+  } catch (error) {
+    throw new Error(
+      `Louder Bridge log storage is not a regular directory: ${directory}`,
+      { cause: error },
+    );
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+function openPrivateLog(filename, flags, { allowMissing = false } = {}) {
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      filename,
+      flags | fs.constants.O_NOFOLLOW,
+      0o600,
+    );
+  } catch (error) {
+    if (allowMissing && error.code === "ENOENT") return null;
+    throw new Error(`Louder Bridge log is not a regular file: ${filename}`, {
+      cause: error,
+    });
+  }
+  try {
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile() || stat.nlink !== 1) {
+      throw new Error(`Louder Bridge log is not a regular file: ${filename}`);
+    }
+    fs.fchmodSync(descriptor, 0o600);
+    return { descriptor, stat };
+  } catch (error) {
+    fs.closeSync(descriptor);
+    throw error;
+  }
+}
+
 function rotate(filename, backups) {
   if (fs.existsSync(`${filename}.${backups}`)) {
     fs.unlinkSync(`${filename}.${backups}`);
@@ -62,33 +113,30 @@ function rotate(filename, backups) {
 }
 
 function scrubLegacyContext(filename) {
-  let stat;
+  const opened = openPrivateLog(filename, fs.constants.O_RDONLY, {
+    allowMissing: true,
+  });
+  if (!opened) return;
   try {
-    stat = fs.lstatSync(filename);
-  } catch (error) {
-    if (error.code === "ENOENT") return;
-    throw error;
+    const contents = fs.readFileSync(opened.descriptor, "utf8");
+    const scrubbed = contents
+      .replace(LEGACY_CONTEXT_SUFFIX, "$1")
+      .split("\n")
+      .filter(
+        (line) =>
+          !LEGACY_PRIVATE_PATH_LINE.test(line) &&
+          !LEGACY_STACK_LINE.test(line) &&
+          !LEGACY_SOURCE_LINE.test(line) &&
+          !LEGACY_STACK_DETAIL_LINE.test(line),
+      )
+      .map((line) => sanitizePart(line))
+      .join("\n");
+    if (scrubbed !== contents) {
+      writeFileAtomic(filename, scrubbed, { mode: 0o600 });
+    }
+  } finally {
+    fs.closeSync(opened.descriptor);
   }
-  if (stat.isSymbolicLink() || !stat.isFile()) {
-    throw new Error(`Louder Bridge log is not a regular file: ${filename}`);
-  }
-  const contents = fs.readFileSync(filename, "utf8");
-  const scrubbed = contents
-    .replace(LEGACY_CONTEXT_SUFFIX, "$1")
-    .split("\n")
-    .filter(
-      (line) =>
-        !LEGACY_PRIVATE_PATH_LINE.test(line) &&
-        !LEGACY_STACK_LINE.test(line) &&
-        !LEGACY_SOURCE_LINE.test(line) &&
-        !LEGACY_STACK_DETAIL_LINE.test(line),
-    )
-    .map((line) => sanitizePart(line))
-    .join("\n");
-  if (scrubbed !== contents) {
-    writeFileAtomic(filename, scrubbed, { mode: 0o600 });
-  }
-  fs.chmodSync(filename, 0o600);
 }
 
 export function prepareRotatingLogs({
@@ -102,10 +150,11 @@ export function prepareRotatingLogs({
   if (!Number.isInteger(backups) || backups < 1) {
     throw new Error("Rotating logger backups must be a positive integer.");
   }
-  for (const filename of new Set([stdout, stderr])) {
-    const directory = path.dirname(filename);
-    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-    fs.chmodSync(directory, 0o700);
+  const filenames = new Set([stdout, stderr]);
+  for (const directory of new Set([...filenames].map(path.dirname))) {
+    preparePrivateDirectory(directory);
+  }
+  for (const filename of filenames) {
     for (let index = 0; index <= backups; index += 1) {
       scrubLegacyContext(index === 0 ? filename : `${filename}.${index}`);
     }
@@ -127,17 +176,34 @@ export function createRotatingLogger({
   function write(filename, level, values) {
     const message = values.map(formatPart).join(" ");
     const line = `${now().toISOString()} ${level} ${message}\n`;
+    let opened;
     try {
-      const currentSize = fs.existsSync(filename)
-        ? fs.statSync(filename).size
-        : 0;
-      if (currentSize > 0 && currentSize + Buffer.byteLength(line) > maxBytes) {
+      preparePrivateDirectory(path.dirname(filename));
+      opened = openPrivateLog(
+        filename,
+        fs.constants.O_WRONLY |
+          fs.constants.O_APPEND |
+          fs.constants.O_CREAT,
+      );
+      if (
+        opened.stat.size > 0 &&
+        opened.stat.size + Buffer.byteLength(line) > maxBytes
+      ) {
+        fs.closeSync(opened.descriptor);
+        opened = null;
         rotate(filename, backups);
+        opened = openPrivateLog(
+          filename,
+          fs.constants.O_WRONLY |
+            fs.constants.O_APPEND |
+            fs.constants.O_CREAT,
+        );
       }
-      fs.appendFileSync(filename, line, { encoding: "utf8", mode: 0o600 });
-      fs.chmodSync(filename, 0o600);
+      fs.writeFileSync(opened.descriptor, line, { encoding: "utf8" });
     } catch {
       // Logging must never crash the bridge.
+    } finally {
+      if (opened) fs.closeSync(opened.descriptor);
     }
   }
 
