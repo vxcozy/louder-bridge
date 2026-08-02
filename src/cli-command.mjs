@@ -48,6 +48,7 @@ import {
 import { installedApplicationStatus } from "./setup/installed-status.mjs";
 import { runInterruptibleSetup } from "./setup/transaction-signals.mjs";
 import { rollbackSetupApplication } from "./setup/setup-rollback.mjs";
+import { waitForBridgeReady } from "./setup/service-readiness.mjs";
 import {
   onboardingApplicationIsRunning,
   stopOnboardingApplication,
@@ -242,6 +243,10 @@ if (command === "help" || command === "--help" || command === "-h") {
             "Louder Bridge closed before the background agent was ready.",
           );
         }
+        await waitForBridgeReady({
+          authToken: authentication.token,
+          expectedVersion: applicationMetadata().version,
+        });
       },
       async rollback(error) {
         if (settingsTransaction) {
@@ -322,7 +327,14 @@ if (command === "help" || command === "--help" || command === "-h") {
     })) {
       removeLaunchAgent();
     } else {
-      agent = installLaunchAgent({ runtime });
+      agent = await installLaunchAgent({
+        runtime,
+        verify: () =>
+          waitForBridgeReady({
+            authToken: authentication.token,
+            expectedVersion: applicationMetadata().version,
+          }),
+      });
     }
   } catch (error) {
     if (settingsTransaction) {

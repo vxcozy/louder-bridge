@@ -132,6 +132,14 @@ following links and accepts only a single-link file owned by the current user.
 Rollback restores that file's previous mode. Setup also refuses to change log
 directory permissions through a symbolic link.
 
+After launchd starts a replacement agent, activation calls the authenticated
+health endpoint and checks the service mode and exact app version. Each request
+has a 500 ms deadline. Activation tries up to 30 times, with 100 ms between
+attempts. If the service never passes that check, installation restores the
+previous launch-agent file and load state. Setup checks the file again before
+replacement and rollback. If another process changed it, setup leaves the
+newer file alone.
+
 The native launcher is compiled with strong stack protection, fortified libc
 calls, and fatal compiler and linker warnings. Package verification checks the
 compiled binary for the required hardening symbols.

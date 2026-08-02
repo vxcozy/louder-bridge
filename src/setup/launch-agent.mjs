@@ -82,10 +82,27 @@ function readLaunchAgentPlist(filename) {
     return {
       contents: fs.readFileSync(descriptor, "utf8"),
       mode: entry.mode & 0o777,
+      identity: { device: entry.dev, inode: entry.ino },
     };
   } finally {
     fs.closeSync(descriptor);
   }
+}
+
+function sameLaunchAgentState(expected, current) {
+  if (expected === null || current === null) return expected === current;
+  return (
+    expected.identity.device === current.identity.device &&
+    expected.identity.inode === current.identity.inode &&
+    expected.contents === current.contents &&
+    expected.mode === current.mode
+  );
+}
+
+function requireLaunchAgentState(filename, expected, message) {
+  const current = readLaunchAgentPlist(filename);
+  if (!sameLaunchAgentState(expected, current)) throw new Error(message);
+  return current;
 }
 
 function xmlEscape(value) {
@@ -203,11 +220,12 @@ function bootstrapLaunchAgent(userId, plist, run) {
   throw commandError("launchctl bootstrap", result);
 }
 
-export function installLaunchAgent({
+export async function installLaunchAgent({
   homeDirectory = os.homedir(),
   userId = process.getuid(),
   run = spawnSync,
   runtime = applicationBundlePaths(homeDirectory),
+  verify = async () => {},
 } = {}) {
   if (process.platform !== "darwin") {
     throw new Error("The background service currently requires macOS.");
@@ -225,32 +243,87 @@ export function installLaunchAgent({
 
   bootoutLaunchAgent(serviceTarget, run);
 
+  const replacementPlist = launchAgentPlist({ paths, runtime });
+  let replacement = null;
+  let replacementPublished = false;
   try {
-    writeFileAtomic(paths.plist, launchAgentPlist({ paths, runtime }), {
+    writeFileAtomic(paths.plist, replacementPlist, {
       mode: 0o644,
+      beforeRename() {
+        requireLaunchAgentState(
+          paths.plist,
+          previous,
+          "The launch-agent file changed before setup could replace it.",
+        );
+      },
     });
+    replacementPublished = true;
+    replacement = readLaunchAgentPlist(paths.plist);
+    if (
+      replacement === null ||
+      replacement.contents !== replacementPlist ||
+      replacement.mode !== 0o644
+    ) {
+      throw new Error(
+        "The replacement launch-agent file changed before setup could load it.",
+      );
+    }
     bootstrapLaunchAgent(userId, paths.plist, run);
     runLaunchctl(["kickstart", "-k", serviceTarget], { run });
+    await verify(paths);
   } catch (error) {
     try {
       bootoutLaunchAgent(serviceTarget, run);
     } catch (rollbackError) {
       error.message += ` Rollback could not stop the replacement agent: ${rollbackError.message}.`;
     }
-    if (previousPlist === null) {
-      if (fs.existsSync(paths.plist)) fs.unlinkSync(paths.plist);
-    } else {
-      writeFileAtomic(paths.plist, previousPlist, { mode: previous.mode });
-      if (wasLoaded) {
-        try {
-          bootstrapLaunchAgent(userId, paths.plist, run);
-          runLaunchctl(
-            ["kickstart", "-k", serviceTarget],
-            { allowFailure: true, run },
+    let fileRestored = false;
+    try {
+      if (replacementPublished) {
+        if (replacement === null) {
+          throw new Error(
+            "The replacement launch-agent file could not be identified. It was left untouched.",
           );
-        } catch (rollbackError) {
-          error.message += ` Rollback also failed: ${rollbackError.message}.`;
         }
+        requireLaunchAgentState(
+          paths.plist,
+          replacement,
+          "The launch-agent file changed during rollback. It was left untouched.",
+        );
+        if (previousPlist === null) {
+          fs.unlinkSync(paths.plist);
+        } else {
+          writeFileAtomic(paths.plist, previousPlist, {
+            mode: previous.mode,
+            beforeRename() {
+              requireLaunchAgentState(
+                paths.plist,
+                replacement,
+                "The launch-agent file changed during rollback. It was left untouched.",
+              );
+            },
+          });
+        }
+      } else {
+        requireLaunchAgentState(
+          paths.plist,
+          previous,
+          "The launch-agent file changed during rollback. It was left untouched.",
+        );
+      }
+      fileRestored = true;
+    } catch (rollbackError) {
+      error.message += ` Rollback could not restore the previous launch-agent file: ${rollbackError.message}`;
+    }
+    if (fileRestored && previousPlist !== null && wasLoaded) {
+      try {
+        bootstrapLaunchAgent(userId, paths.plist, run);
+        runLaunchctl(
+          ["kickstart", "-k", serviceTarget],
+          { allowFailure: true, run },
+        );
+      } catch (rollbackError) {
+        error.message += ` Rollback also failed: ${rollbackError.message}.`;
       }
     }
     throw error;

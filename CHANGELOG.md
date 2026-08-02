@@ -53,7 +53,10 @@ have not shipped appear under "Unreleased."
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.
 - Source setup keeps the previous app backup until permission onboarding
-  finishes and the replacement background agent is running.
+  finishes and the replacement background agent answers an authenticated
+  health check.
+- App activation checks the running service mode and version before reporting
+  success. If the check fails, it restores the previous launch agent.
 - Interrupting source setup with SIGINT or SIGTERM now cancels permission
   onboarding and rolls back the app, hooks, agent, and token changes.
 - Failed or interrupted source setup now stops the replacement onboarding app
@@ -75,7 +78,7 @@ have not shipped appear under "Unreleased."
 - Launch-agent and onboarding process commands now have deadlines, so setup,
   rollback, and uninstall do not wait forever on a stuck macOS command.
 - Setup rejects symlinked launch-agent files and log directories. Rollback
-  restores the previous launch-agent file mode.
+  restores the previous launch-agent file mode and leaves newer edits alone.
 - Setup and uninstall verify the app's bundle identity before replacing or
   removing it. Rollback and backup cleanup leave a path alone if it no longer
   points to the bundle recorded at the start of the transaction.

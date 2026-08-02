@@ -46,7 +46,7 @@ test("builds a launch agent for the background service", () => {
   assert.match(plist, /<string>a&amp;b<\/string>/);
 });
 
-test("installs and removes the launch agent without shell commands", () => {
+test("installs and removes the launch agent without shell commands", async () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-launch-agent-"),
   );
@@ -62,7 +62,7 @@ test("installs and removes the launch agent without shell commands", () => {
     return { status: 0, stdout: "", stderr: "" };
   };
 
-  const installed = installLaunchAgent({
+  const installed = await installLaunchAgent({
     homeDirectory,
     userId: 501,
     run,
@@ -163,7 +163,7 @@ test("reports a bounded retry-sleep failure", () => {
   );
 });
 
-test("retries bootstrap while the previous agent is unloading", () => {
+test("retries bootstrap while the previous agent is unloading", async () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-launch-retry-"),
   );
@@ -178,13 +178,13 @@ test("retries bootstrap while the previous agent is unloading", () => {
     return { status: 0, stdout: "", stderr: "" };
   };
 
-  installLaunchAgent({ homeDirectory, userId: 501, run });
+  await installLaunchAgent({ homeDirectory, userId: 501, run });
   assert.equal(bootstraps, 2);
   removeLaunchAgent({ homeDirectory, userId: 501, run });
   fs.rmSync(homeDirectory, { recursive: true });
 });
 
-test("restores the previous launch agent after an install failure", () => {
+test("restores the previous launch agent after an install failure", async () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-launch-rollback-"),
   );
@@ -206,7 +206,7 @@ test("restores the previous launch agent after an install failure", () => {
     return { status: 0, stdout: "", stderr: "" };
   };
 
-  assert.throws(
+  await assert.rejects(
     () => installLaunchAgent({ homeDirectory, userId: 501, run }),
     /launchctl bootstrap failed/,
   );
@@ -250,7 +250,7 @@ test("restores a launch agent removed during a failed setup", () => {
   fs.rmSync(homeDirectory, { recursive: true });
 });
 
-test("rejects a symlinked launch-agent property list", () => {
+test("rejects a symlinked launch-agent property list", async () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-launch-link-"),
   );
@@ -261,7 +261,7 @@ test("rejects a symlinked launch-agent property list", () => {
   fs.symlinkSync(target, paths.plist);
   let calls = 0;
 
-  assert.throws(
+  await assert.rejects(
     () =>
       installLaunchAgent({
         homeDirectory,
@@ -278,7 +278,7 @@ test("rejects a symlinked launch-agent property list", () => {
   fs.rmSync(homeDirectory, { recursive: true });
 });
 
-test("does not change permissions through a symlinked log directory", () => {
+test("does not change permissions through a symlinked log directory", async () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-log-link-"),
   );
@@ -289,10 +289,171 @@ test("does not change permissions through a symlinked log directory", () => {
   fs.chmodSync(target, 0o755);
   fs.symlinkSync(target, paths.logs);
 
-  assert.throws(
+  await assert.rejects(
     () => installLaunchAgent({ homeDirectory, userId: 501 }),
     /log storage is not a user-owned directory/,
   );
   assert.equal(fs.statSync(target).mode & 0o777, 0o755);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("verifies the replacement agent before installation succeeds", async () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-verify-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  const calls = [];
+  const run = (command, args) => {
+    calls.push([command, ...args]);
+    return { status: 0, stdout: "", stderr: "" };
+  };
+  let verified = false;
+
+  await installLaunchAgent({
+    homeDirectory,
+    userId: 501,
+    run,
+    async verify(installed) {
+      assert.equal(installed.plist, paths.plist);
+      assert.equal(fs.existsSync(paths.plist), true);
+      assert.equal(calls.at(-1)[1], "kickstart");
+      verified = true;
+    },
+  });
+
+  assert.equal(verified, true);
+  await removeLaunchAgent({ homeDirectory, userId: 501, run });
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("restores the previous agent when readiness verification fails", async () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-health-rollback-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  fs.chmodSync(paths.plist, 0o600);
+  let bootstraps = 0;
+  const run = (command, args) => {
+    if (args[0] === "print") {
+      return { status: 0, stdout: "state = running", stderr: "" };
+    }
+    if (args[0] === "bootstrap") bootstraps += 1;
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  await assert.rejects(
+    () =>
+      installLaunchAgent({
+        homeDirectory,
+        userId: 501,
+        run,
+        async verify() {
+          throw new Error("agent health check failed");
+        },
+      }),
+    /agent health check failed/,
+  );
+
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "previous plist");
+  assert.equal(fs.statSync(paths.plist).mode & 0o777, 0o600);
+  assert.equal(bootstraps, 2);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("removes a first-install agent when readiness verification fails", async () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-health-first-install-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  const run = (command, args) => ({
+    status: args[0] === "print" ? 1 : 0,
+    stdout: "",
+    stderr: "",
+  });
+
+  await assert.rejects(
+    () =>
+      installLaunchAgent({
+        homeDirectory,
+        userId: 501,
+        run,
+        async verify() {
+          throw new Error("agent health check failed");
+        },
+      }),
+    /agent health check failed/,
+  );
+
+  assert.equal(fs.existsSync(paths.plist), false);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("does not overwrite a launch-agent file changed during verification", async () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-health-conflict-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  const run = (command, args) => {
+    if (args[0] === "print") {
+      return { status: 0, stdout: "state = running", stderr: "" };
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  await assert.rejects(
+    () =>
+      installLaunchAgent({
+        homeDirectory,
+        userId: 501,
+        run,
+        async verify() {
+          fs.writeFileSync(paths.plist, "newer plist");
+          throw new Error("agent health check failed");
+        },
+      }),
+    (error) => {
+      assert.match(error.message, /agent health check failed/);
+      assert.match(error.message, /changed during rollback/);
+      return true;
+    },
+  );
+
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "newer plist");
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("does not replace a launch-agent file changed before publication", async () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-publish-conflict-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  let changed = false;
+  const run = (command, args) => {
+    if (args[0] === "print") {
+      return { status: 0, stdout: "state = running", stderr: "" };
+    }
+    if (args[0] === "bootout" && !changed) {
+      changed = true;
+      fs.writeFileSync(paths.plist, "newer plist");
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  await assert.rejects(
+    () => installLaunchAgent({ homeDirectory, userId: 501, run }),
+    /changed before setup could replace it/,
+  );
+
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "newer plist");
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(paths.plist)),
+    [path.basename(paths.plist)],
+  );
   fs.rmSync(homeDirectory, { recursive: true });
 });

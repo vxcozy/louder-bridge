@@ -51,9 +51,10 @@ npm run setup
 ```
 
 Keep the command open while macOS asks for Input Monitoring and Accessibility.
-Setup finishes after the background agent starts. If the app closes early or
-activation fails, setup restores the previous installation. If you interrupt
-the command with Ctrl-C, setup finishes its rollback before exiting.
+Setup finishes after the installed version answers an authenticated health
+check. If the app closes early or activation fails, setup restores the previous
+installation. If you interrupt the command with Ctrl-C, setup finishes its
+rollback before exiting.
 
 The command performs the one-time setup:
 
