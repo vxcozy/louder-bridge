@@ -339,24 +339,37 @@ export async function startBridge({
   server.maxRequestsPerSocket = resolvedHttpLimits.maxRequestsPerSocket;
   server.maxHeadersCount = 32;
 
-  await new Promise((resolve, reject) => {
-    const onError = (error) => {
-      if (error?.code === "EADDRINUSE") {
-        reject(
-          new Error(
-            `Port ${port} is already in use on ${host}. Stop the other Louder Bridge process or choose another port with LOUDER_BRIDGE_PORT.`,
-          ),
-        );
-        return;
-      }
-      reject(error);
-    };
-    server.once("error", onError);
-    server.listen(port, host, () => {
-      server.off("error", onError);
-      resolve();
+  try {
+    await new Promise((resolve, reject) => {
+      const onError = (error) => {
+        if (error?.code === "EADDRINUSE") {
+          reject(
+            new Error(
+              `Port ${port} is already in use on ${host}. Stop the other Louder Bridge process or choose another port with LOUDER_BRIDGE_PORT.`,
+            ),
+          );
+          return;
+        }
+        reject(error);
+      };
+      server.once("error", onError);
+      server.listen(port, host, () => {
+        server.off("error", onError);
+        resolve();
+      });
     });
-  });
+  } catch (error) {
+    if (!device) throw error;
+    try {
+      await disconnectDevice();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `${error.message} The Codex Micro could not be released cleanly.`,
+      );
+    }
+    throw error;
+  }
   logger.info(`Louder Bridge is listening at http://${host}:${port}`);
 
   return {

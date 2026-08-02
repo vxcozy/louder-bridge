@@ -45,6 +45,38 @@ test("reports a clear error when the local port is occupied", async (context) =>
   );
 });
 
+test("releases the device when the hook server cannot start", async (context) => {
+  const occupied = net.createServer();
+  await new Promise((resolve) => occupied.listen(0, "127.0.0.1", resolve));
+  context.after(
+    () => new Promise((resolve) => occupied.close(resolve)),
+  );
+  const calls = [];
+  const device = {
+    async start() {
+      calls.push("start");
+    },
+    async render() {
+      calls.push("render");
+    },
+    async stop() {
+      calls.push("stop");
+    },
+  };
+
+  await assert.rejects(
+    startBridge({
+      host: "127.0.0.1",
+      port: occupied.address().port,
+      deviceFactory: () => device,
+      authToken,
+      logger,
+    }),
+    /Port \d+ is already in use/,
+  );
+  assert.deepEqual(calls, ["start", "render", "stop"]);
+});
+
 test("reports service and device health", async (context) => {
   const bridge = await startBridge({
     host: "127.0.0.1",

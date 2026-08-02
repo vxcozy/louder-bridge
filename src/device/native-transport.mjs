@@ -82,6 +82,9 @@ export class NativeMicroTransport {
     this.onDisconnect = onDisconnect;
     this.closing = false;
     this.disconnectReported = false;
+    this.transport = null;
+    this.deviceStatus = null;
+    this.stderr = "";
 
     const child = this.spawnProcess(this.launcher, ["--micro-device"], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -91,7 +94,9 @@ export class NativeMicroTransport {
 
     return new Promise((resolve, reject) => {
       let settled = false;
+      let childConnected = false;
       let stdout = "";
+      let stderr = "";
       const timer = setTimeout(() => {
         finishStartup(
           new Error("Codex Micro did not answer the device status check."),
@@ -125,6 +130,7 @@ export class NativeMicroTransport {
       };
 
       const processLine = (line) => {
+        if (this.child !== child) return;
         if (!line) return;
         let message;
         try {
@@ -134,6 +140,7 @@ export class NativeMicroTransport {
         }
         const control = message?._louder;
         if (control?.type === "connected") {
+          childConnected = true;
           this.connected = true;
           this.transport = control.transport ?? "Unknown";
           this.deviceStatus = control.status ?? null;
@@ -141,7 +148,7 @@ export class NativeMicroTransport {
           return;
         }
         if (control?.type === "disconnected") {
-          this.reportDisconnect();
+          this.reportDisconnect(null, child);
           return;
         }
         if (message?.m === "v.oai.hid" && message.p) {
@@ -154,6 +161,7 @@ export class NativeMicroTransport {
       };
 
       child.stdout.on("data", (chunk) => {
+        if (this.child !== child) return;
         stdout += chunk.toString("utf8");
         for (;;) {
           const newline = stdout.indexOf("\n");
@@ -165,7 +173,7 @@ export class NativeMicroTransport {
         if (Buffer.byteLength(stdout) > MAX_LINE_BYTES) {
           const error = new Error("Codex Micro sent an oversized response.");
           if (settled) {
-            this.reportDisconnect(error);
+            this.reportDisconnect(error, child);
             this.close().catch(() => {});
           } else {
             finishStartup(error, { close: true });
@@ -173,14 +181,19 @@ export class NativeMicroTransport {
         }
       });
       child.stderr.on("data", (chunk) => {
-        this.stderr = `${this.stderr}${chunk.toString("utf8")}`.slice(-4096);
+        if (this.child !== child) return;
+        stderr = `${stderr}${chunk.toString("utf8")}`.slice(-4096);
+        this.stderr = stderr;
       });
       child.once("error", (error) => {
         finishStartup(error);
-        this.reportDisconnect(error);
+        if (this.child !== child) return;
+        this.reportDisconnect(error, child);
+        this.child = null;
+        this.connected = false;
       });
       child.once("exit", (code, signal) => {
-        const detail = this.stderr.trim();
+        const detail = stderr.trim();
         const error =
           code === 0 || this.closing
             ? null
@@ -190,22 +203,31 @@ export class NativeMicroTransport {
               );
         finishStartup(
           error ??
-            (this.connected
+            (childConnected
               ? null
               : new Error(detail || "Codex Micro driver stopped.")),
         );
+        if (this.child !== child) return;
+        this.reportDisconnect(error, child);
         this.child = null;
         this.connected = false;
-        this.reportDisconnect(error);
       });
     });
   }
 
-  reportDisconnect(error = null) {
-    if (this.disconnectReported || this.closing) return;
+  reportDisconnect(error = null, expectedChild = this.child) {
+    if (
+      this.disconnectReported ||
+      this.closing ||
+      !expectedChild ||
+      this.child !== expectedChild
+    ) {
+      return;
+    }
     this.disconnectReported = true;
+    const onDisconnect = this.onDisconnect;
     Promise.resolve()
-      .then(() => this.onDisconnect(error))
+      .then(() => onDisconnect(error))
       .catch(() => {});
   }
 
@@ -231,7 +253,7 @@ export class NativeMicroTransport {
       };
       const recover = (error) => {
         if (!settle(error)) return;
-        this.reportDisconnect(error);
+        this.reportDisconnect(error, child);
         if (this.child === child) this.close().catch(() => {});
       };
       const onExit = () => {

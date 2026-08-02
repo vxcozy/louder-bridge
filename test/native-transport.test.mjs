@@ -115,6 +115,52 @@ test("reports a driver failure before startup completes", async () => {
   await assert.rejects(connected, /Codex Micro was not found/);
 });
 
+test("reconnects after a startup process errors without exiting", async () => {
+  const first = new FakeChild();
+  const second = new FakeChild();
+  const children = [first, second];
+  const firstDisconnects = [];
+  const secondDisconnects = [];
+  let spawnCalls = 0;
+  const transport = new NativeMicroTransport({
+    launcher: "/bin/ls",
+    spawnProcess: () => children[spawnCalls++],
+  });
+
+  const firstConnection = transport.connect({
+    onDisconnect(error) {
+      firstDisconnects.push(error?.message ?? "clean");
+    },
+  });
+  first.emit("error", new Error("driver spawn failed"));
+
+  await assert.rejects(firstConnection, /driver spawn failed/);
+  assert.equal(transport.child, null);
+  assert.equal(transport.connected, false);
+
+  const secondConnection = transport.connect({
+    onDisconnect(error) {
+      secondDisconnects.push(error?.message ?? "clean");
+    },
+  });
+  assert.equal(spawnCalls, 2);
+  second.stdout.write(
+    '{"_louder":{"type":"connected","transport":"USB","status":{"version":"v0.4.1"}}}\n',
+  );
+  await secondConnection;
+
+  first.finish(1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(transport.child, second);
+  assert.equal(transport.connected, true);
+  assert.deepEqual(firstDisconnects, ["driver spawn failed"]);
+  assert.deepEqual(secondDisconnects, []);
+
+  const closing = transport.close();
+  second.finish();
+  await closing;
+});
+
 test("waits for a timed-out startup process to exit before rejecting", async () => {
   const child = new FakeChild();
   const transport = new NativeMicroTransport({

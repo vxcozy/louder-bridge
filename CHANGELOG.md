@@ -80,11 +80,16 @@ have not shipped appear under "Unreleased."
   methods on known routes.
 - Incomplete loopback requests close after five seconds. The server accepts at
   most 64 connections and closes each one after 100 requests.
+- If the hook server cannot bind its local port after opening the Micro,
+  startup now releases the device before returning the error.
 - A native driver that stops accepting commands is treated as disconnected
   after one second. The bridge closes that process, then the device service
   reconnects through its normal retry loop.
 - Concurrent driver shutdowns now wait for the same cleanup operation. A new
   driver process does not start until the previous process has exited.
+- A native driver that fails before it can emit an exit event no longer blocks
+  later connection attempts. Late events from an older driver cannot clear or
+  notify the replacement connection.
 - Desktop process and permission checks stop after two seconds. Overlapping
   timer ticks now share one pending refresh instead of building an unbounded
   queue.
