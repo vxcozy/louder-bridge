@@ -70,6 +70,16 @@ Supported simulated states are `idle`, `running`, `needs_input`, `complete`,
 Setup records the selected host and port in the launch agent and hook commands.
 Only `127.0.0.1`, `::1`, and `localhost` are accepted as host values.
 
+## Claude settings
+
+Setup adds Louder Bridge command hooks to `~/.claude/settings.json`. It keeps
+unrelated settings and hooks, along with the existing file mode and any
+symbolic link at the settings path.
+
+If failed setup needs to remove a settings file that it created, rollback
+checks the file and its bridge hooks first. A file that was replaced, cleared,
+or given other settings is left in place.
+
 ## Background agent
 
 Setup creates a per-user launch agent with these properties:

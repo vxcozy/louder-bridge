@@ -210,6 +210,43 @@ test("rollback keeps a new settings file when another setting was added", () => 
   fs.rmSync(directory, { recursive: true });
 });
 
+test("rollback preserves an empty settings file replaced after setup", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const replacement = path.join(directory, "replacement.json");
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/new/node' '/new/hook.mjs' # louder-bridge",
+  });
+  fs.writeFileSync(replacement, '{}\n', { mode: 0o640 });
+  fs.renameSync(replacement, settingsFile);
+
+  assert.throws(
+    () => rollbackClaudeSettingsUpdate(transaction),
+    /changed during rollback.*newer file untouched/,
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, "utf8")), {});
+  assert.equal(fs.statSync(settingsFile).mode & 0o777, 0o640);
+  fs.rmSync(directory, { recursive: true });
+});
+
+test("rollback preserves a settings file cleared in place", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
+  const settingsFile = path.join(directory, "settings.json");
+  const transaction = beginClaudeSettingsUpdate({
+    settingsFile,
+    command: "'/new/node' '/new/hook.mjs' # louder-bridge",
+  });
+  fs.writeFileSync(settingsFile, '{}\n');
+
+  assert.throws(
+    () => rollbackClaudeSettingsUpdate(transaction),
+    /changed during rollback.*newer file untouched/,
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, "utf8")), {});
+  fs.rmSync(directory, { recursive: true });
+});
+
 test("uninstall rollback restores bridge hooks without removing newer settings", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "louder-settings-"));
   const settingsFile = path.join(directory, "settings.json");

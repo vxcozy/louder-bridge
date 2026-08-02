@@ -19,6 +19,28 @@ const HOOK_EVENTS = [
 ];
 const HOOK_TAG = "# louder-bridge";
 
+function fileIdentity(entry) {
+  return { device: entry.dev, inode: entry.ino };
+}
+
+function sameFile(expected, actual) {
+  return Boolean(
+    expected &&
+      actual &&
+      expected.device === actual.device &&
+      expected.inode === actual.inode,
+  );
+}
+
+function pathEntry(filename) {
+  try {
+    return fs.lstatSync(filename);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 function resolveSettingsTarget(settingsFile) {
   let entry;
   try {
@@ -150,9 +172,31 @@ function restoreBridgeHookGroups(settings, groupsByEvent) {
 }
 
 function readSettings(target) {
-  return target.existed
-    ? JSON.parse(fs.readFileSync(target.file, "utf8"))
-    : {};
+  if (!target.existed) return { settings: {}, identity: null };
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      target.file,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+    );
+    const metadata = fs.fstatSync(descriptor);
+    const current = pathEntry(target.file);
+    if (
+      !metadata.isFile() ||
+      !current?.isFile() ||
+      !sameFile(fileIdentity(metadata), fileIdentity(current))
+    ) {
+      throw new Error(
+        "Claude settings changed while Louder Bridge was reading it.",
+      );
+    }
+    return {
+      settings: JSON.parse(fs.readFileSync(descriptor, "utf8")),
+      identity: fileIdentity(metadata),
+    };
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
 }
 
 function writeSettings(target, settings) {
@@ -161,6 +205,11 @@ function writeSettings(target, settings) {
     `${JSON.stringify(settings, null, 2)}\n`,
     { mode: target.mode },
   );
+  const installed = pathEntry(target.file);
+  if (!installed?.isFile() || installed.isSymbolicLink()) {
+    throw new Error("Claude settings changed before setup could finish.");
+  }
+  return fileIdentity(installed);
 }
 
 export function beginClaudeSettingsUpdate({
@@ -169,16 +218,18 @@ export function beginClaudeSettingsUpdate({
   settingsFile = claudeSettingsPath(),
 } = {}) {
   const target = resolveSettingsTarget(settingsFile);
-  const settings = readSettings(target);
+  const { settings } = readSettings(target);
   const updated = remove
     ? removeBridgeHooks(settings)
     : addBridgeHooks(settings, command);
-  writeSettings(target, updated);
+  const installedIdentity = writeSettings(target, updated);
   return {
     settingsFile,
     targetFile: target.file,
     existed: target.existed,
     previousBridgeHooks: bridgeHookGroups(settings),
+    installedBridgeHooks: bridgeHookGroups(updated),
+    installedIdentity,
   };
 }
 
@@ -190,12 +241,31 @@ export function rollbackClaudeSettingsUpdate(transaction) {
       "Claude settings changed location during the operation. Louder Bridge left the newer file untouched.",
     );
   }
-  const current = readSettings(target);
+  const currentState = readSettings(target);
+  const current = currentState.settings;
   const restored = restoreBridgeHookGroups(
     removeBridgeHooks(current),
     transaction.previousBridgeHooks,
   );
   if (!transaction.existed && Object.keys(restored).length === 0) {
+    if (
+      !sameFile(transaction.installedIdentity, currentState.identity) ||
+      JSON.stringify(bridgeHookGroups(current)) !==
+        JSON.stringify(transaction.installedBridgeHooks)
+    ) {
+      throw new Error(
+        "Claude settings changed during rollback. Louder Bridge left the newer file untouched.",
+      );
+    }
+    const beforeDelete = pathEntry(target.file);
+    if (
+      !beforeDelete ||
+      !sameFile(transaction.installedIdentity, fileIdentity(beforeDelete))
+    ) {
+      throw new Error(
+        "Claude settings changed during rollback. Louder Bridge left the newer file untouched.",
+      );
+    }
     fs.unlinkSync(target.file);
     return;
   }

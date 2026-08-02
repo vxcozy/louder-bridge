@@ -84,6 +84,9 @@ have not shipped appear under "Unreleased."
   delete a backup path that now points to another file.
 - Source setup sanitizes older logs before permission onboarding starts.
 - Claude settings updates preserve symlinks and existing file permissions.
+- Failed setup deletes a newly created Claude settings file only when the file
+  and its bridge hooks still match that setup transaction. A replaced or
+  cleared file is left untouched.
 - Release automation uses reviewed notes supplied by the maintainer instead of
   generated release copy.
 - Ended Claude sessions now release their Agent Key slot and in-memory session
