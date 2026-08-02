@@ -189,9 +189,11 @@ not carry audio or transcript text. Normal logs record slot numbers, states,
 and MIC edges, not session IDs or project names.
 
 The server accepts only loopback bind addresses. Every request also needs a
-random bearer token stored in a user-only file. This prevents another local
-process from forging Claude events merely because it can reach the port. There
-is no cloud service in the bridge and no account credential is required.
+random bearer token stored in a user-only file. A client cannot forge Claude
+events merely because it can reach the port; it must also present that token.
+The file permissions separate macOS user accounts, but they are not a security
+boundary between processes running as the same account. There is no cloud
+service in the bridge and no account credential is required.
 
 ## Coexisting with Codex
 

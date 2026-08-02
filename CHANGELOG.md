@@ -85,6 +85,8 @@ have not shipped appear under "Unreleased."
 
 - Loopback requests now require a random bearer token stored in a mode-0600
   file.
+- Authentication tokens are now created atomically, validated without
+  following links, and permissioned through open file descriptors.
 - The bridge refuses non-loopback bind addresses.
 - Hook payloads contain only the session ID, lifecycle event, and notification
   type. Health diagnostics omit session IDs and working directories.

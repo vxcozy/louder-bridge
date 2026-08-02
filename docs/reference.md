@@ -89,7 +89,9 @@ the source checkout. Each log is capped at 1 MiB and retains three backups.
 
 The hook server requires a random bearer token. Setup stores it in the current
 user's Application Support directory with mode `0600`. The token is never
-written into Claude settings or the launch-agent property list.
+written into Claude settings or the launch-agent property list. Creation is
+atomic, so concurrent setup attempts agree on one token. Reads and permission
+changes do not follow symbolic links.
 
 ## Lighting states
 
