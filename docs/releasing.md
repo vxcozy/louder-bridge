@@ -2,6 +2,24 @@
 
 This guide is for maintainers preparing a macOS release.
 
+## Configure GitHub once
+
+Create a `production` environment and add these environment secrets:
+
+| Secret | Value |
+|---|---|
+| `MACOS_CERTIFICATE` | Base64-encoded Developer ID Application PKCS#12 file |
+| `MACOS_CERTIFICATE_PASSWORD` | Password for the PKCS#12 file |
+| `KEYCHAIN_PASSWORD` | Random password used only for the temporary CI keychain |
+| `APPLE_SIGNING_IDENTITY` | Full Developer ID Application identity |
+| `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
+| `APPLE_NOTARY_ISSUER_ID` | App Store Connect issuer ID |
+| `APPLE_NOTARY_PRIVATE_KEY` | Contents of the App Store Connect `.p8` key |
+
+The release workflow stops at its credential check if any value is missing. It
+never prints secret values. Restrict the environment to maintainers who are
+allowed to prepare releases.
+
 ## Qualify the source
 
 Choose a semantic version, update `package.json` and `CHANGELOG.md`, then run:

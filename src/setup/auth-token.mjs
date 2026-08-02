@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { writeFileAtomic } from "./atomic-file.mjs";
 
 const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
@@ -71,4 +71,27 @@ export function removeAuthToken({
   const file = authTokenPath(homeDirectory);
   if (fs.existsSync(file)) fs.unlinkSync(file);
   return file;
+}
+
+export function stageAuthTokenRemoval({
+  homeDirectory = os.homedir(),
+} = {}) {
+  const file = authTokenPath(homeDirectory);
+  if (!fs.existsSync(file)) return { file, backup: null };
+  const backup = `${file}.${randomUUID()}.removing`;
+  fs.renameSync(file, backup);
+  return { file, backup };
+}
+
+export function rollbackAuthTokenRemoval(transaction) {
+  if (!transaction?.backup || !fs.existsSync(transaction.backup)) return;
+  if (fs.existsSync(transaction.file)) fs.unlinkSync(transaction.file);
+  fs.renameSync(transaction.backup, transaction.file);
+  fs.chmodSync(transaction.file, 0o600);
+}
+
+export function commitAuthTokenRemoval(transaction) {
+  if (transaction?.backup && fs.existsSync(transaction.backup)) {
+    fs.unlinkSync(transaction.backup);
+  }
 }

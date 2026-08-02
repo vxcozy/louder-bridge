@@ -103,6 +103,11 @@ function readIfPresent(relative) {
 const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const releaseWorkflow = readIfPresent(".github/workflows/release.yml");
 const nodeEntitlements = readIfPresent("release/node.entitlements.plist");
+const actionPins = {
+  "actions/checkout": "d23441a48e516b6c34aea4fa41551a30e30af803",
+  "actions/setup-node": "249970729cb0ef3589644e2896645e5dc5ba9c38",
+  "actions/upload-artifact": "b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+};
 if (!/node:\s*\["22\.x", "24\.x", "26\.x"\]/.test(ciWorkflow)) {
   failures.push("CI must test Node.js 22, 24, and 26.");
 }
@@ -115,17 +120,32 @@ if (
 if (!ciWorkflow.includes("npm ci") || !releaseWorkflow.includes("npm ci")) {
   failures.push("CI and release jobs must install from package-lock.json.");
 }
+if (!releaseWorkflow.includes("npm run release:credentials")) {
+  failures.push("The release workflow must check signing credentials first.");
+}
 if ((ciWorkflow.match(/fetch-depth:\s*0/g) ?? []).length < 2) {
   failures.push("CI jobs must fetch full history for attribution checks.");
 }
-if (
-  !ciWorkflow.includes("actions/checkout@v6") ||
-  !ciWorkflow.includes("actions/setup-node@v6") ||
-  !ciWorkflow.includes("actions/upload-artifact@v6") ||
-  !releaseWorkflow.includes("actions/checkout@v6") ||
-  !releaseWorkflow.includes("actions/setup-node@v6")
-) {
-  failures.push("GitHub workflows must use the Node 24-based action releases.");
+for (const workflow of [ciWorkflow, releaseWorkflow]) {
+  if (/\buses:\s*[^\s@]+@(?![a-f0-9]{40}\b)/i.test(workflow)) {
+    failures.push(
+      "GitHub Actions must use immutable 40-character commit SHAs.",
+    );
+    break;
+  }
+}
+for (const [action, revision] of Object.entries(actionPins)) {
+  const requiredWorkflows =
+    action === "actions/upload-artifact"
+      ? [["CI", ciWorkflow]]
+      : [["CI", ciWorkflow], ["release", releaseWorkflow]];
+  for (const [name, workflow] of requiredWorkflows) {
+    if (!workflow.includes(`${action}@${revision}`)) {
+      failures.push(
+        `${name} must pin ${action} to its reviewed v6 commit.`,
+      );
+    }
+  }
 }
 if (!releaseWorkflow.includes("--draft")) {
   failures.push(

@@ -9,6 +9,7 @@ import {
   launchAgentPaths,
   launchAgentPlist,
   removeLaunchAgent,
+  restoreRemovedLaunchAgent,
 } from "../src/setup/launch-agent.mjs";
 
 test("builds a launch agent for the background service", () => {
@@ -133,5 +134,37 @@ test("restores the previous launch agent after an install failure", () => {
   );
   assert.equal(fs.readFileSync(paths.plist, "utf8"), "previous plist");
   assert.equal(bootstraps, 4);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("restores a launch agent removed during a failed setup", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-removal-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  const calls = [];
+  const run = (command, args) => {
+    calls.push([command, ...args]);
+    if (args[0] === "print") {
+      return { status: 0, stdout: "state = running", stderr: "" };
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  const removal = removeLaunchAgent({
+    homeDirectory,
+    userId: 501,
+    run,
+  });
+  assert.equal(fs.existsSync(paths.plist), false);
+  restoreRemovedLaunchAgent(removal, { run });
+
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "previous plist");
+  assert.deepEqual(
+    calls.map((call) => call[1]),
+    ["print", "bootout", "bootout", "bootstrap", "kickstart"],
+  );
   fs.rmSync(homeDirectory, { recursive: true });
 });

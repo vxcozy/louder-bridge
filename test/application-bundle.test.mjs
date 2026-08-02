@@ -171,6 +171,43 @@ test("prepares the complete bundle before replacing the installed app", () => {
   fs.rmSync(root, { recursive: true });
 });
 
+test("keeps the installed app when the pre-replacement handoff fails", () => {
+  const { root, home, source, node } = fixture();
+  const paths = applicationBundlePaths(home);
+  fs.mkdirSync(paths.app, { recursive: true });
+  fs.writeFileSync(path.join(paths.app, "marker"), "previous app");
+
+  assert.throws(
+    () =>
+      installApplicationBundle({
+        homeDirectory: home,
+        sourceRoot: source,
+        nodePath: node,
+        beforeReplace(staged) {
+          assert.equal(fs.existsSync(staged.cli), true);
+          assert.equal(
+            fs.readFileSync(path.join(paths.app, "marker"), "utf8"),
+            "previous app",
+          );
+          throw new Error("handoff failed");
+        },
+      }),
+    /handoff failed/,
+  );
+
+  assert.equal(
+    fs.readFileSync(path.join(paths.app, "marker"), "utf8"),
+    "previous app",
+  );
+  assert.deepEqual(
+    fs
+      .readdirSync(path.join(home, "Applications"))
+      .filter((name) => name.includes(".tmp")),
+    [],
+  );
+  fs.rmSync(root, { recursive: true });
+});
+
 test("stages application removal so it can be restored", () => {
   const { root, home } = fixture();
   const paths = applicationBundlePaths(home);

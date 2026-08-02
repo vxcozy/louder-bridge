@@ -52,7 +52,10 @@ export class SessionStore {
       }
     }
     const evictedId = this.slotSessions[candidate];
-    if (evictedId) this.sessions.delete(evictedId);
+    if (evictedId) {
+      this.sessions.delete(evictedId);
+      if (this.selectedSlot === candidate) this.selectedSlot = null;
+    }
     return candidate;
   }
 
@@ -71,6 +74,7 @@ export class SessionStore {
     if (!state) return null;
 
     let session = this.sessions.get(event.session_id);
+    if (!session && state === "off") return null;
     if (!session) {
       const slot = this.chooseSlot();
       session = {

@@ -19,15 +19,19 @@ import {
 } from "./setup/claude-hooks.mjs";
 import {
   commitApplicationBundle,
+  applicationBundlePaths,
   applicationBundlePathsForCli,
   installApplicationBundle,
   rollbackApplicationBundle,
   stageApplicationBundleRemoval,
 } from "./setup/application-bundle.mjs";
 import {
+  commitAuthTokenRemoval,
   ensureAuthToken,
   readAuthToken,
   removeAuthToken,
+  rollbackAuthTokenRemoval,
+  stageAuthTokenRemoval,
 } from "./setup/auth-token.mjs";
 import {
   compileNativeLauncherAtomically,
@@ -43,6 +47,7 @@ import {
   launchAgentIsRunning,
   launchAgentPaths,
   removeLaunchAgent,
+  restoreRemovedLaunchAgent,
 } from "./setup/launch-agent.mjs";
 
 const command = process.argv[2] ?? "start";
@@ -138,6 +143,14 @@ function activationDialog(
   });
 }
 
+function attemptRollback(error, description, operation) {
+  try {
+    operation();
+  } catch (rollbackError) {
+    error.message += ` ${description}: ${rollbackError.message}`;
+  }
+}
+
 if (command === "help" || command === "--help" || command === "-h") {
   printHelp();
 } else if (
@@ -170,16 +183,20 @@ if (command === "help" || command === "--help" || command === "-h") {
 } else if (command === "setup") {
   const platform = platformSupport();
   if (!platform.supported) throw new Error(platform.error);
-  stopOnboardingApplication();
   const settingsSnapshot = snapshotClaudeSettings();
+  const installedApp = applicationBundlePaths().app;
   let application;
   let authentication;
   let file;
   let agent;
+  let stoppedOnboarding = false;
   let needsOnboarding = false;
   try {
     authentication = ensureAuthToken();
     application = installApplicationBundle({
+      beforeReplace() {
+        stoppedOnboarding = stopOnboardingApplication();
+      },
       prepare(staged) {
         const sourceRoot = path.resolve(
           path.dirname(fileURLToPath(import.meta.url)),
@@ -206,11 +223,38 @@ if (command === "help" || command === "--help" || command === "-h") {
       }),
     });
     agent = removeLaunchAgent();
+    await openOnboardingApplication(application.app);
     needsOnboarding = true;
   } catch (error) {
-    restoreClaudeSettings(settingsSnapshot);
-    if (application) rollbackApplicationBundle(application);
-    if (authentication?.created) removeAuthToken();
+    attemptRollback(error, "Claude settings could not be restored", () => {
+      restoreClaudeSettings(settingsSnapshot);
+    });
+    if (application) {
+      attemptRollback(error, "The previous app could not be restored", () => {
+        rollbackApplicationBundle(application);
+      });
+    }
+    if (agent?.removed) {
+      attemptRollback(
+        error,
+        "The previous background agent could not be restored",
+        () => restoreRemovedLaunchAgent(agent),
+      );
+    }
+    if (stoppedOnboarding) {
+      try {
+        await openOnboardingApplication(installedApp);
+      } catch (rollbackError) {
+        error.message += ` The previous onboarding app could not be reopened: ${rollbackError.message}`;
+      }
+    }
+    if (authentication?.created) {
+      attemptRollback(
+        error,
+        "The new authentication token could not be removed",
+        () => removeAuthToken(),
+      );
+    }
     throw error;
   }
   try {
@@ -223,7 +267,6 @@ if (command === "help" || command === "--help" || command === "-h") {
   console.log(`Application installed in ${application.app}.`);
   console.log(`Claude Code hooks installed in ${file}.`);
   if (needsOnboarding) {
-    openOnboardingApplication(application.app);
     console.log(
       "Louder Bridge is waiting for Input Monitoring and Accessibility approval.",
     );
@@ -293,17 +336,64 @@ if (command === "help" || command === "--help" || command === "-h") {
       fileURLToPath(import.meta.url),
     ).app;
   } catch {}
-  const application = stageApplicationBundleRemoval({
-    ...(currentApp ? { app: currentApp } : {}),
-  });
+  const installedApp = currentApp ?? applicationBundlePaths().app;
+  let application;
+  let authentication;
+  let stoppedOnboarding = false;
+  try {
+    stoppedOnboarding = stopOnboardingApplication({
+      launcher: path.join(installedApp, "Contents", "MacOS", "LouderBridge"),
+    });
+    application = stageApplicationBundleRemoval({
+      app: installedApp,
+    });
+    authentication = stageAuthTokenRemoval();
+  } catch (error) {
+    if (application) {
+      attemptRollback(error, "The app could not be restored", () => {
+        rollbackApplicationBundle(application);
+      });
+    }
+    if (authentication) {
+      attemptRollback(
+        error,
+        "The authentication token could not be restored",
+        () => rollbackAuthTokenRemoval(authentication),
+      );
+    }
+    if (stoppedOnboarding) {
+      try {
+        await openOnboardingApplication(installedApp);
+      } catch (rollbackError) {
+        error.message += ` The onboarding app could not be reopened: ${rollbackError.message}`;
+      }
+    }
+    throw error;
+  }
   let file;
   let agent;
   try {
     file = updateClaudeSettings({ remove: true });
     agent = removeLaunchAgent();
   } catch (error) {
-    restoreClaudeSettings(settingsSnapshot);
-    rollbackApplicationBundle(application);
+    attemptRollback(error, "Claude settings could not be restored", () => {
+      restoreClaudeSettings(settingsSnapshot);
+    });
+    attemptRollback(error, "The app could not be restored", () => {
+      rollbackApplicationBundle(application);
+    });
+    attemptRollback(
+      error,
+      "The authentication token could not be restored",
+      () => rollbackAuthTokenRemoval(authentication),
+    );
+    if (stoppedOnboarding) {
+      try {
+        await openOnboardingApplication(installedApp);
+      } catch (rollbackError) {
+        error.message += ` The onboarding app could not be reopened: ${rollbackError.message}`;
+      }
+    }
     throw error;
   }
   try {
@@ -311,7 +401,13 @@ if (command === "help" || command === "--help" || command === "-h") {
   } catch (error) {
     console.warn(`Could not remove the application backup: ${error.message}`);
   }
-  removeAuthToken();
+  try {
+    commitAuthTokenRemoval(authentication);
+  } catch (error) {
+    console.warn(
+      `Could not remove the authentication backup: ${error.message}`,
+    );
+  }
   console.log(`Background agent removed from ${agent.plist}.`);
   console.log(`Claude Code hooks removed from ${file}.`);
 } else if (command === "status") {

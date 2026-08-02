@@ -30,6 +30,7 @@ to check the current installation.
 | `npm run authorship:check` | Reject automated authorship credit in files and commits |
 | `npm run security:check` | Scan the repository for common credential leaks |
 | `npm run release:check` | Run syntax and release-hygiene checks |
+| `npm run release:credentials` | Check that release credentials are present without printing them |
 | `npm run release:build` | Build an Apple Silicon release archive |
 | `npm run release:notarize` | Submit a signed archive to Apple's notary service |
 | `npm run release:verify` | Verify the archive, checksum, SBOM, architecture, and signature |

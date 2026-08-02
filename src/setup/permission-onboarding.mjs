@@ -1,4 +1,7 @@
-import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export function needsPermissionOnboarding({
   inputMonitoring,
@@ -7,14 +10,14 @@ export function needsPermissionOnboarding({
   return inputMonitoring !== "granted" || accessibility !== "granted";
 }
 
-export function openOnboardingApplication(
+export async function openOnboardingApplication(
   app,
-  { spawnProcess = spawn } = {},
+  { run = execFileAsync } = {},
 ) {
-  const child = spawnProcess("/usr/bin/open", ["-n", app], {
-    detached: true,
-    stdio: "ignore",
-  });
-  child.on("error", () => {});
-  child.unref();
+  try {
+    await run("/usr/bin/open", ["-n", app], { timeout: 5000 });
+  } catch (error) {
+    const detail = error?.stderr?.trim() || error?.message || String(error);
+    throw new Error(`Louder Bridge could not open for setup: ${detail}`);
+  }
 }

@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import {
   needsPermissionOnboarding,
   openOnboardingApplication,
@@ -23,18 +22,11 @@ test("starts the agent only after both permissions are granted", () => {
   }
 });
 
-test("opens the installed app for permission onboarding", () => {
+test("opens the installed app for permission onboarding", async () => {
   const calls = [];
-  class FakeChild extends EventEmitter {
-    unref() {
-      this.unreferenced = true;
-    }
-  }
-  const child = new FakeChild();
-  openOnboardingApplication("/Applications/Louder Bridge.app", {
-    spawnProcess(command, args, options) {
+  await openOnboardingApplication("/Applications/Louder Bridge.app", {
+    async run(command, args, options) {
       calls.push({ command, args, options });
-      return child;
     },
   });
 
@@ -42,8 +34,21 @@ test("opens the installed app for permission onboarding", () => {
     {
       command: "/usr/bin/open",
       args: ["-n", "/Applications/Louder Bridge.app"],
-      options: { detached: true, stdio: "ignore" },
+      options: { timeout: 5000 },
     },
   ]);
-  assert.equal(child.unreferenced, true);
+});
+
+test("reports an onboarding launch failure", async () => {
+  await assert.rejects(
+    () =>
+      openOnboardingApplication("/Applications/Louder Bridge.app", {
+        async run() {
+          const error = new Error("open failed");
+          error.stderr = "The application could not be found.";
+          throw error;
+        },
+      }),
+    /could not open for setup: The application could not be found/,
+  );
 });

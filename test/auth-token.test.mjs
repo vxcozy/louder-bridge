@@ -5,9 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import {
   authTokenPath,
+  commitAuthTokenRemoval,
   ensureAuthToken,
   readAuthToken,
   removeAuthToken,
+  rollbackAuthTokenRemoval,
+  stageAuthTokenRemoval,
 } from "../src/setup/auth-token.mjs";
 
 test("creates, reuses, and removes a private authentication token", () => {
@@ -64,5 +67,24 @@ test("rejects a token path that is not a regular file", () => {
     /not a regular file/,
   );
   assert.equal(fs.statSync(target).mode & 0o777, 0o644);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("stages token removal for commit or rollback", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-auth-token-removal-"),
+  );
+  const created = ensureAuthToken({ homeDirectory });
+
+  const rolledBack = stageAuthTokenRemoval({ homeDirectory });
+  assert.equal(fs.existsSync(created.file), false);
+  rollbackAuthTokenRemoval(rolledBack);
+  assert.equal(readAuthToken({ homeDirectory }), created.token);
+  assert.equal(fs.statSync(created.file).mode & 0o777, 0o600);
+
+  const committed = stageAuthTokenRemoval({ homeDirectory });
+  commitAuthTokenRemoval(committed);
+  assert.equal(fs.existsSync(created.file), false);
+  assert.equal(fs.existsSync(committed.backup), false);
   fs.rmSync(homeDirectory, { recursive: true });
 });

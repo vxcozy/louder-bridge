@@ -94,6 +94,7 @@ export function installApplicationBundle({
   sourceRoot = sourceRootFromModule(),
   nodePath = process.execPath,
   prepare = () => {},
+  beforeReplace = () => {},
 } = {}) {
   if (process.platform !== "darwin") {
     throw new Error("The application bundle currently requires macOS.");
@@ -162,6 +163,7 @@ export function installApplicationBundle({
     });
     writeFileAtomic(staged.launcher, launcherScript(), { mode: 0o755 });
     prepare(staged);
+    beforeReplace(staged);
 
     if (fs.existsSync(paths.app)) fs.renameSync(paths.app, backup);
     try {

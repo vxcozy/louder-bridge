@@ -191,6 +191,9 @@ export function removeLaunchAgent({
   if (process.platform !== "darwin") return launchAgentPaths(homeDirectory);
   const paths = launchAgentPaths(homeDirectory);
   const serviceTarget = `gui/${userId}/${LAUNCH_AGENT_LABEL}`;
+  const previousPlist = fs.existsSync(paths.plist)
+    ? fs.readFileSync(paths.plist, "utf8")
+    : null;
   const wasLoaded =
     runLaunchctl(["print", serviceTarget], {
       allowFailure: true,
@@ -213,7 +216,33 @@ export function removeLaunchAgent({
     }
     throw error;
   }
-  return paths;
+  return {
+    ...paths,
+    previousPlist,
+    wasLoaded,
+    userId,
+    removed: true,
+  };
+}
+
+export function restoreRemovedLaunchAgent(
+  removal,
+  { run = spawnSync } = {},
+) {
+  if (!removal?.removed) return removal;
+  if (process.platform !== "darwin") return removal;
+  const serviceTarget = `gui/${removal.userId}/${LAUNCH_AGENT_LABEL}`;
+  bootoutLaunchAgent(serviceTarget, run);
+  if (removal.previousPlist === null) {
+    if (fs.existsSync(removal.plist)) fs.unlinkSync(removal.plist);
+    return removal;
+  }
+  writeFileAtomic(removal.plist, removal.previousPlist, { mode: 0o644 });
+  if (removal.wasLoaded) {
+    bootstrapLaunchAgent(removal.userId, removal.plist, run);
+    runLaunchctl(["kickstart", "-k", serviceTarget], { run });
+  }
+  return removal;
 }
 
 export function launchAgentIsRunning({
