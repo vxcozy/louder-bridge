@@ -62,6 +62,8 @@ have not shipped appear under "Unreleased."
   configuration.
 - The release workflow now runs its source gates before passing signing or
   notarization credentials to repository scripts.
+- The release workflow now removes temporary signing and notarization files
+  before the draft-release step receives a write-capable GitHub token.
 - Release jobs for the same tag now run one at a time. A rerun can resume an
   existing draft and replace the three expected files. The publisher checks
   GitHub's SHA-256 digest, byte count, and upload state for each one. It refuses

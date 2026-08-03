@@ -175,6 +175,16 @@ if (
   failures.push("The release workflow must remove temporary signing credentials.");
 }
 if (
+  releaseWorkflow.indexOf("name: Remove signing credentials") < 0 ||
+  releaseWorkflow.indexOf("name: Create or update draft GitHub release") < 0 ||
+  releaseWorkflow.indexOf("name: Remove signing credentials") >
+    releaseWorkflow.indexOf("name: Create or update draft GitHub release")
+) {
+  failures.push(
+    "The release workflow must remove signing credentials before it receives a write-capable GitHub token.",
+  );
+}
+if (
   !releaseWorkflow.includes("keychain-search-list.mjs add") ||
   !releaseWorkflow.includes("APPLE_SIGNING_KEYCHAIN:") ||
   /security list-keychain(?:s)? -d user -s/.test(releaseWorkflow) ||

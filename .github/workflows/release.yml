@@ -90,11 +90,6 @@ jobs:
         env:
           LOUDER_REQUIRE_NOTARIZED: "1"
 
-      - name: Create or update draft GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: npm run release:publish
-
       - name: Remove signing credentials
         if: always()
         run: |
@@ -103,3 +98,8 @@ jobs:
           fi
           security delete-keychain "$RUNNER_TEMP/louder-bridge.keychain-db" 2>/dev/null || true
           rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP/louder-bridge-keychains.json"
+
+      - name: Create or update draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run release:publish

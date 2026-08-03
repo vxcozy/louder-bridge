@@ -25,8 +25,8 @@ prepare releases.
 
 Checkout does not save the GitHub token in git configuration. The workflow
 runs its source gates before passing signing credentials to a repository
-script. It passes a write-capable GitHub token only to the step that creates
-the draft release.
+script. It removes the temporary keychain and notarization key before the
+draft-release step receives a write-capable GitHub token.
 
 ## Qualify the source
 
