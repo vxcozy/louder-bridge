@@ -122,6 +122,9 @@ First launch waits up to five minutes for Input Monitoring, then five minutes
 for Accessibility. Once you grant access, setup continues immediately. If
 either wait expires, the app opens the matching System Settings pane and exits
 before activation. Source setup then rolls back its transaction.
+Source setup gives macOS's app-opening wait five seconds. If that command stays
+alive, setup checks the actual onboarding process once per second and resumes
+when the process exits. This fallback has an eleven-minute deadline.
 
 Before setup replaces or removes the app, it checks the bundle identifier and
 executable name. It also records the bundle's filesystem identity for rollback

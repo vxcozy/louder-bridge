@@ -54,9 +54,82 @@ test("can wait for onboarding to finish before committing setup", async () => {
     {
       command: "/usr/bin/open",
       args: ["-W", "-n", "/Applications/Louder Bridge.app"],
-      options: { signal: controller.signal },
+      options: { signal: controller.signal, timeout: 5000 },
     },
   ]);
+});
+
+test("finishes when the onboarding app exits after open stops waiting", async () => {
+  const states = [true, true, false];
+  const waits = [];
+  await openOnboardingApplication("/Applications/Louder Bridge.app", {
+    waitForExit: true,
+    async run() {
+      const error = new Error("open timed out");
+      error.killed = true;
+      throw error;
+    },
+    isRunning({ launcher }) {
+      assert.equal(
+        launcher,
+        "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
+      );
+      return states.shift();
+    },
+    async sleep(milliseconds) {
+      waits.push(milliseconds);
+    },
+    now: () => 0,
+  });
+
+  assert.deepEqual(waits, [1000, 1000]);
+});
+
+test("accepts an exited onboarding app after open stops waiting", async () => {
+  await openOnboardingApplication("/Applications/Louder Bridge.app", {
+    waitForExit: true,
+    async run() {
+      const error = new Error("open timed out");
+      error.killed = true;
+      throw error;
+    },
+    isRunning: () => false,
+  });
+});
+
+test("bounds the onboarding app exit wait", async () => {
+  await assert.rejects(
+    () =>
+      openOnboardingApplication("/Applications/Louder Bridge.app", {
+        waitForExit: true,
+        async run() {
+          const error = new Error("open timed out");
+          error.killed = true;
+          throw error;
+        },
+        isRunning: () => true,
+        timeoutMs: 0,
+      }),
+    /did not finish permission setup in time/,
+  );
+});
+
+test("does not hide an aborted onboarding launch", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    () =>
+      openOnboardingApplication("/Applications/Louder Bridge.app", {
+        signal: controller.signal,
+        waitForExit: true,
+        async run() {
+          const error = new Error("setup was cancelled");
+          error.killed = true;
+          throw error;
+        },
+      }),
+    /could not open for setup: setup was cancelled/,
+  );
 });
 
 test("reports an onboarding launch failure", async () => {

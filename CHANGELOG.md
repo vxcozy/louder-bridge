@@ -73,6 +73,9 @@ have not shipped appear under "Unreleased."
   log.
 - Permission onboarding now stops after a five-minute wait, names the missing
   permission, and opens the matching System Settings pane.
+- Source setup no longer waits forever when macOS's app-opening command stays
+  alive after the onboarding app exits. It follows the app itself and stops
+  after eleven minutes so the setup transaction can roll back.
 - Native test commands are now compiled only for automated test binaries.
   Package verification rejects a release launcher that exposes one.
 - The standalone Input Monitoring request now reports a successful grant as
