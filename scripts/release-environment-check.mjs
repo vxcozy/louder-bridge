@@ -2,6 +2,7 @@
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { REQUIRED_RELEASE_CREDENTIALS } from "./release-credential-names.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -75,6 +76,16 @@ export function checkReleaseEnvironment({
     ],
     "deployment policy metadata",
   );
+  const secrets = runJson(
+    execute,
+    [
+      "api",
+      `${endpoint}/secrets?per_page=100`,
+      "--jq",
+      "{names: [.secrets[].name]}",
+    ],
+    "environment secret metadata",
+  );
 
   const failures = [];
   if (!Array.isArray(settings.reviewers) || settings.reviewers.length === 0) {
@@ -96,13 +107,29 @@ export function checkReleaseEnvironment({
   ) {
     failures.push("Add a v* deployment policy for tags.");
   }
+  const configuredSecrets = new Set(
+    Array.isArray(secrets.names) ? secrets.names : [],
+  );
+  const missingSecrets = REQUIRED_RELEASE_CREDENTIALS.filter(
+    (name) => !configuredSecrets.has(name),
+  );
+  if (missingSecrets.length > 0) {
+    failures.push(
+      `Add the missing production environment secrets: ${missingSecrets.join(", ")}.`,
+    );
+  }
   if (failures.length > 0) {
     throw new AggregateError(
       failures.map((message) => new Error(message)),
       "The production release environment needs attention.",
     );
   }
-  return { repository, environment, reviewers: settings.reviewers };
+  return {
+    repository,
+    environment,
+    reviewers: settings.reviewers,
+    secretCount: REQUIRED_RELEASE_CREDENTIALS.length,
+  };
 }
 
 function isMainModule() {
@@ -116,7 +143,7 @@ if (isMainModule()) {
   try {
     const result = checkReleaseEnvironment();
     console.log(
-      `Release environment ready for ${result.repository} (${result.reviewers.join(", ")}).`,
+      `Release environment ready for ${result.repository} (${result.reviewers.join(", ")}; ${result.secretCount} release secrets configured).`,
     );
   } catch (error) {
     console.error(error.message);

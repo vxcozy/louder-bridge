@@ -28,6 +28,7 @@ const requiredFiles = [
   "docs/testing.md",
   "docs/tutorial.md",
   "scripts/publish-release.mjs",
+  "scripts/release-credential-names.mjs",
   "scripts/release-environment-check.mjs",
 ];
 const failures = [];

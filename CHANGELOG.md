@@ -29,7 +29,8 @@ have not shipped appear under "Unreleased."
 - GitHub Actions workflows for native arm64 testing, signed releases,
   notarization, checksums, and SPDX SBOM files.
 - A maintainer check for required reviewers, version-tag deployment policy,
-  and disabled administrator bypass in the production release environment.
+  disabled administrator bypass, and the required release secret names in the
+  production environment.
 - Repository checks for automated authorship credit in commits, current files,
   and every file version in reachable history.
 - Micro push-to-talk that starts Claude's own dictation on press and stops it

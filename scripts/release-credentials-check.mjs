@@ -1,16 +1,7 @@
 #!/usr/bin/env node
 
 import { createPrivateKey } from "node:crypto";
-
-const required = [
-  "MACOS_CERTIFICATE",
-  "MACOS_CERTIFICATE_PASSWORD",
-  "KEYCHAIN_PASSWORD",
-  "APPLE_SIGNING_IDENTITY",
-  "APPLE_NOTARY_KEY_ID",
-  "APPLE_NOTARY_ISSUER_ID",
-  "APPLE_NOTARY_PRIVATE_KEY",
-];
+import { REQUIRED_RELEASE_CREDENTIALS } from "./release-credential-names.mjs";
 
 function decodeBase64(value) {
   const normalized = value.replace(/\s/g, "");
@@ -61,7 +52,7 @@ function isAppStoreConnectPrivateKey(value) {
   }
 }
 
-const problems = required
+const problems = REQUIRED_RELEASE_CREDENTIALS
   .filter((name) => !process.env[name]?.trim())
   .map((name) => `${name} is missing.`);
 

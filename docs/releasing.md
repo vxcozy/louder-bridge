@@ -24,12 +24,13 @@ Then add these environment secrets:
 | `APPLE_NOTARY_ISSUER_ID` | App Store Connect issuer ID |
 | `APPLE_NOTARY_PRIVATE_KEY` | Contents of the App Store Connect `.p8` key |
 
-The release workflow stops at its credential check if a value is missing or
-malformed. The check validates the certificate encoding and Developer ID
-identity. It also checks the App Store Connect identifiers and private-key
-format. It never prints secret values. Apple verifies the certificate password
-during import. Restrict the environment to maintainers who are allowed to
-prepare releases.
+The environment check confirms that all seven secret names exist without
+reading their values. The release workflow stops at its credential check if a
+value is missing or malformed. That check validates the certificate encoding
+and Developer ID identity. It also checks the App Store Connect identifiers
+and private-key format. It never prints secret values. Apple verifies the
+certificate password during import. Restrict the environment to maintainers
+who are allowed to prepare releases.
 
 Checkout does not save the GitHub token in git configuration. The workflow
 runs its source gates before passing signing credentials to a repository
