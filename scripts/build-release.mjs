@@ -51,6 +51,7 @@ fs.mkdirSync(stagingHome, { recursive: true });
 const transaction = installApplicationBundle({
   homeDirectory: stagingHome,
   sourceRoot: root,
+  buildRevision: revision,
 });
 commitApplicationBundle(transaction);
 

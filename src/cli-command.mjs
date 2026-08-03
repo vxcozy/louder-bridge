@@ -53,6 +53,7 @@ import {
 import { installedApplicationStatus } from "./setup/installed-status.mjs";
 import { runInterruptibleSetup } from "./setup/transaction-signals.mjs";
 import { rollbackSetupApplication } from "./setup/setup-rollback.mjs";
+import { sourceRevision } from "./setup/source-revision.mjs";
 import { waitForBridgeReady } from "./setup/service-readiness.mjs";
 import {
   onboardingApplicationIsRunning,
@@ -216,6 +217,14 @@ if (command === "help" || command === "--help" || command === "-h") {
 } else if (command === "setup") {
   const platform = platformSupport();
   if (!platform.supported) throw new Error(platform.error);
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  let buildRevision = null;
+  try {
+    buildRevision = sourceRevision({ root: sourceRoot });
+  } catch {}
   prepareRotatingLogs(launchAgentPaths());
   const installedApp = applicationBundlePaths().app;
   let application;
@@ -229,14 +238,12 @@ if (command === "help" || command === "--help" || command === "-h") {
       async operation(signal) {
         authentication = ensureAuthToken();
         application = installApplicationBundle({
+          sourceRoot,
+          buildRevision,
           beforeReplace() {
             stoppedOnboarding = stopOnboardingApplication();
           },
           prepare(staged) {
-            const sourceRoot = path.resolve(
-              path.dirname(fileURLToPath(import.meta.url)),
-              "..",
-            );
             compileNativeLauncherAtomically({
               sourceRoot,
               output: staged.launcher,
@@ -494,6 +501,9 @@ if (command === "help" || command === "--help" || command === "-h") {
     const health = await response.json();
     console.log("Hook server: ready");
     console.log(`Louder Bridge: ${health.service?.version ?? "unknown"}`);
+    console.log(
+      `Build revision: ${health.service?.buildRevision ?? "unavailable"}`,
+    );
     console.log(`Node runtime: ${health.service?.nodeVersion ?? "unknown"}`);
     console.log(`Claude Desktop: ${health.service?.claudeDesktop ?? "unknown"}`);
     const codexDesktop = health.service?.codexDesktop ?? "unknown";

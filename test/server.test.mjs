@@ -123,6 +123,7 @@ test("reports service and device health", async (context) => {
       inputMonitoring: "unknown",
       accessibility: "unknown",
       version: "0.1.0",
+      buildRevision: null,
       nodeVersion: process.version,
       navigator: {
         id: "claude-resume-url",

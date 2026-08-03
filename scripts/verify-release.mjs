@@ -260,10 +260,11 @@ try {
   );
   if (
     bundledMetadata.name !== metadata.name ||
-    bundledMetadata.version !== metadata.version
+    bundledMetadata.version !== metadata.version ||
+    bundledMetadata.louderBridge?.buildRevision !== revision
   ) {
     throw new Error(
-      "The app's bundled package metadata does not match the release.",
+      "The app's bundled package metadata or build revision does not match the release.",
     );
   }
   const bundleVersion = run("/usr/libexec/PlistBuddy", [

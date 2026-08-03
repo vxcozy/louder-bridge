@@ -379,6 +379,7 @@ export async function startBridge({
       service: {
         ...runtimeStatus,
         version: metadata.version,
+        buildRevision: metadata.buildRevision,
         nodeVersion: process.version,
         navigator: navigator.metadata(),
         voice: voice.status(),

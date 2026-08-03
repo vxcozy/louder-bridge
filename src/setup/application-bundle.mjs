@@ -199,6 +199,7 @@ export function installApplicationBundle({
   homeDirectory = os.homedir(),
   sourceRoot = sourceRootFromModule(),
   nodePath = process.execPath,
+  buildRevision = null,
   prepare = () => {},
   beforeReplace = () => {},
 } = {}) {
@@ -230,6 +231,12 @@ export function installApplicationBundle({
     throw new Error("Node.js license was not found beside its executable.");
   }
   const metadata = JSON.parse(fs.readFileSync(packageFile, "utf8"));
+  if (
+    buildRevision !== null &&
+    !/^[a-f0-9]{40}(?:\+dirty)?$/.test(buildRevision)
+  ) {
+    throw new Error("The application build revision is invalid.");
+  }
   const projectThirdPartyLicenses = path.join(
     sourceRoot,
     "THIRD_PARTY_LICENSES",
@@ -256,7 +263,20 @@ export function installApplicationBundle({
       force: false,
     });
     fs.copyFileSync(projectLicense, path.join(staged.resources, "LICENSE"));
-    fs.copyFileSync(packageFile, path.join(staged.resources, "package.json"));
+    const bundledPackage = path.join(staged.resources, "package.json");
+    if (buildRevision) {
+      metadata.louderBridge = {
+        ...metadata.louderBridge,
+        buildRevision,
+      };
+      writeFileAtomic(
+        bundledPackage,
+        `${JSON.stringify(metadata, null, 2)}\n`,
+        { mode: 0o644 },
+      );
+    } else {
+      fs.copyFileSync(packageFile, bundledPackage);
+    }
     const thirdPartyLicenses = path.join(
       staged.resources,
       "THIRD_PARTY_LICENSES",

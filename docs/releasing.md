@@ -80,9 +80,10 @@ that keychain to the existing user search list, passes it directly to
 `codesign`, restores the original list, and deletes the keychain even when a
 later step fails.
 
-The SBOM records the exact Git revision. Ad hoc builds add a `+dirty` marker
-when the checkout has uncommitted changes. Developer ID builds require a clean
-checkout, and verification compares the SBOM revision with the current source.
+The app diagnostics and SBOM record the exact Git revision. Ad hoc builds add
+a `+dirty` marker when the checkout has uncommitted changes. Developer ID
+builds require a clean checkout, and verification compares the bundled app and
+SBOM revisions with the current source.
 
 Final verification checks the app, launcher, and embedded Node.js runtime
 separately. All three must use the same Developer ID team, carry hardened

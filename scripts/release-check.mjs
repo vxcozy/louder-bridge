@@ -110,6 +110,7 @@ function readIfPresent(relative) {
 const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const releaseWorkflow = readIfPresent(".github/workflows/release.yml");
 const buildReleaseScript = readIfPresent("scripts/build-release.mjs");
+const verifyReleaseScript = readIfPresent("scripts/verify-release.mjs");
 const publishReleaseScript = readIfPresent("scripts/publish-release.mjs");
 const nativeDeviceSource = readIfPresent("native/micro_device.m");
 const codeOwners = readIfPresent(".github/CODEOWNERS");
@@ -253,6 +254,16 @@ if (
 ) {
   failures.push(
     "The release workflow must create a draft for physical qualification.",
+  );
+}
+if (
+  !buildReleaseScript.includes("buildRevision: revision") ||
+  !verifyReleaseScript.includes(
+    "bundledMetadata.louderBridge?.buildRevision !== revision",
+  )
+) {
+  failures.push(
+    "Release artifacts must record and verify their exact Git revision.",
   );
 }
 if (

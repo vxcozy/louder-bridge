@@ -26,6 +26,8 @@ have not shipped appear under "Unreleased."
   are experimental or supported.
 - Versioned health diagnostics with permission state, runtime provenance, and
   recent hook and device timestamps.
+- Build revision in authenticated diagnostics and packaged application
+  metadata.
 - GitHub Actions workflows for native arm64 testing, signed releases,
   notarization, checksums, and SPDX SBOM files.
 - A maintainer check for required reviewers, version-tag deployment policy,

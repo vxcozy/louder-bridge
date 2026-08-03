@@ -13,6 +13,7 @@ export function applicationMetadata() {
     cached = {
       name: metadata.name,
       version: metadata.version,
+      buildRevision: metadata.louderBridge?.buildRevision ?? null,
     };
   }
   return { ...cached };

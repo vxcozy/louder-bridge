@@ -101,6 +101,43 @@ test("installs a self-contained application bundle", () => {
   fs.rmSync(root, { recursive: true });
 });
 
+test("records the source revision in the installed app", () => {
+  const { root, home, source, node } = fixture();
+  const buildRevision = `${"a".repeat(40)}+dirty`;
+  const transaction = installApplicationBundle({
+    homeDirectory: home,
+    sourceRoot: source,
+    nodePath: node,
+    buildRevision,
+  });
+  const metadata = JSON.parse(
+    fs.readFileSync(
+      path.join(transaction.resources, "package.json"),
+      "utf8",
+    ),
+  );
+
+  assert.equal(metadata.louderBridge.buildRevision, buildRevision);
+  rollbackApplicationBundle(transaction);
+  fs.rmSync(root, { recursive: true });
+});
+
+test("rejects an invalid application build revision before staging", () => {
+  const { root, home, source, node } = fixture();
+
+  assert.throws(
+    () => installApplicationBundle({
+      homeDirectory: home,
+      sourceRoot: source,
+      nodePath: node,
+      buildRevision: "main",
+    }),
+    /build revision is invalid/,
+  );
+  assert.equal(fs.existsSync(applicationBundlePaths(home).app), false);
+  fs.rmSync(root, { recursive: true });
+});
+
 test("derives installed runtime paths from its CLI module", () => {
   const paths = applicationBundlePathsForCli(
     "/Applications/Louder Bridge.app/Contents/Resources/app/src/cli.mjs",
