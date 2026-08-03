@@ -113,6 +113,7 @@ export async function startBridge({
   let deviceRequested = autoConnectDevice;
   let lastDeviceError = null;
   let lastHookAt = null;
+  let agentQueue = Promise.resolve();
   let voiceQueue = Promise.resolve();
   let submitQueue = Promise.resolve();
   let stopPromise = null;
@@ -150,15 +151,24 @@ export async function startBridge({
     }
   }
 
-  const onAgentKey = async (slot) => {
-    const session = store.select(slot);
+  const openAgentSlot = async (slot) => {
+    const session = store.sessionAt(slot);
     if (!session) {
       logger.info(`Agent Key ${slot + 1} has no assigned Claude session.`);
       return;
     }
-    await renderDevice(slotStates(), "Agent Key");
     await Promise.resolve(navigator.open(session.id));
+    const selected = store.select(slot);
+    if (selected?.id === session.id) {
+      await renderDevice(slotStates(), "Agent Key");
+    }
     logger.info(`Opened Claude session in slot ${slot + 1}.`);
+  };
+  const onAgentKey = (slot) => {
+    agentQueue = agentQueue
+      .catch(() => {})
+      .then(() => openAgentSlot(slot));
+    return agentQueue;
   };
 
   const runVoiceAction = (operation) => {
@@ -401,6 +411,7 @@ export async function startBridge({
         } catch (error) {
           failures.push(error);
         }
+        await agentQueue.catch(() => {});
         await voiceQueue.catch(() => {});
         await submitQueue.catch(() => {});
         await closeServer;

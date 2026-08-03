@@ -13,6 +13,16 @@ function bridgeUrl(bridge) {
   return `http://127.0.0.1:${bridge.server.address().port}`;
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 test("refuses to listen beyond the local machine", async () => {
   await assert.rejects(
     startBridge({
@@ -493,6 +503,95 @@ test("records empty Agent Key presses without exposing session data", async (con
     messages.includes("Agent Key 3 has no assigned Claude session."),
     true,
   );
+});
+
+test("does not select a session when Agent Key navigation fails", async (context) => {
+  const rendered = [];
+  let press;
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger,
+    async openSession() {
+      throw new Error("navigation failed");
+    },
+    deviceFactory({ onAgentKey }) {
+      press = onAgentKey;
+      return {
+        async start() {},
+        async render(slots) {
+          rendered.push(slots);
+        },
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+  bridge.store.apply({
+    session_id: "session-a",
+    hook_event_name: "SessionStart",
+  });
+
+  await assert.rejects(press(0), /navigation failed/);
+  assert.equal(bridge.store.snapshot()[0].selected, false);
+  assert.equal(rendered.length, 1);
+});
+
+test("serializes rapid Agent Key navigation in press order", async (context) => {
+  const firstNavigation = deferred();
+  const opened = [];
+  const rendered = [];
+  let press;
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger,
+    openSession(sessionId) {
+      opened.push(sessionId);
+      return sessionId === "session-a"
+        ? firstNavigation.promise
+        : Promise.resolve();
+    },
+    deviceFactory({ onAgentKey }) {
+      press = onAgentKey;
+      return {
+        async start() {},
+        async render(slots) {
+          rendered.push(slots);
+        },
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+  bridge.store.apply({
+    session_id: "session-a",
+    hook_event_name: "SessionStart",
+  });
+  bridge.store.apply({
+    session_id: "session-b",
+    hook_event_name: "SessionStart",
+  });
+
+  const first = press(0);
+  const second = press(1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(opened, ["session-a"]);
+
+  firstNavigation.resolve();
+  await Promise.all([first, second]);
+  assert.deepEqual(opened, ["session-a", "session-b"]);
+  assert.equal(bridge.store.snapshot()[0].selected, false);
+  assert.equal(bridge.store.snapshot()[1].selected, true);
+  assert.equal(rendered.at(-1)[1].selected, true);
 });
 
 test("serializes Micro voice press and release into Claude dictation", async (context) => {

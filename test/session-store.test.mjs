@@ -108,9 +108,12 @@ test("clears selection when the selected inactive slot is evicted", () => {
 test("select returns the session assigned to an Agent Key", () => {
   const store = new SessionStore();
   store.apply({ session_id: "abc", hook_event_name: "SessionStart" });
+  assert.equal(store.sessionAt(0).id, "abc");
+  assert.equal(store.snapshot()[0].selected, false);
   assert.equal(store.select(0).id, "abc");
   assert.equal(store.snapshot()[0].selected, true);
   assert.equal(store.select(5), null);
+  assert.equal(store.sessionAt(-1), null);
 });
 
 test("rejects malformed session identifiers", () => {

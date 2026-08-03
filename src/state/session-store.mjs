@@ -102,14 +102,21 @@ export class SessionStore {
     return { ...session };
   }
 
-  select(slot) {
+  sessionAt(slot) {
     if (!Number.isInteger(slot) || slot < 0 || slot >= this.slotCount) {
       return null;
     }
     const sessionId = this.slotSessions[slot];
     if (!sessionId) return null;
+    const session = this.sessions.get(sessionId);
+    return session ? { ...session } : null;
+  }
+
+  select(slot) {
+    const session = this.sessionAt(slot);
+    if (!session) return null;
     this.selectedSlot = slot;
-    return { ...this.sessions.get(sessionId) };
+    return session;
   }
 
   snapshot() {
