@@ -44,6 +44,13 @@ class StubbornChild extends FakeChild {
   }
 }
 
+class RefusingChild extends StubbornChild {
+  kill(signal) {
+    this.signals.push(signal);
+    return false;
+  }
+}
+
 test("recognizes the bundled native driver", () => {
   const status = inspectNativeMicroRuntime({ launcher: "/bin/ls" });
   assert.equal(status.id, "native-iokit-protocol");
@@ -283,6 +290,47 @@ test("waits for a closing driver before reconnecting", async () => {
   const finalClose = transport.close();
   second.finish();
   await finalClose;
+});
+
+test("does not replace a driver that failed to close", async () => {
+  const first = new RefusingChild();
+  const second = new FakeChild();
+  const children = [first, second];
+  let spawnCalls = 0;
+  const transport = new NativeMicroTransport({
+    launcher: "/bin/ls",
+    spawnProcess: () => children[spawnCalls++],
+    closeTimeoutMs: 1,
+  });
+  const connected = transport.connect();
+  first.stdout.write(
+    '{"_louder":{"type":"connected","transport":"USB","status":{"version":"v0.4.1"}}}\n',
+  );
+  await connected;
+
+  await assert.rejects(
+    transport.close(),
+    /could not stop the Codex Micro driver/,
+  );
+  assert.equal(transport.child, first);
+
+  await assert.rejects(
+    transport.connect(),
+    /could not stop the Codex Micro driver/,
+  );
+  assert.equal(spawnCalls, 1);
+
+  first.finish();
+  const reconnecting = transport.connect();
+  assert.equal(spawnCalls, 2);
+  second.stdout.write(
+    '{"_louder":{"type":"connected","transport":"Bluetooth Low Energy","status":{"version":"v0.4.1"}}}\n',
+  );
+  await reconnecting;
+
+  const closing = transport.close();
+  second.finish();
+  await closing;
 });
 
 test("disconnects and terminates a driver that stops accepting commands", async () => {

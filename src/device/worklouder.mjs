@@ -28,6 +28,7 @@ export class WorkLouderDevice {
     this.clearReconnectInterval = clearReconnectInterval;
     this.transport = null;
     this.reconnectTimer = null;
+    this.pendingCleanupTransport = null;
     this.disconnectPromise = null;
     this.connectPromise = null;
     this.started = false;
@@ -86,6 +87,10 @@ export class WorkLouderDevice {
     if (this.connectPromise) return this.connectPromise;
     this.connectPromise = (async () => {
       await this.disconnectPromise;
+      if (this.pendingCleanupTransport) {
+        const transport = this.pendingCleanupTransport;
+        await this.trackDisconnectCleanup(transport, transport.close());
+      }
       if (!this.started || this.transport) return Boolean(this.transport);
       return this.openConnection();
     })();
@@ -115,13 +120,10 @@ export class WorkLouderDevice {
             action: "disconnected",
             at: this.lastEventAt,
           };
-          let cleanup;
-          cleanup = this.disconnect(transport).finally(() => {
-            if (this.disconnectPromise === cleanup) {
-              this.disconnectPromise = null;
-            }
-          });
-          this.disconnectPromise = cleanup;
+          const cleanup = this.trackDisconnectCleanup(
+            transport,
+            this.disconnect(transport),
+          );
           cleanup
             .then(() => {
               if (error) this.reportConnectionError(error);
@@ -238,6 +240,25 @@ export class WorkLouderDevice {
     return true;
   }
 
+  trackDisconnectCleanup(transport, operation) {
+    this.pendingCleanupTransport = transport;
+    let cleanup;
+    cleanup = Promise.resolve(operation)
+      .then((result) => {
+        if (this.pendingCleanupTransport === transport) {
+          this.pendingCleanupTransport = null;
+        }
+        return result;
+      })
+      .finally(() => {
+        if (this.disconnectPromise === cleanup) {
+          this.disconnectPromise = null;
+        }
+      });
+    this.disconnectPromise = cleanup;
+    return cleanup;
+  }
+
   async disconnect(
     expectedTransport = this.transport,
     { close = true } = {},
@@ -284,6 +305,12 @@ export class WorkLouderDevice {
     await this.connectPromise?.catch(() => {});
     const failures = [];
     await this.disconnectPromise?.catch((error) => failures.push(error));
+    if (this.pendingCleanupTransport) {
+      const transport = this.pendingCleanupTransport;
+      await this.trackDisconnectCleanup(transport, transport.close()).catch(
+        (error) => failures.push(error),
+      );
+    }
     try {
       if (this.transport) {
         await this.render(

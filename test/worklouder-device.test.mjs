@@ -451,6 +451,51 @@ test("waits for disconnect cleanup before automatically reconnecting", async () 
   await device.stop();
 });
 
+test("retries failed disconnect cleanup before opening a replacement", async () => {
+  const first = new FakeTransport({ closeError: new Error("close failed") });
+  const second = new FakeTransport();
+  let retryConnection;
+  const errors = [];
+  const device = testDevice([first, second], {
+    logger: {
+      info() {},
+      error(message) {
+        errors.push(message);
+      },
+    },
+    setReconnectInterval(callback) {
+      retryConnection = callback;
+      return Symbol("reconnect timer");
+    },
+    clearReconnectInterval() {},
+  });
+
+  await device.start();
+  first.disconnected();
+  await waitForImmediate();
+  assert.equal(first.closeCalls, 1);
+
+  retryConnection();
+  await waitForImmediate();
+  await waitForImmediate();
+  assert.equal(first.closeCalls, 2);
+  assert.equal(second.connectCalls, 0);
+
+  first.closeError = null;
+  retryConnection();
+  await waitForImmediate();
+  await waitForImmediate();
+  assert.equal(first.closeCalls, 3);
+  assert.equal(second.connectCalls, 1);
+  assert.equal(device.transport, second);
+  assert.equal(
+    errors.filter((message) => message.includes("close failed")).length,
+    1,
+  );
+
+  await device.stop();
+});
+
 test("runs device disconnect cleanup once after a peer disconnect", async () => {
   const transport = new FakeTransport();
   let cleanupCalls = 0;

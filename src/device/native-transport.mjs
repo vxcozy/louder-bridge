@@ -77,7 +77,10 @@ export class NativeMicroTransport {
       throw new Error("The installed Codex Micro driver is unavailable.");
     }
     if (this.closePromise) await this.closePromise;
-    if (this.child) return this.metadata();
+    if (this.child) {
+      if (this.connected && !this.closing) return this.metadata();
+      await this.close();
+    }
     this.onEvent = onEvent;
     this.onDisconnect = onDisconnect;
     this.closing = false;
@@ -278,7 +281,6 @@ export class NativeMicroTransport {
     const child = this.child;
     if (!child) return Promise.resolve();
     this.closing = true;
-    this.child = null;
     this.connected = false;
     const operation = (async () => {
       if (!child.stdin.destroyed) child.stdin.end();
@@ -298,9 +300,13 @@ export class NativeMicroTransport {
       }
     })();
     let tracked;
-    tracked = operation.finally(() => {
-      if (this.closePromise === tracked) this.closePromise = null;
-    });
+    tracked = operation
+      .then(() => {
+        if (this.child === child) this.child = null;
+      })
+      .finally(() => {
+        if (this.closePromise === tracked) this.closePromise = null;
+      });
     this.closePromise = tracked;
     return tracked;
   }
