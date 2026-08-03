@@ -23,6 +23,11 @@ format. It never prints secret values. Apple verifies the certificate password
 during import. Restrict the environment to maintainers who are allowed to
 prepare releases.
 
+Checkout does not save the GitHub token in git configuration. The workflow
+runs its source gates before passing signing credentials to a repository
+script. It passes a write-capable GitHub token only to the step that creates
+the draft release.
+
 ## Qualify the source
 
 Choose a semantic version and update `package.json` and `CHANGELOG.md`. Write

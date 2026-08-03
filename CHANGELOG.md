@@ -55,6 +55,10 @@ have not shipped appear under "Unreleased."
   version instead of matching files with wildcards.
 - Release signing now keeps the runner's existing keychain search list and
   restores it before deleting the temporary signing keychain.
+- CI and release checkouts no longer save GitHub credentials in git
+  configuration.
+- The release workflow now runs its source gates before passing signing or
+  notarization credentials to repository scripts.
 - ChatGPT is no longer required for Codex Micro access.
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.

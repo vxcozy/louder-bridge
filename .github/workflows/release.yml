@@ -18,10 +18,19 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24.x"
       - run: npm ci
+
+      - name: Check source
+        run: |
+          npm test
+          npm run authorship:check
+          npm run security:check
+          npm audit --omit=dev
+          npm run release:check
 
       - name: Check release credentials
         run: npm run release:credentials
@@ -33,14 +42,6 @@ jobs:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_PRIVATE_KEY: ${{ secrets.APPLE_NOTARY_PRIVATE_KEY }}
-
-      - name: Check source
-        run: |
-          npm test
-          npm run authorship:check
-          npm run security:check
-          npm audit --omit=dev
-          npm run release:check
 
       - name: Import Developer ID certificate
         env:

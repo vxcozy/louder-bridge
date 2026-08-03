@@ -138,7 +138,17 @@ if (!releaseWorkflow.includes("LOUDER_RELEASE_BRANCH_REF:")) {
   );
 }
 if (!releaseWorkflow.includes("npm run release:credentials")) {
-  failures.push("The release workflow must check signing credentials first.");
+  failures.push("The release workflow must validate signing credentials.");
+}
+if (
+  releaseWorkflow.indexOf("name: Check source") < 0 ||
+  releaseWorkflow.indexOf("name: Check release credentials") < 0 ||
+  releaseWorkflow.indexOf("name: Check source") >
+    releaseWorkflow.indexOf("name: Check release credentials")
+  ) {
+  failures.push(
+    "The release workflow must check source before passing signing credentials to repository scripts.",
+  );
 }
 if (!codeOwners.includes("release-notes/** @vxcozy")) {
   failures.push("Release notes must require maintainer review.");
@@ -174,6 +184,24 @@ if (
 }
 if ((ciWorkflow.match(/fetch-depth:\s*0/g) ?? []).length < 2) {
   failures.push("CI jobs must fetch full history for attribution checks.");
+}
+const checkoutCount = [ciWorkflow, releaseWorkflow].reduce(
+  (count, workflow) =>
+    count + (workflow.match(/actions\/checkout@[a-f0-9]{40}/g) ?? []).length,
+  0,
+);
+const nonPersistedCheckoutCount = [ciWorkflow, releaseWorkflow].reduce(
+  (count, workflow) =>
+    count + (workflow.match(/persist-credentials:\s*false/g) ?? []).length,
+  0,
+);
+if (
+  checkoutCount === 0 ||
+  nonPersistedCheckoutCount !== checkoutCount
+) {
+  failures.push(
+    "CI and release checkouts must not persist GitHub credentials.",
+  );
 }
 for (const workflow of [ciWorkflow, releaseWorkflow]) {
   if (/\buses:\s*[^\s@]+@(?![a-f0-9]{40}\b)/i.test(workflow)) {
