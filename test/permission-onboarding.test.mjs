@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   needsPermissionOnboarding,
   openOnboardingApplication,
 } from "../src/setup/permission-onboarding.mjs";
+
+const execFileAsync = promisify(execFile);
 
 test("starts the agent only after both permissions are granted", () => {
   assert.equal(
@@ -92,6 +96,17 @@ test("accepts an exited onboarding app after open stops waiting", async () => {
       const error = new Error("open timed out");
       error.killed = true;
       throw error;
+    },
+    isRunning: () => false,
+  });
+});
+
+test("recognizes a real Node command timeout", async () => {
+  await openOnboardingApplication("/Applications/Louder Bridge.app", {
+    waitForExit: true,
+    openTimeoutMs: 10,
+    run(_command, _args, options) {
+      return execFileAsync("/bin/sleep", ["1"], options);
     },
     isRunning: () => false,
   });

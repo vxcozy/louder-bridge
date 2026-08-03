@@ -46,6 +46,7 @@ export async function openOnboardingApplication(
     signal,
     waitForExit = false,
     launcher = path.join(app, "Contents", "MacOS", "LouderBridge"),
+    openTimeoutMs = OPEN_TIMEOUT_MS,
     isRunning,
     sleep,
     timeoutMs,
@@ -54,7 +55,7 @@ export async function openOnboardingApplication(
   } = {},
 ) {
   const args = waitForExit ? ["-W", "-n", app] : ["-n", app];
-  const options = { timeout: OPEN_TIMEOUT_MS };
+  const options = { timeout: openTimeoutMs };
   if (signal) options.signal = signal;
   try {
     await run("/usr/bin/open", args, options);

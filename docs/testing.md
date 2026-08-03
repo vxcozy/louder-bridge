@@ -18,8 +18,11 @@ matches the [supported baseline](compatibility.md).
    Confirm the dialog identifies the missing permission, opens the matching
    setting, and exits without installing hooks or a login agent. Enable the
    permission, reopen the app, and confirm setup can finish.
-5. Run `npm run doctor`, `npm test`, and `npm run status`.
-6. Confirm the background agent and hook server are ready.
+5. After both onboarding runs, confirm source setup finishes within fifteen
+   seconds of Louder Bridge closing. In Activity Monitor, check that Louder
+   Bridge has not left an `open -W` process behind.
+6. Run `npm run doctor`, `npm test`, and `npm run status`.
+7. Confirm the background agent and hook server are ready.
 
 Record the macOS, Node.js, Codex Micro firmware, connection type, device
 driver, Claude Desktop, and Louder Bridge versions in the release notes.
