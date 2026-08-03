@@ -97,6 +97,9 @@ have not shipped appear under "Unreleased."
 - Desktop process and permission checks stop after two seconds. Overlapping
   timer ticks now share one pending refresh instead of building an unbounded
   queue.
+- If a desktop process check fails, diagnostics mark that app as unknown and
+  the service releases the Micro. It reconnects after process inspection
+  recovers.
 - Launch-agent and onboarding process commands now have deadlines, so setup,
   rollback, and uninstall do not wait forever on a stuck macOS command.
 - Setup rejects symlinked launch-agent files and log directories. Rollback

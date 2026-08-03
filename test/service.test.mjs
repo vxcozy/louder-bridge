@@ -181,6 +181,163 @@ test("logs when the Codex conflict notice cannot be shown", async () => {
   await service.stop();
 });
 
+test("releases the Micro when desktop ownership cannot be checked", async () => {
+  let processCheckFails = false;
+  const calls = [];
+  const errors = [];
+  const statuses = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => {
+      if (processCheckFails) throw new Error("process check failed");
+      return false;
+    },
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {
+        calls.push("connect");
+      },
+      async disconnectDevice() {
+        calls.push("disconnect");
+      },
+      async stop() {},
+      setRuntimeStatus(status) {
+        statuses.push(status);
+      },
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error.message);
+      },
+    },
+  });
+
+  assert.deepEqual(calls, ["connect"]);
+  processCheckFails = true;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect"]);
+  assert.deepEqual(statuses.at(-1), {
+    claudeDesktop: "open",
+    codexDesktop: "unknown",
+  });
+  assert.deepEqual(errors, ["process check failed"]);
+
+  processCheckFails = false;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect", "connect"]);
+  await service.stop();
+});
+
+test("reports both desktop ownership check failures", async () => {
+  let processChecksFail = false;
+  const calls = [];
+  const errors = [];
+  const statuses = [];
+  const service = await startDesktopService({
+    checkClaude: async () => {
+      if (processChecksFail) throw new Error("Claude check failed");
+      return true;
+    },
+    checkCodex: async () => {
+      if (processChecksFail) throw new Error("Codex check failed");
+      return false;
+    },
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {
+        calls.push("connect");
+      },
+      async disconnectDevice() {
+        calls.push("disconnect");
+      },
+      async stop() {},
+      setRuntimeStatus(status) {
+        statuses.push(status);
+      },
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error);
+      },
+    },
+  });
+
+  processChecksFail = true;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect"]);
+  assert.deepEqual(statuses.at(-1), {
+    claudeDesktop: "unknown",
+    codexDesktop: "unknown",
+  });
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0] instanceof AggregateError, true);
+  assert.equal(
+    errors[0].message,
+    "Louder Bridge could not check whether Claude or Codex is open.",
+  );
+  assert.deepEqual(
+    errors[0].errors.map((error) => error.message),
+    ["Claude check failed", "Codex check failed"],
+  );
+
+  processChecksFail = false;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect", "connect"]);
+  await service.stop();
+});
+
+test("keeps both ownership and device cleanup failures", async () => {
+  let processCheckFails = false;
+  const errors = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => {
+      if (processCheckFails) throw new Error("process check failed");
+      return false;
+    },
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {},
+      async disconnectDevice() {
+        throw new Error("device cleanup failed");
+      },
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error);
+      },
+    },
+  });
+
+  processCheckFails = true;
+  await service.sync();
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0] instanceof AggregateError, true);
+  assert.equal(
+    errors[0].message,
+    "Louder Bridge could not check the open desktop apps or release the Codex Micro cleanly.",
+  );
+  assert.deepEqual(
+    errors[0].errors.map((error) => error.message),
+    ["process check failed", "device cleanup failed"],
+  );
+  await service.stop();
+});
+
 test("connects the device only while Claude Desktop is open", async () => {
   let claudeIsRunning = false;
   const calls = [];

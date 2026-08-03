@@ -96,14 +96,49 @@ export async function startDesktopService({
     }
     previousPermission = permission;
     previousAccessibility = accessibility;
-    const [claudeIsRunning, codexIsRunning] = await Promise.all([
+    const [claudeResult, codexResult] = await Promise.allSettled([
       checkClaude(),
       checkCodex(),
     ]);
+    const claudeIsRunning =
+      claudeResult.status === "fulfilled" ? claudeResult.value : null;
+    const codexIsRunning =
+      codexResult.status === "fulfilled" ? codexResult.value : null;
     bridge.setRuntimeStatus?.({
-      claudeDesktop: claudeIsRunning ? "open" : "closed",
-      codexDesktop: codexIsRunning ? "open" : "closed",
+      claudeDesktop:
+        claudeIsRunning === null
+          ? "unknown"
+          : (claudeIsRunning ? "open" : "closed"),
+      codexDesktop:
+        codexIsRunning === null
+          ? "unknown"
+          : (codexIsRunning ? "open" : "closed"),
     });
+    const processFailures = [claudeResult, codexResult]
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason);
+    if (processFailures.length) {
+      let cleanupError = null;
+      if (deviceRequested) {
+        try {
+          await bridge.disconnectDevice();
+          deviceRequested = false;
+        } catch (error) {
+          cleanupError = error;
+        }
+      }
+      if (cleanupError) {
+        throw new AggregateError(
+          [...processFailures, cleanupError],
+          "Louder Bridge could not check the open desktop apps or release the Codex Micro cleanly.",
+        );
+      }
+      if (processFailures.length === 1) throw processFailures[0];
+      throw new AggregateError(
+        processFailures,
+        "Louder Bridge could not check whether Claude or Codex is open.",
+      );
+    }
     const contentionIsActive = claudeIsRunning && codexIsRunning;
     if (contentionIsActive && !contentionWasActive) {
       logger.info(
