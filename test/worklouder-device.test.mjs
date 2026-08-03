@@ -130,6 +130,54 @@ test("contains asynchronous Agent Key handler failures", async () => {
   await device.stop();
 });
 
+test("routes one Agent Key action for each press", async () => {
+  const slots = [];
+  const transport = new FakeTransport();
+  const device = testDevice([transport], {
+    logger: { info() {}, error() {} },
+    async onAgentKey(slot) {
+      slots.push(slot);
+    },
+  });
+
+  await device.start();
+  transport.event("AG03", 1);
+  transport.event("AG03", 1);
+  transport.event("AG03", 0);
+  transport.event("AG03", 0);
+  transport.event("AG03", 1);
+  await waitForImmediate();
+
+  assert.deepEqual(slots, [3, 3]);
+  assert.equal(device.status().lastEvent.type, "agent-key");
+  assert.equal(device.status().lastEvent.action, "press");
+  await device.stop();
+});
+
+test("accepts the next Agent Key press after reconnecting mid-press", async () => {
+  const slots = [];
+  const firstTransport = new FakeTransport();
+  const secondTransport = new FakeTransport();
+  const device = testDevice([firstTransport, secondTransport], {
+    logger: { info() {}, error() {} },
+    async onAgentKey(slot) {
+      slots.push(slot);
+    },
+  });
+
+  await device.start();
+  firstTransport.event("AG02", 1);
+  await waitForImmediate();
+  firstTransport.disconnected();
+  await waitForImmediate();
+  await device.connect();
+  secondTransport.event("AG02", 1);
+  await waitForImmediate();
+
+  assert.deepEqual(slots, [2, 2]);
+  await device.stop();
+});
+
 test("routes the MIC key as press and release without duplicate edges", async () => {
   const actions = [];
   const transport = new FakeTransport();

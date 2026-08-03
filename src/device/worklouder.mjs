@@ -32,6 +32,7 @@ export class WorkLouderDevice {
     this.deviceMissingLogged = false;
     this.lastEventAt = null;
     this.lastEvent = null;
+    this.agentPressed = new Set();
     this.voicePressed = false;
     this.submitPressed = false;
   }
@@ -142,7 +143,13 @@ export class WorkLouderDevice {
 
   handleHidEvent(event) {
     const match = /^AG0([0-5])$/.exec(event.key);
-    if (event.act === 1 && match) {
+    if (match && (event.act === 0 || event.act === 1)) {
+      const slot = Number(match[1]);
+      const pressed = event.act === 1;
+      if (pressed === this.agentPressed.has(slot)) return;
+      if (pressed) this.agentPressed.add(slot);
+      else this.agentPressed.delete(slot);
+      if (!pressed) return;
       this.lastEventAt = new Date().toISOString();
       this.lastEvent = {
         type: "agent-key",
@@ -150,7 +157,7 @@ export class WorkLouderDevice {
         at: this.lastEventAt,
       };
       Promise.resolve()
-        .then(() => this.onAgentKey(Number(match[1])))
+        .then(() => this.onAgentKey(slot))
         .catch((error) => {
           this.logger.error(
             `Agent Key action failed: ${error?.message ?? String(error)}`,
@@ -228,6 +235,7 @@ export class WorkLouderDevice {
     }
     const wasConnected = this.transport === expectedTransport;
     if (wasConnected) this.transport = null;
+    this.agentPressed.clear();
     this.submitPressed = false;
     if (this.voicePressed) {
       this.voicePressed = false;
@@ -277,6 +285,7 @@ export class WorkLouderDevice {
       this.state = "stopped";
       this.lastConnectionError = null;
       this.deviceMissingLogged = false;
+      this.agentPressed.clear();
       this.voicePressed = false;
     }
     if (failures.length) {

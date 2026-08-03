@@ -135,6 +135,9 @@ have not shipped appear under "Unreleased."
 - Agent Key navigation stops waiting after five seconds if macOS never reports
   whether the Claude URL opened. A later process error does not crash the
   service.
+- Repeated press reports from the same Agent Key are ignored until its release
+  arrives. Reconnecting clears held-key state, so the first press on the new
+  connection still works.
 - First-run instructions now grant macOS permissions before checking the
   background agent.
 - Hook configuration now rejects non-loopback destinations before it edits
