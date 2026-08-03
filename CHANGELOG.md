@@ -36,6 +36,8 @@ have not shipped appear under "Unreleased."
   local port-conflict errors.
 - Embedded Node version and accurate last-hook timing in authenticated
   diagnostics.
+- Diagnostics now keep the timestamp, type, and action from the last device
+  event after the bridge releases the Micro during an app handoff.
 - A bundled native IOKit driver for USB-C and Bluetooth Codex Micro
   communication, with a verified device-status handshake and strict command
   allowlist.

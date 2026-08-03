@@ -137,12 +137,26 @@ The following focused test passed over Bluetooth on August 2, 2026:
 | Send key | Passed; one Return event reached Claude |
 | Lifecycle response | Passed; running and complete hooks reached the bridge |
 
-Codex was closed for the passing run. With Codex open, the same voice input
-was also delivered to Codex, which made the Claude result appear to fail. This
-is a focused development-build result, not a completed release qualification.
-The new conflict notice and automatic handoff have not passed a physical run
-yet. Double-tap latching, the visible Cowork composer route, approval prompts,
-USB-C, power cycling, and the rest of this checklist remain open.
+Codex was closed for the August 2 run. With Codex open, the same voice input
+was also delivered to Codex, which made the Claude result appear to fail.
+
+On August 3, an installed development build passed the Codex-to-Claude
+transition over Bluetooth. The bridge stayed healthy and left the Micro with
+Codex while Codex was open. After Codex quit and Claude Code opened, the bridge
+connected without an app or agent restart. MIC hold and release inserted
+dictated text in Claude, and the adjacent key submitted it once. After the
+tester returned to Codex, authenticated status showed Codex open, Claude
+closed, and the Micro released by the bridge.
+
+The tester also confirmed the core Claude Code interaction over USB-C. That
+check did not cover every restart, approval, or power-cycle case in this
+checklist.
+
+The source installation completed after stale privacy records from earlier ad
+hoc builds were reset. This does not qualify a clean Developer ID installation.
+The conflict notice with both apps kept open, double-tap latching, the visible
+Cowork composer route, approval prompts, USB-C restart and power-cycle cases,
+and the rest of this checklist remain open.
 
 ## Check failure recovery
 

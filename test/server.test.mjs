@@ -147,6 +147,55 @@ test("reports service and device health", async (context) => {
   });
 });
 
+test("retains only safe last-event fields after releasing the Micro", async (context) => {
+  const lastEventAt = "2026-08-03T05:39:01.000Z";
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+    deviceFactory() {
+      return {
+        async start() {},
+        async render() {},
+        status() {
+          return {
+            state: "connected",
+            error: null,
+            lastEventAt,
+            lastEvent: {
+              type: "submit",
+              action: "press",
+              at: lastEventAt,
+              sessionId: "private-session",
+              prompt: "private prompt",
+            },
+          };
+        },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+
+  await bridge.connectDevice();
+  assert.deepEqual(bridge.deviceStatus(), {
+    state: "connected",
+    error: null,
+    lastEventAt,
+    lastEvent: { type: "submit", action: "press", at: lastEventAt },
+  });
+  await bridge.disconnectDevice();
+
+  assert.deepEqual(bridge.deviceStatus(), {
+    state: "inactive",
+    error: null,
+    lastEventAt,
+    lastEvent: { type: "submit", action: "press", at: lastEventAt },
+  });
+});
+
 test("closes an incomplete request when its deadline expires", async (context) => {
   const bridge = await startBridge({
     host: "127.0.0.1",

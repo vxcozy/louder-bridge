@@ -269,6 +269,10 @@ Returns bridge status and the six current slot states:
 All requests require `Authorization: Bearer <local-token>`. Use `npm run
 status` instead of reading the token directly.
 
+The service keeps the timestamp, type, and action from the last device event
+after releasing the Micro. This makes post-handoff diagnostics useful without
+retaining session or prompt content.
+
 Errors use the same JSON shape: `{"ok":false,"error":"..."}`. Known routes
 return 405 for the wrong method and include an `Allow` header.
 

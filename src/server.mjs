@@ -114,6 +114,8 @@ export async function startBridge({
   let deviceRequested = autoConnectDevice;
   let deviceLifecycle = Promise.resolve();
   let lastDeviceError = null;
+  let lastDeviceEventAt = null;
+  let lastDeviceEvent = null;
   let lastHookAt = null;
   let agentQueue = Promise.resolve();
   let voiceQueue = Promise.resolve();
@@ -218,15 +220,57 @@ export async function startBridge({
     return next;
   }
 
+  function rememberDeviceEvent(status) {
+    if (typeof status?.lastEventAt !== "string" || !status.lastEventAt) return;
+    lastDeviceEventAt = status.lastEventAt;
+    const event = status.lastEvent;
+    lastDeviceEvent =
+      event &&
+      typeof event.type === "string" &&
+      typeof event.action === "string"
+        ? {
+            type: event.type,
+            action: event.action,
+            at:
+              typeof event.at === "string"
+                ? event.at
+                : status.lastEventAt,
+          }
+        : null;
+  }
+
+  function rememberDeviceEventFrom(target) {
+    try {
+      rememberDeviceEvent(target?.status?.());
+    } catch {
+      // Device status failures remain isolated from cleanup.
+    }
+  }
+
+  function retainedDeviceEvent() {
+    return lastDeviceEventAt
+      ? { lastEventAt: lastDeviceEventAt, lastEvent: lastDeviceEvent }
+      : {};
+  }
+
+  function diagnosticDeviceStatus(status) {
+    const { lastEventAt: _lastEventAt, lastEvent: _lastEvent, ...safeStatus } =
+      status;
+    rememberDeviceEvent(status);
+    return { ...safeStatus, ...retainedDeviceEvent() };
+  }
+
   async function retryPendingDeviceCleanup() {
     if (!pendingDeviceCleanup) return;
     const cleanupTarget = pendingDeviceCleanup;
     try {
       await cleanupTarget.stop();
+      rememberDeviceEventFrom(cleanupTarget);
       if (pendingDeviceCleanup === cleanupTarget) {
         pendingDeviceCleanup = null;
       }
     } catch (error) {
+      rememberDeviceEventFrom(cleanupTarget);
       lastDeviceError = error?.message ?? String(error);
       throw error;
     }
@@ -250,6 +294,7 @@ export async function startBridge({
       lastDeviceError = null;
       return nextDevice;
     } catch (error) {
+      rememberDeviceEventFrom(nextDevice);
       device = null;
       lastDeviceError = error?.message ?? String(error);
       try {
@@ -275,6 +320,7 @@ export async function startBridge({
   async function disconnectDeviceNow() {
     deviceRequested = false;
     const currentDevice = device;
+    rememberDeviceEventFrom(currentDevice);
     device = null;
     const failures = [];
     if (currentDevice) pendingDeviceCleanup = currentDevice;
@@ -308,13 +354,22 @@ export async function startBridge({
 
   function currentDeviceStatus() {
     if (pendingDeviceCleanup) {
-      return { state: "error", error: lastDeviceError };
+      return {
+        state: "error",
+        error: lastDeviceError,
+        ...retainedDeviceEvent(),
+      };
     }
-    return device?.status?.() ?? {
+    const status = device?.status?.();
+    if (status) {
+      return diagnosticDeviceStatus(status);
+    }
+    return {
       state: deviceRequested
         ? (lastDeviceError ? "error" : "starting")
         : "inactive",
       error: lastDeviceError,
+      ...retainedDeviceEvent(),
     };
   }
 

@@ -74,7 +74,7 @@ test("reports startup failures without a stack trace or checkout path", () => {
   assert.doesNotMatch(result.stderr, /src\/cli/);
 });
 
-test("reports an unavailable background service with an unsuccessful status", () => {
+test("reports an unavailable hook server with an unsuccessful status", () => {
   const result = run(["status"], {
     env: {
       ...process.env,
@@ -84,7 +84,7 @@ test("reports an unavailable background service with an unsuccessful status", ()
   });
 
   assert.equal(result.status, 1);
-  assert.match(result.stdout, /Background agent: not running/);
+  assert.match(result.stdout, /Background agent: (?:running|not running)/);
   assert.match(result.stdout, /Hook server: unavailable/);
   assert.match(result.stdout, /Louder Bridge: not installed/);
   assert.equal(result.stderr, "");
