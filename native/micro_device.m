@@ -4,6 +4,7 @@
 #include <IOKit/IOKitLib.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -325,19 +326,97 @@ int print_micro_frames(const char *transport, const char *payload) {
 }
 #endif
 
-static BOOL allowed_method(NSString *method) {
-  return
-    [method isEqualToString:@"device.status"] ||
-    [method isEqualToString:@"v.oai.rgbcfg"] ||
-    [method isEqualToString:@"v.oai.thstatus"];
+static BOOL integer_in_range(
+  id object,
+  NSInteger minimum,
+  NSInteger maximum,
+  NSInteger *output
+) {
+  if (
+    ![object isKindOfClass:[NSNumber class]] ||
+    CFGetTypeID((__bridge CFTypeRef)object) == CFBooleanGetTypeID()
+  ) {
+    return NO;
+  }
+  double number = ((NSNumber *)object).doubleValue;
+  if (
+    !isfinite(number) ||
+    trunc(number) != number ||
+    number < (double)minimum ||
+    number > (double)maximum
+  ) {
+    return NO;
+  }
+  if (output != NULL) *output = (NSInteger)number;
+  return YES;
+}
+
+static BOOL unit_number(id object) {
+  if (
+    ![object isKindOfClass:[NSNumber class]] ||
+    CFGetTypeID((__bridge CFTypeRef)object) == CFBooleanGetTypeID()
+  ) {
+    return NO;
+  }
+  double number = ((NSNumber *)object).doubleValue;
+  return isfinite(number) && number >= 0.0 && number <= 1.0;
+}
+
+static BOOL valid_light(id object, NSUInteger *seen_slots) {
+  if (![object isKindOfClass:[NSDictionary class]]) return NO;
+  NSDictionary *light = (NSDictionary *)object;
+  if (
+    light.count != 7 ||
+    light[@"id"] == nil ||
+    light[@"c"] == nil ||
+    light[@"b"] == nil ||
+    light[@"e"] == nil ||
+    light[@"s"] == nil ||
+    light[@"sk"] == nil ||
+    light[@"sa"] == nil
+  ) {
+    return NO;
+  }
+  NSInteger slot;
+  NSInteger effect;
+  if (
+    !integer_in_range(light[@"id"], 0, 5, &slot) ||
+    (*seen_slots & ((NSUInteger)1 << (NSUInteger)slot)) != 0 ||
+    !integer_in_range(light[@"c"], 0, 0xFFFFFF, NULL) ||
+    !unit_number(light[@"b"]) ||
+    !integer_in_range(light[@"e"], 0, 6, &effect) ||
+    !(effect == 0 || effect == 1 || effect == 4 || effect == 6) ||
+    !unit_number(light[@"s"]) ||
+    !integer_in_range(light[@"sk"], 0, 1, NULL) ||
+    !integer_in_range(light[@"sa"], 0, 1, NULL)
+  ) {
+    return NO;
+  }
+  *seen_slots |= (NSUInteger)1 << (NSUInteger)slot;
+  return YES;
+}
+
+static BOOL valid_thread_lights(id object) {
+  if (
+    ![object isKindOfClass:[NSArray class]] ||
+    [(NSArray *)object count] > 6
+  ) {
+    return NO;
+  }
+  NSUInteger seen_slots = 0;
+  for (id light in (NSArray *)object) {
+    if (!valid_light(light, &seen_slots)) return NO;
+  }
+  return YES;
 }
 
 static BOOL valid_host_command(id object) {
   if (![object isKindOfClass:[NSDictionary class]]) return NO;
-  NSString *method = ((NSDictionary *)object)[@"m"];
+  NSDictionary *message = (NSDictionary *)object;
   return
-    [method isKindOfClass:[NSString class]] &&
-    allowed_method(method);
+    message.count == 2 &&
+    [message[@"m"] isEqualToString:@"v.oai.thstatus"] &&
+    valid_thread_lights(message[@"p"]);
 }
 
 #if defined(LOUDER_TEST_BUILD)

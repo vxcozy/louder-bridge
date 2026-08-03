@@ -163,6 +163,10 @@ compiled binary for the required hardening symbols.
 
 The native device process has a three-second startup deadline and a one-second
 command-write deadline. If a write stalls, the bridge terminates that process.
+It accepts only `v.oai.thstatus` commands from Node. Each command may contain up
+to six unique slot IDs from 0 through 5, and every color, effect, brightness,
+speed, and synchronization field is range-checked before it reaches the Micro.
+
 Shutdown calls share one cleanup operation, and the next process waits for it
 to finish. If cleanup fails during a Codex handoff, the server keeps the
 original device connection pending and retries its cleanup on the next service

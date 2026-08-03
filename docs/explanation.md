@@ -124,9 +124,11 @@ Agent Key and MIC events, and close the connection.
 
 The child process opens the Micro non-exclusively through IOKit. It frames JSON
 messages for USB-C or Bluetooth, requests `device.status`, and waits for a real
-reply before reporting a connection. Host commands are limited to status,
-lighting configuration, and thread-status lighting. Firmware, filesystem, and
-bootloader methods are rejected.
+reply before reporting a connection. The Node service can send only
+`v.oai.thstatus`. The child checks every lighting field, rejects duplicate or
+out-of-range slots, and accepts no more than six lights. It creates the fixed
+status request itself, so Node cannot send status, configuration, firmware,
+filesystem, or bootloader methods.
 
 The framing and message names come from an independently documented,
 MIT-licensed implementation. The bridge includes that license notice and does

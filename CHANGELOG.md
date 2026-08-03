@@ -40,12 +40,14 @@ have not shipped appear under "Unreleased."
 - Diagnostics now keep the timestamp, type, and action from the last device
   event after the bridge releases the Micro during an app handoff.
 - A bundled native IOKit driver for USB-C and Bluetooth Codex Micro
-  communication, with a verified device-status handshake and strict command
-  allowlist.
+  communication with a verified device-status handshake.
 
 ### Changed
 
 - Logs no longer include project names or session identifiers.
+- The native device process now accepts only schema-checked thread-status
+  lighting from Node. It rejects unused status and lighting-configuration
+  methods.
 - Empty Agent Key presses now produce a diagnostic log entry.
 - Stable v1 release checks now reject experimental device or navigation
   adapters and the experimental Claude voice interface.

@@ -360,7 +360,7 @@ test("frames Codex Micro reports for USB and Bluetooth", (context) => {
   assert.match(bluetooth.stdout, /^06020b7b226d223a2278227d0d0a/);
 });
 
-test("allows only the Codex Micro methods used by the bridge", (context) => {
+test("allows only valid Codex Micro lighting commands", (context) => {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
     context.skip("The native Codex Micro driver requires Apple Silicon.");
     return;
@@ -376,23 +376,45 @@ test("allows only the Codex Micro methods used by the bridge", (context) => {
   );
   compileNativeLauncher({ sourceRoot, output, testBuild: true });
 
-  for (const method of [
-    "device.status",
-    "v.oai.rgbcfg",
-    "v.oai.thstatus",
+  for (const payload of [
+    { m: "v.oai.thstatus", p: [] },
+    {
+      m: "v.oai.thstatus",
+      p: [
+        { id: 0, c: 0x112233, b: 0.8, e: 6, s: 0.4, sk: 1, sa: 0 },
+        { id: 5, c: 0, b: 0, e: 0, s: 0, sk: 0, sa: 1 },
+      ],
+    },
   ]) {
     const result = spawnSync(
       output,
-      ["--test-micro-command", JSON.stringify({ m: method })],
+      ["--test-micro-command", JSON.stringify(payload)],
     );
-    assert.equal(result.status, 0, method);
+    assert.equal(result.status, 0, JSON.stringify(payload));
   }
-  for (const payload of [
-    '{"m":"fs.write"}',
-    '{"m":"device.bootloader"}',
-    '{"m":"firmware.update"}',
-    "not-json",
-  ]) {
+  const light = { id: 0, c: 0, b: 0, e: 0, s: 0, sk: 0, sa: 0 };
+  const invalidPayloads = [
+    { m: "device.status", id: 1 },
+    { m: "v.oai.rgbcfg", p: [] },
+    { m: "fs.write" },
+    { m: "device.bootloader" },
+    { m: "firmware.update" },
+    { m: "v.oai.thstatus" },
+    { m: "v.oai.thstatus", p: {} },
+    { m: "v.oai.thstatus", p: [], extra: true },
+    { m: "v.oai.thstatus", p: [{ ...light, id: 6 }] },
+    { m: "v.oai.thstatus", p: [{ ...light, id: 0.5 }] },
+    { m: "v.oai.thstatus", p: [{ ...light, c: 0x1000000 }] },
+    { m: "v.oai.thstatus", p: [{ ...light, b: true }] },
+    { m: "v.oai.thstatus", p: [{ ...light, b: 1.1 }] },
+    { m: "v.oai.thstatus", p: [{ ...light, e: 2 }] },
+    { m: "v.oai.thstatus", p: [{ ...light, sk: 2 }] },
+    { m: "v.oai.thstatus", p: [{ ...light, extra: true }] },
+    { m: "v.oai.thstatus", p: [light, light] },
+    { m: "v.oai.thstatus", p: Array(7).fill(light) },
+  ].map((payload) => JSON.stringify(payload));
+  invalidPayloads.push("not-json");
+  for (const payload of invalidPayloads) {
     const result = spawnSync(
       output,
       ["--test-micro-command", payload],

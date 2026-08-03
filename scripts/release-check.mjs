@@ -109,6 +109,7 @@ const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const releaseWorkflow = readIfPresent(".github/workflows/release.yml");
 const buildReleaseScript = readIfPresent("scripts/build-release.mjs");
 const publishReleaseScript = readIfPresent("scripts/publish-release.mjs");
+const nativeDeviceSource = readIfPresent("native/micro_device.m");
 const codeOwners = readIfPresent(".github/CODEOWNERS");
 const nodeEntitlements = readIfPresent("release/node.entitlements.plist");
 const actionPins = {
@@ -276,6 +277,22 @@ if (/\bgh release (?:create|edit|upload)\b/.test(releaseWorkflow)) {
 }
 if (releaseWorkflow.includes("LOUDER_SKIP_RUNTIME_AVAILABILITY_CHECK")) {
   failures.push("The release workflow contains a removed runtime bypass.");
+}
+if (
+  !nativeDeviceSource.includes(
+    '[message[@"m"] isEqualToString:@"v.oai.thstatus"]',
+  ) ||
+  nativeDeviceSource.includes(
+    '[method isEqualToString:@"device.status"]',
+  ) ||
+  nativeDeviceSource.includes(
+    '[method isEqualToString:@"v.oai.rgbcfg"]',
+  ) ||
+  !nativeDeviceSource.includes("valid_thread_lights(message[@\"p\"])")
+) {
+  failures.push(
+    "The native driver must accept only schema-checked thread-status lighting from Node.",
+  );
 }
 if (
   !nodeEntitlements.includes("com.apple.security.cs.allow-jit") ||
