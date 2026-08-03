@@ -42,6 +42,7 @@ test("holds Claude's dictation control between start and stop", async () => {
   assert.equal(voice.status().state, "recording");
   assert.equal(voice.status().method, "claude-composer");
   assert.equal(child.stdin.writableEnded, false);
+  assert.equal(child.stdout.listenerCount("data"), 0);
   await voice.stop();
   assert.equal(voice.status().state, "idle");
   assert.equal(child.stdin.writableEnded, true);
@@ -104,6 +105,22 @@ test("reports a synchronous dictation helper launch failure", async () => {
     voice.status().error,
     "Louder Bridge could not start its dictation helper.",
   );
+});
+
+test("bounds and stops reading the dictation startup response", async () => {
+  const child = fakeChild({ method: "x".repeat(4096) });
+  const voice = new ClaudeAccessibilityVoice({
+    launcher: "/launcher",
+    spawnProcess: () => child,
+  });
+
+  await assert.rejects(
+    () => voice.start(),
+    /oversized dictation helper response/,
+  );
+  assert.equal(child.stdout.listenerCount("data"), 0);
+  assert.equal(child.stdin.writableEnded, true);
+  assert.equal(voice.status().state, "error");
 });
 
 test("records an unexpected native hold exit", async () => {

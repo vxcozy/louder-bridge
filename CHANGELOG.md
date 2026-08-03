@@ -152,6 +152,9 @@ have not shipped appear under "Unreleased."
   apostrophe.
 - Voice cleanup now waits for the native dictation helper to exit and escalates
   termination if it remains stuck.
+- Voice startup reads at most 4 KiB from the dictation helper and stops reading
+  once the helper is ready. This bounds memory use if the helper sends bad
+  startup data during a recording.
 
 ### Security
 

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 const START_TIMEOUT_MS = 5000;
 const STOP_TIMEOUT_MS = 5000;
 const CLEANUP_TIMEOUT_MS = 1000;
+const MAX_STARTUP_RESPONSE_BYTES = 4096;
 
 function childFailure(stderr, fallback) {
   return stderr.trim() || fallback;
@@ -128,18 +129,16 @@ export class ClaudeAccessibilityVoice {
     try {
       await new Promise((resolve, reject) => {
         let settled = false;
-        const finish = (error) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          if (error) reject(error);
-          else resolve();
-        };
-        const timer = setTimeout(() => {
-          finish(new Error("Claude did not begin recording in time."));
-        }, this.startTimeoutMs);
-        child.stdout.on("data", (chunk) => {
+        const onStdoutData = (chunk) => {
           stdout += chunk.toString("utf8");
+          if (Buffer.byteLength(stdout) > MAX_STARTUP_RESPONSE_BYTES) {
+            finish(
+              new Error(
+                "Louder Bridge rejected an oversized dictation helper response.",
+              ),
+            );
+            return;
+          }
           const newline = stdout.indexOf("\n");
           if (newline < 0) return;
           const line = stdout.slice(0, newline).trim();
@@ -148,7 +147,19 @@ export class ClaudeAccessibilityVoice {
             this.method = method ?? null;
             finish();
           }
-        });
+        };
+        const finish = (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          child.stdout.off("data", onStdoutData);
+          if (error) reject(error);
+          else resolve();
+        };
+        const timer = setTimeout(() => {
+          finish(new Error("Claude did not begin recording in time."));
+        }, this.startTimeoutMs);
+        child.stdout.on("data", onStdoutData);
         this.exitPromise.then(
           ({ code, signal }) => {
             finish(new Error(childFailure(
