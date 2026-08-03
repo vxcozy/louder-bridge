@@ -122,9 +122,13 @@ First launch waits up to five minutes for Input Monitoring, then five minutes
 for Accessibility. Once you grant access, setup continues immediately. If
 either wait expires, the app opens the matching System Settings pane and exits
 before activation. Source setup then rolls back its transaction.
-Source setup gives macOS's app-opening wait five seconds. If that command stays
-alive, setup checks the actual onboarding process once per second and resumes
-when the process exits. This fallback has an eleven-minute deadline.
+Source setup gives macOS's app-opening command five seconds, waits briefly for
+the onboarding process to appear, then follows it once per second. If macOS
+quits Louder Bridge after a permission change, setup can launch it up to five
+times so onboarding continues without a manual restart. Each app wait has an
+eleven-minute deadline. Source builds derive the launcher's Mach-O UUID from
+its compiled contents, so an unchanged rebuild keeps the same local permission
+identity.
 
 Before setup replaces or removes the app, it checks the bundle identifier and
 executable name. It also records the bundle's filesystem identity for rollback
@@ -146,11 +150,12 @@ directory permissions through a symbolic link.
 
 After launchd starts a replacement agent, activation calls the authenticated
 health endpoint and checks the service mode and exact app version. Each request
-has a 500 ms deadline. Activation tries up to 30 times, with 100 ms between
-attempts. If the service never passes that check, installation restores the
-previous launch-agent file and load state. Setup checks the file again before
-replacement and rollback. If another process changed it, setup leaves the
-newer file alone.
+has a 500 ms deadline. Activation tries up to 150 times, with 100 ms between
+attempts and a fifteen-second overall deadline. The longer wait covers launchd's
+ten-second restart throttle after a short-lived agent run. If the service never
+passes the check, installation restores the previous launch-agent file and load
+state. Setup checks the file again before replacement and rollback. If another
+process changed it, setup leaves the newer file alone.
 
 The native launcher is compiled with strong stack protection, fortified libc
 calls, and fatal compiler and linker warnings. Package verification checks the

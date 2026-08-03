@@ -12,17 +12,21 @@ matches the [supported baseline](compatibility.md).
    moving it. Confirm Louder Bridge asks to be moved and does not request
    permission, add hooks, or install a login agent.
 3. Move the packaged app into Applications and open it again. Approve Input
-   Monitoring and Accessibility, then confirm the background agent starts
-   without reopening Louder Bridge.
+   Monitoring and Accessibility. If macOS quits the app after either change,
+   confirm onboarding reopens it and the background agent starts without any
+   manual restart.
 4. In a clean test account, leave Input Monitoring off for five minutes.
    Confirm the dialog identifies the missing permission, opens the matching
    setting, and exits without installing hooks or a login agent. Enable the
    permission, reopen the app, and confirm setup can finish.
 5. After both onboarding runs, confirm source setup finishes within fifteen
-   seconds of Louder Bridge closing. In Activity Monitor, check that Louder
-   Bridge has not left an `open -W` process behind.
-6. Run `npm run doctor`, `npm test`, and `npm run status`.
-7. Confirm the background agent and hook server are ready.
+   seconds of Louder Bridge closing. In Activity Monitor, check that no
+   `open -W` process was created.
+6. Start source setup again and interrupt it with Ctrl-C while the app is
+   waiting. Confirm it restores the previous app and leaves no setup worker or
+   new application backup behind.
+7. Run `npm run doctor`, `npm test`, and `npm run status`.
+8. Confirm the background agent and hook server are ready.
 
 Record the macOS, Node.js, Codex Micro firmware, connection type, device
 driver, Claude Desktop, and Louder Bridge versions in the release notes.

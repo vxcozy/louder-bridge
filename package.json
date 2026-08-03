@@ -19,7 +19,7 @@
   "scripts": {
     "start": "node src/cli.mjs start",
     "doctor": "node src/cli.mjs doctor",
-    "setup": "node src/cli.mjs setup",
+    "setup": "node scripts/setup-worker.mjs",
     "status": "node src/cli.mjs status",
     "uninstall": "node src/cli.mjs uninstall",
     "test": "node --test",

@@ -1,8 +1,9 @@
 import { BRIDGE_URL } from "../config.mjs";
 
-const DEFAULT_ATTEMPTS = 30;
+const DEFAULT_ATTEMPTS = 150;
 const DEFAULT_DELAY_MS = 100;
 const DEFAULT_REQUEST_TIMEOUT_MS = 500;
+const DEFAULT_READINESS_TIMEOUT_MS = 15_000;
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -34,8 +35,10 @@ export async function waitForBridgeReady({
   attempts = DEFAULT_ATTEMPTS,
   delayMs = DEFAULT_DELAY_MS,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  timeoutMs = DEFAULT_READINESS_TIMEOUT_MS,
   request = fetch,
   wait = delay,
+  now = Date.now,
 } = {}) {
   if (typeof authToken !== "string" || authToken.length < 32) {
     throw new TypeError("A Louder Bridge authentication token is required.");
@@ -52,13 +55,27 @@ export async function waitForBridgeReady({
   if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs < 1) {
     throw new TypeError("Readiness request timeout must be positive.");
   }
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 1) {
+    throw new TypeError("Readiness timeout must be positive.");
+  }
+  if (typeof now !== "function") {
+    throw new TypeError("A readiness clock is required.");
+  }
 
   let lastResult = null;
+  const deadline = now() + timeoutMs;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const remainingBeforeRequest = deadline - now();
+    if (remainingBeforeRequest <= 0) break;
     try {
       const response = await request(`${url}/health`, {
         headers: { authorization: `Bearer ${authToken}` },
-        signal: AbortSignal.timeout(requestTimeoutMs),
+        signal: AbortSignal.timeout(
+          Math.max(
+            1,
+            Math.ceil(Math.min(requestTimeoutMs, remainingBeforeRequest)),
+          ),
+        ),
       });
       if (response.status === 401) {
         lastResult = { type: "authentication" };
@@ -82,7 +99,11 @@ export async function waitForBridgeReady({
     } catch {
       lastResult = { type: "unavailable" };
     }
-    if (attempt + 1 < attempts) await wait(delayMs);
+    if (attempt + 1 < attempts) {
+      const remainingBeforeWait = deadline - now();
+      if (remainingBeforeWait <= 0) break;
+      await wait(Math.min(delayMs, remainingBeforeWait));
+    }
   }
   throw readinessError(lastResult);
 }

@@ -48,3 +48,30 @@ test("leaves successful setup committed and removes signal listeners", async () 
   assert.equal(processObject.listenerCount("SIGINT"), 0);
   assert.equal(processObject.listenerCount("SIGTERM"), 0);
 });
+
+test("rolls back when a detached setup worker loses its parent", async () => {
+  const processObject = new EventEmitter();
+  processObject.connected = true;
+  let rolledBack = false;
+
+  const result = await runInterruptibleSetup({
+    processObject,
+    operation(signal) {
+      return new Promise((resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => reject(new Error("setup parent exited")),
+          { once: true },
+        );
+        queueMicrotask(() => processObject.emit("disconnect"));
+      });
+    },
+    async rollback() {
+      rolledBack = true;
+    },
+  });
+
+  assert.equal(result.signal, "SIGTERM");
+  assert.equal(rolledBack, true);
+  assert.equal(processObject.listenerCount("disconnect"), 0);
+});

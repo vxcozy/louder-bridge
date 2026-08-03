@@ -11,6 +11,7 @@ import {
   compileNativeLauncherAtomically,
   inspectNativeBuildTools,
   signLocalApplication,
+  stabilizeNativeLauncherUuid,
 } from "../src/setup/native-launcher.mjs";
 
 test("checks the compiler and macOS SDK before source setup", () => {
@@ -116,6 +117,58 @@ test("compiles the launcher for the supported deployment target", () => {
       "/build/LouderBridge",
     ],
   ]);
+});
+
+test("unchanged local launcher builds are byte-for-byte stable", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("Stable local launchers require Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-stable-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  const firstDirectory = path.join(directory, "first");
+  const secondDirectory = path.join(directory, "second");
+  fs.mkdirSync(firstDirectory);
+  fs.mkdirSync(secondDirectory);
+  const first = path.join(firstDirectory, "LouderBridge");
+  const second = path.join(secondDirectory, "LouderBridge");
+
+  compileNativeLauncher({ sourceRoot, output: first });
+  compileNativeLauncher({ sourceRoot, output: second });
+  const firstUuid = stabilizeNativeLauncherUuid(first);
+  const secondUuid = stabilizeNativeLauncherUuid(second);
+
+  assert.equal(firstUuid, secondUuid);
+  assert.deepEqual(fs.readFileSync(first), fs.readFileSync(second));
+  const signed = spawnSync(
+    "/usr/bin/codesign",
+    ["--force", "--sign", "-", first],
+    { encoding: "utf8" },
+  );
+  assert.equal(signed.status, 0, signed.stderr);
+  const launched = spawnSync(first, ["--version"]);
+  assert.equal(launched.signal, null);
+  assert.equal(launched.status, 1);
+});
+
+test("rejects UUID normalization for a non-Mach-O file", (context) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-invalid-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const filename = path.join(directory, "LouderBridge");
+  fs.writeFileSync(filename, "not a native launcher", { mode: 0o700 });
+
+  assert.throws(
+    () => stabilizeNativeLauncherUuid(filename),
+    /not a thin 64-bit Mach-O file/,
+  );
 });
 
 test("ad hoc signs and verifies a local application", () => {

@@ -11,8 +11,11 @@ export async function runInterruptibleSetup({
   };
   const handleInterrupt = () => interrupt("SIGINT");
   const handleTermination = () => interrupt("SIGTERM");
+  const handleParentExit = () => interrupt("SIGTERM");
   processObject.once("SIGINT", handleInterrupt);
   processObject.once("SIGTERM", handleTermination);
+  const monitorParent = processObject.connected === true;
+  if (monitorParent) processObject.once("disconnect", handleParentExit);
 
   try {
     await operation(controller.signal);
@@ -23,5 +26,6 @@ export async function runInterruptibleSetup({
   } finally {
     processObject.off("SIGINT", handleInterrupt);
     processObject.off("SIGTERM", handleTermination);
+    if (monitorParent) processObject.off("disconnect", handleParentExit);
   }
 }

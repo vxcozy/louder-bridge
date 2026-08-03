@@ -46,6 +46,7 @@ import {
   signLocalApplication,
 } from "./setup/native-launcher.mjs";
 import {
+  completePermissionOnboarding,
   needsPermissionOnboarding,
   openOnboardingApplication,
 } from "./setup/permission-onboarding.mjs";
@@ -240,6 +241,7 @@ if (command === "help" || command === "--help" || command === "-h") {
             compileNativeLauncherAtomically({
               sourceRoot,
               output: staged.launcher,
+              stableUuid: true,
             });
             signLocalApplication({
               ...staged,
@@ -259,15 +261,10 @@ if (command === "help" || command === "--help" || command === "-h") {
         });
         file = settingsTransaction.settingsFile;
         agent = removeLaunchAgent();
-        await openOnboardingApplication(application.app, {
+        await completePermissionOnboarding(application.app, {
           signal,
-          waitForExit: true,
+          isReady: waitForLaunchAgent,
         });
-        if (!waitForLaunchAgent()) {
-          throw new Error(
-            "Louder Bridge closed before the background agent was ready.",
-          );
-        }
         await waitForBridgeReady({
           authToken: authentication.token,
           expectedVersion: applicationMetadata().version,

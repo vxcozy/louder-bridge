@@ -57,6 +57,8 @@ have not shipped appear under "Unreleased."
   health check.
 - App activation checks the running service mode and version before reporting
   success. If the check fails, it restores the previous launch agent.
+- Agent activation now waits up to fifteen seconds for the health check. This
+  gives launchd time to restart an agent after applying its ten-second throttle.
 - First launch now checks the resolved bundle path before permission prompts or
   configuration changes. It accepts the system and per-user Applications
   directories and rejects Downloads or App Translocation.
@@ -73,9 +75,16 @@ have not shipped appear under "Unreleased."
   log.
 - Permission onboarding now stops after a five-minute wait, names the missing
   permission, and opens the matching System Settings pane.
-- Source setup no longer waits forever when macOS's app-opening command stays
-  alive after the onboarding app exits. It follows the app itself and stops
-  after eleven minutes so the setup transaction can roll back.
+- Source setup now follows the onboarding app directly instead of leaving an
+  `open -W` helper alive. If macOS quits the app after a permission change,
+  setup reopens it so onboarding can continue. The wait and the five-launch
+  limit are both bounded, allowing the transaction to roll back on failure.
+- Source builds now derive the launcher's Mach-O UUID from its compiled
+  contents, so rebuilding unchanged code keeps the same local signing identity
+  and macOS permissions.
+- `npm run setup` now isolates the transaction from npm's process group. If
+  npm exits or the terminal closes, the setup worker finishes rollback before
+  it stops.
 - Native test commands are now compiled only for automated test binaries.
   Package verification rejects a release launcher that exposes one.
 - The standalone Input Monitoring request now reports a successful grant as

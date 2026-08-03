@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
+  completePermissionOnboarding,
   needsPermissionOnboarding,
   openOnboardingApplication,
 } from "../src/setup/permission-onboarding.mjs";
@@ -45,6 +46,7 @@ test("opens the installed app for permission onboarding", async () => {
 
 test("can wait for onboarding to finish before committing setup", async () => {
   const calls = [];
+  const states = [true, true, false];
   const controller = new AbortController();
   await openOnboardingApplication("/Applications/Louder Bridge.app", {
     signal: controller.signal,
@@ -52,27 +54,25 @@ test("can wait for onboarding to finish before committing setup", async () => {
     async run(command, args, options) {
       calls.push({ command, args, options });
     },
+    isRunning: () => states.shift(),
+    async sleep() {},
   });
 
   assert.deepEqual(calls, [
     {
       command: "/usr/bin/open",
-      args: ["-W", "-n", "/Applications/Louder Bridge.app"],
+      args: ["-n", "/Applications/Louder Bridge.app"],
       options: { signal: controller.signal, timeout: 5000 },
     },
   ]);
 });
 
-test("finishes when the onboarding app exits after open stops waiting", async () => {
+test("follows the onboarding app until it exits", async () => {
   const states = [true, true, false];
   const waits = [];
   await openOnboardingApplication("/Applications/Louder Bridge.app", {
     waitForExit: true,
-    async run() {
-      const error = new Error("open timed out");
-      error.killed = true;
-      throw error;
-    },
+    async run() {},
     isRunning({ launcher }) {
       assert.equal(
         launcher,
@@ -89,27 +89,76 @@ test("finishes when the onboarding app exits after open stops waiting", async ()
   assert.deepEqual(waits, [1000, 1000]);
 });
 
-test("accepts an exited onboarding app after open stops waiting", async () => {
+test("accepts an onboarding app that exits before the first check", async () => {
   await openOnboardingApplication("/Applications/Louder Bridge.app", {
     waitForExit: true,
-    async run() {
-      const error = new Error("open timed out");
-      error.killed = true;
-      throw error;
-    },
+    async run() {},
     isRunning: () => false,
+    startTimeoutMs: 0,
   });
 });
 
-test("recognizes a real Node command timeout", async () => {
+test("waits for the onboarding app to appear before following its exit", async () => {
+  const states = [false, false, true, false];
+  const waits = [];
   await openOnboardingApplication("/Applications/Louder Bridge.app", {
     waitForExit: true,
-    openTimeoutMs: 10,
-    run(_command, _args, options) {
-      return execFileAsync("/bin/sleep", ["1"], options);
+    async run() {},
+    isRunning: () => states.shift(),
+    async sleep(milliseconds) {
+      waits.push(milliseconds);
     },
-    isRunning: () => false,
+    now: () => 0,
   });
+
+  assert.deepEqual(waits, [100, 100, 1000]);
+});
+
+test("reports a real Node command timeout", async () => {
+  await assert.rejects(
+    () =>
+      openOnboardingApplication("/Applications/Louder Bridge.app", {
+        waitForExit: true,
+        openTimeoutMs: 10,
+        run(_command, _args, options) {
+          return execFileAsync("/bin/sleep", ["1"], options);
+        },
+        isRunning: () => false,
+      }),
+    /could not open for setup/,
+  );
+});
+
+test("reopens after permission-driven app restarts", async () => {
+  const launches = [];
+  const readiness = [false, false, false, false, true];
+
+  await completePermissionOnboarding("/Applications/Louder Bridge.app", {
+    signal: AbortSignal.timeout(1000),
+    isReady: () => readiness.shift(),
+    async openApplication(app, options) {
+      launches.push({ app, options });
+    },
+  });
+
+  assert.equal(launches.length, 5);
+  assert.equal(launches[0].app, "/Applications/Louder Bridge.app");
+  assert.equal(launches[0].options.waitForExit, true);
+});
+
+test("bounds permission-driven app restarts", async () => {
+  let launches = 0;
+  await assert.rejects(
+    () =>
+      completePermissionOnboarding("/Applications/Louder Bridge.app", {
+        isReady: () => false,
+        async openApplication() {
+          launches += 1;
+        },
+      }),
+    /closed before the background agent was ready/,
+  );
+  assert.equal(launches, 5);
 });
 
 test("bounds the onboarding app exit wait", async () => {
@@ -118,9 +167,7 @@ test("bounds the onboarding app exit wait", async () => {
       openOnboardingApplication("/Applications/Louder Bridge.app", {
         waitForExit: true,
         async run() {
-          const error = new Error("open timed out");
-          error.killed = true;
-          throw error;
+          return undefined;
         },
         isRunning: () => true,
         timeoutMs: 0,

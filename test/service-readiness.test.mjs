@@ -163,6 +163,35 @@ test("bounds unavailable background-agent retries", async () => {
   assert.equal(waits, 2);
 });
 
+test("stops readiness retries at the overall deadline", async () => {
+  let currentTime = 0;
+  let requests = 0;
+  let waits = 0;
+
+  await assert.rejects(
+    () =>
+      waitForBridgeReady({
+        authToken,
+        expectedVersion: "0.1.0",
+        attempts: 100,
+        timeoutMs: 15_000,
+        now: () => currentTime,
+        async request() {
+          requests += 1;
+          currentTime = 15_000;
+          throw new Error("unavailable");
+        },
+        async wait() {
+          waits += 1;
+        },
+      }),
+    /did not become ready in time/,
+  );
+
+  assert.equal(requests, 1);
+  assert.equal(waits, 0);
+});
+
 test("validates readiness configuration before making a request", async () => {
   let requests = 0;
   const request = async () => {
@@ -192,6 +221,16 @@ test("validates readiness configuration before making a request", async () => {
         request,
       }),
     /attempts must be a positive integer/,
+  );
+  await assert.rejects(
+    () =>
+      waitForBridgeReady({
+        authToken,
+        expectedVersion: "0.1.0",
+        timeoutMs: 0,
+        request,
+      }),
+    /Readiness timeout must be positive/,
   );
   assert.equal(requests, 0);
 });
