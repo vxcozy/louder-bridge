@@ -216,6 +216,39 @@ test("restores the previous launch agent after an install failure", async () => 
   fs.rmSync(homeDirectory, { recursive: true });
 });
 
+test("reloads the previous agent after an uncertain install bootout", async () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-bootout-rollback-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  let bootouts = 0;
+  let bootstraps = 0;
+  const run = (command, args) => {
+    if (args[0] === "print") {
+      return { status: 0, stdout: "state = running", stderr: "" };
+    }
+    if (args[0] === "bootout") {
+      bootouts += 1;
+      if (bootouts === 1) {
+        return { status: 5, stdout: "", stderr: "Input/output error" };
+      }
+    }
+    if (args[0] === "bootstrap") bootstraps += 1;
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  await assert.rejects(
+    () => installLaunchAgent({ homeDirectory, userId: 501, run }),
+    /launchctl bootout failed/,
+  );
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "previous plist");
+  assert.equal(bootouts, 2);
+  assert.equal(bootstraps, 1);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
 test("restores a launch agent removed during a failed setup", () => {
   const homeDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "louder-bridge-launch-removal-"),
@@ -275,6 +308,39 @@ test("does not remove a launch-agent file changed after bootout", () => {
   );
   assert.equal(fs.readFileSync(paths.plist, "utf8"), "newer plist");
   assert.equal(bootstraps, 0);
+  fs.rmSync(homeDirectory, { recursive: true });
+});
+
+test("reloads the previous agent after an uncertain removal bootout", () => {
+  const homeDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-bridge-launch-remove-bootout-"),
+  );
+  const paths = launchAgentPaths(homeDirectory);
+  fs.mkdirSync(path.dirname(paths.plist), { recursive: true });
+  fs.writeFileSync(paths.plist, "previous plist");
+  let bootouts = 0;
+  let bootstraps = 0;
+  const run = (command, args) => {
+    if (args[0] === "print") {
+      return { status: 0, stdout: "state = running", stderr: "" };
+    }
+    if (args[0] === "bootout") {
+      bootouts += 1;
+      if (bootouts === 1) {
+        return { status: 5, stdout: "", stderr: "Input/output error" };
+      }
+    }
+    if (args[0] === "bootstrap") bootstraps += 1;
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  assert.throws(
+    () => removeLaunchAgent({ homeDirectory, userId: 501, run }),
+    /launchctl bootout failed/,
+  );
+  assert.equal(fs.readFileSync(paths.plist, "utf8"), "previous plist");
+  assert.equal(bootouts, 2);
+  assert.equal(bootstraps, 1);
   fs.rmSync(homeDirectory, { recursive: true });
 });
 

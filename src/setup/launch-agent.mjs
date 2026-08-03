@@ -241,12 +241,11 @@ export async function installLaunchAgent({
       run,
     }).status === 0;
 
-  bootoutLaunchAgent(serviceTarget, run);
-
   const replacementPlist = launchAgentPlist({ paths, runtime });
   let replacement = null;
   let replacementPublished = false;
   try {
+    bootoutLaunchAgent(serviceTarget, run);
     writeFileAtomic(paths.plist, replacementPlist, {
       mode: 0o644,
       beforeRename() {
@@ -346,8 +345,8 @@ export function removeLaunchAgent({
       allowFailure: true,
       run,
     }).status === 0;
-  bootoutLaunchAgent(serviceTarget, run);
   try {
+    bootoutLaunchAgent(serviceTarget, run);
     requireLaunchAgentState(
       paths.plist,
       previous,
@@ -362,6 +361,7 @@ export function removeLaunchAgent({
           previous,
           "The previous launch-agent file changed before it could be reloaded.",
         );
+        bootoutLaunchAgent(serviceTarget, run);
         bootstrapLaunchAgent(userId, paths.plist, run);
         runLaunchctl(["kickstart", "-k", serviceTarget], {
           allowFailure: true,

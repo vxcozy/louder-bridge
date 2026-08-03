@@ -106,6 +106,9 @@ have not shipped appear under "Unreleased."
   restores the previous launch-agent file mode and leaves newer edits alone.
 - Launch-agent removal checks the plist again after stopping the service.
   Rollback will not overwrite a plist created by another process.
+- If launchd reports an error while stopping the previous agent, rollback
+  retries the stop and reloads the unchanged agent after a successful retry.
+  The original launchd error is still reported.
 - Setup and uninstall verify the app's bundle identity before replacing or
   removing it. Rollback and backup cleanup leave a path alone if it no longer
   points to the bundle recorded at the start of the transaction.
