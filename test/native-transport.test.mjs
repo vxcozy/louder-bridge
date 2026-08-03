@@ -205,6 +205,29 @@ test("reports a disconnect once after a successful connection", async () => {
   assert.deepEqual(disconnects, ["clean"]);
 });
 
+test("stops accepting commands as soon as the driver reports a disconnect", async () => {
+  const child = new FakeChild();
+  const transport = new NativeMicroTransport({
+    launcher: "/bin/ls",
+    spawnProcess: () => child,
+  });
+  const connected = transport.connect();
+  child.stdout.write(
+    '{"_louder":{"type":"connected","transport":"Bluetooth Low Energy","status":{"version":"v0.4.1"}}}\n',
+  );
+  await connected;
+
+  child.stdout.write('{"_louder":{"type":"disconnected"}}\n');
+  await assert.rejects(
+    transport.send({ m: "v.oai.thstatus", p: [] }),
+    /Codex Micro is not connected/,
+  );
+
+  const closing = transport.close();
+  child.finish();
+  await closing;
+});
+
 test("forces an unresponsive native driver to exit before closing", async () => {
   const child = new StubbornChild();
   const transport = new NativeMicroTransport({

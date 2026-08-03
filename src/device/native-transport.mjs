@@ -225,6 +225,7 @@ export class NativeMicroTransport {
       return;
     }
     this.disconnectReported = true;
+    this.connected = false;
     const onDisconnect = this.onDisconnect;
     Promise.resolve()
       .then(() => onDisconnect(error))
