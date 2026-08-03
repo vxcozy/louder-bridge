@@ -59,6 +59,9 @@ have not shipped appear under "Unreleased."
   configuration.
 - The release workflow now runs its source gates before passing signing or
   notarization credentials to repository scripts.
+- The security gate now rejects certificate, private-key, keychain, and
+  provisioning files by filename, including binary files whose contents cannot
+  be scanned as text.
 - ChatGPT is no longer required for Codex Micro access.
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.
