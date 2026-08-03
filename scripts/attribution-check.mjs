@@ -4,14 +4,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { findAttribution } from "../src/policy/attribution.mjs";
+import { historicalAttributionFindings } from "./historical-attribution.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const excludedDirectories = new Set([".git", "coverage", "dist", "node_modules"]);
-const excludedPaths = new Set([
-  "scripts/attribution-check.mjs",
-  "src/policy/attribution.mjs",
-  "test/attribution.test.mjs",
-]);
 
 function projectFiles(directory) {
   const output = [];
@@ -27,7 +23,6 @@ function projectFiles(directory) {
 const findings = [];
 for (const filename of projectFiles(root)) {
   const relative = path.relative(root, filename);
-  if (excludedPaths.has(relative)) continue;
   const contents = fs.readFileSync(filename);
   if (contents.includes(0)) continue;
   const finding = findAttribution(contents.toString("utf8"));
@@ -47,6 +42,18 @@ if (history.status === 0) {
       findings.push(`${hash}: ${finding}`);
     }
   }
+} else {
+  findings.push(
+    `history: git log failed: ${history.stderr?.trim() || `exit ${history.status}`}`,
+  );
+}
+
+try {
+  findings.push(...historicalAttributionFindings(root));
+} catch (error) {
+  findings.push(
+    `history: ${error instanceof Error ? error.message : String(error)}`,
+  );
 }
 
 if (findings.length) {
