@@ -13,10 +13,17 @@ function deferred() {
 }
 
 class FakeTransport {
-  constructor({ connectGate, connectError, sendError, closeError } = {}) {
+  constructor({
+    connectGate,
+    connectError,
+    sendError,
+    closeGate,
+    closeError,
+  } = {}) {
     this.connectGate = connectGate;
     this.connectError = connectError;
     this.sendError = sendError;
+    this.closeGate = closeGate;
     this.closeError = closeError;
     this.connectCalls = 0;
     this.closeCalls = 0;
@@ -48,6 +55,7 @@ class FakeTransport {
 
   async close() {
     this.closeCalls += 1;
+    if (this.closeGate) await this.closeGate.promise;
     if (this.closeError) throw this.closeError;
   }
 
@@ -410,6 +418,56 @@ test("automatically reconnects after the native driver disconnects", async () =>
   assert.equal(second.connectCalls, 1);
 
   await device.stop();
+});
+
+test("waits for disconnect cleanup before automatically reconnecting", async () => {
+  const cleanupGate = deferred();
+  const first = new FakeTransport({ closeGate: cleanupGate });
+  const second = new FakeTransport();
+  let retryConnection;
+  const device = testDevice([first, second], {
+    logger: { info() {}, error() {} },
+    setReconnectInterval(callback) {
+      retryConnection = callback;
+      return Symbol("reconnect timer");
+    },
+    clearReconnectInterval() {},
+  });
+
+  await device.start();
+  first.disconnected(new Error("Bluetooth link was lost"));
+  await waitForImmediate();
+  retryConnection();
+  await waitForImmediate();
+  assert.equal(second.connectCalls, 0);
+
+  cleanupGate.resolve();
+  await waitForImmediate();
+  await waitForImmediate();
+  assert.equal(second.connectCalls, 1);
+  assert.equal(device.transport, second);
+  assert.equal(device.status().state, "connected");
+
+  await device.stop();
+});
+
+test("runs device disconnect cleanup once after a peer disconnect", async () => {
+  const transport = new FakeTransport();
+  let cleanupCalls = 0;
+  const device = testDevice([transport], {
+    logger: { info() {}, error() {} },
+    onDeviceDisconnect() {
+      cleanupCalls += 1;
+    },
+  });
+
+  await device.start();
+  transport.disconnected();
+  await waitForImmediate();
+  assert.equal(cleanupCalls, 1);
+
+  await device.stop();
+  assert.equal(cleanupCalls, 1);
 });
 
 test("stops latched voice input if the Micro disconnects", async () => {

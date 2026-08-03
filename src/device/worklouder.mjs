@@ -28,6 +28,7 @@ export class WorkLouderDevice {
     this.clearReconnectInterval = clearReconnectInterval;
     this.transport = null;
     this.reconnectTimer = null;
+    this.disconnectPromise = null;
     this.connectPromise = null;
     this.started = false;
     this.state = "stopped";
@@ -83,7 +84,11 @@ export class WorkLouderDevice {
   async connect() {
     if (!this.started || this.transport) return Boolean(this.transport);
     if (this.connectPromise) return this.connectPromise;
-    this.connectPromise = this.openConnection();
+    this.connectPromise = (async () => {
+      await this.disconnectPromise;
+      if (!this.started || this.transport) return Boolean(this.transport);
+      return this.openConnection();
+    })();
     try {
       return await this.connectPromise;
     } finally {
@@ -110,7 +115,14 @@ export class WorkLouderDevice {
             action: "disconnected",
             at: this.lastEventAt,
           };
-          this.disconnect(transport, { close: false })
+          let cleanup;
+          cleanup = this.disconnect(transport).finally(() => {
+            if (this.disconnectPromise === cleanup) {
+              this.disconnectPromise = null;
+            }
+          });
+          this.disconnectPromise = cleanup;
+          cleanup
             .then(() => {
               if (error) this.reportConnectionError(error);
             })
@@ -237,7 +249,8 @@ export class WorkLouderDevice {
     ) {
       return false;
     }
-    const wasConnected = this.transport === expectedTransport;
+    const wasConnected =
+      Boolean(expectedTransport) && this.transport === expectedTransport;
     if (wasConnected) this.transport = null;
     this.agentPressed.clear();
     this.submitPressed = false;
@@ -270,6 +283,7 @@ export class WorkLouderDevice {
     this.reconnectTimer = null;
     await this.connectPromise?.catch(() => {});
     const failures = [];
+    await this.disconnectPromise?.catch((error) => failures.push(error));
     try {
       if (this.transport) {
         await this.render(
