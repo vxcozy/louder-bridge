@@ -14,6 +14,7 @@ import {
 import {
   assertRegularArchiveTree,
   validateArchiveEntries,
+  validateArchiveSummary,
 } from "./archive-safety.mjs";
 import {
   requireDeveloperIdSignature,
@@ -132,8 +133,12 @@ const extracted = fs.mkdtempSync(
   path.join(os.tmpdir(), "louder-release-verify-"),
 );
 try {
+  const archiveSummary = run("/usr/bin/unzip", ["-Z", "-t", archive]);
   const archiveListing = run("/usr/bin/unzip", ["-Z1", archive]);
-  validateArchiveEntries(archiveListing);
+  const archiveEntries = validateArchiveEntries(archiveListing);
+  validateArchiveSummary(archiveSummary, {
+    expectedEntries: archiveEntries.length,
+  });
   run("/usr/bin/unzip", ["-tq", archive]);
   run("/usr/bin/ditto", ["-x", "-k", archive, extracted]);
   assertRegularArchiveTree(extracted);

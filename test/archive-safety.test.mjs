@@ -6,7 +6,63 @@ import path from "node:path";
 import {
   assertRegularArchiveTree,
   validateArchiveEntries,
+  validateArchiveSummary,
 } from "../scripts/archive-safety.mjs";
+
+test("accepts a bounded archive summary that matches its listing", () => {
+  assert.deepEqual(
+    validateArchiveSummary(
+      "3 files, 1024 bytes uncompressed, 512 bytes compressed: 50.0%",
+      { expectedEntries: 3 },
+    ),
+    { entries: 3, compressedBytes: 512, uncompressedBytes: 1024 },
+  );
+  assert.deepEqual(
+    validateArchiveSummary(
+      "1 file, 128 bytes uncompressed, 64 bytes compressed: 50.0%",
+    ),
+    { entries: 1, compressedBytes: 64, uncompressedBytes: 128 },
+  );
+});
+
+test("rejects invalid, inconsistent, or oversized archive summaries", () => {
+  assert.throws(
+    () => validateArchiveSummary("not a ZIP summary"),
+    /invalid size summary/,
+  );
+  assert.throws(
+    () =>
+      validateArchiveSummary(
+        "3 files, 1024 bytes uncompressed, 512 bytes compressed: 50.0%",
+        { expectedEntries: 2 },
+      ),
+    /entry count does not match/,
+  );
+  assert.throws(
+    () =>
+      validateArchiveSummary(
+        "3 files, 1024 bytes uncompressed, 512 bytes compressed: 50.0%",
+        { maxEntries: 2 },
+      ),
+    /more than 2 entries/,
+  );
+  assert.throws(
+    () =>
+      validateArchiveSummary(
+        "3 files, 1024 bytes uncompressed, 512 bytes compressed: 50.0%",
+        { maxCompressedBytes: 511 },
+      ),
+    /compressed-size limit/,
+  );
+  assert.throws(
+    () =>
+      validateArchiveSummary(
+        "3 files, 1024 bytes uncompressed, 512 bytes compressed: 50.0%",
+        { maxUncompressedBytes: 1023 },
+      ),
+    /extraction-size limit/,
+  );
+});
 
 test("accepts only release paths inside the app or metadata directory", () => {
   assert.deepEqual(

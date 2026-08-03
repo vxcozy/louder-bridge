@@ -214,6 +214,8 @@ have not shipped appear under "Unreleased."
   disappeared.
 - Release verification now rejects unsafe ZIP paths, links, special files,
   group- or world-writable entries, and executables that are not arm64-only.
+  It also limits each archive to 512 entries, 256 MiB compressed, and 512 MiB
+  uncompressed before extraction.
 - Release verification now checks the project and protocol licenses against
   reviewed source files and rejects a missing or incomplete Node.js license.
 - Native release builds fail on compiler warnings.
