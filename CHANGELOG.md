@@ -132,6 +132,9 @@ have not shipped appear under "Unreleased."
   generated release copy.
 - Ended Claude sessions now release their Agent Key slot and in-memory session
   details.
+- Agent Key navigation stops waiting after five seconds if macOS never reports
+  whether the Claude URL opened. A later process error does not crash the
+  service.
 - First-run instructions now grant macOS permissions before checking the
   background agent.
 - Hook configuration now rejects non-loopback destinations before it edits
