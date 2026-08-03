@@ -53,6 +53,8 @@ have not shipped appear under "Unreleased."
   maintainer review instead of publishing immediately.
 - Draft releases now upload the exact archive, checksum, and SBOM for the tag
   version instead of matching files with wildcards.
+- Release signing now keeps the runner's existing keychain search list and
+  restores it before deleting the temporary signing keychain.
 - ChatGPT is no longer required for Codex Micro access.
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.

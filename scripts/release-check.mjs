@@ -106,6 +106,7 @@ function readIfPresent(relative) {
 
 const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const releaseWorkflow = readIfPresent(".github/workflows/release.yml");
+const buildReleaseScript = readIfPresent("scripts/build-release.mjs");
 const codeOwners = readIfPresent(".github/CODEOWNERS");
 const nodeEntitlements = readIfPresent("release/node.entitlements.plist");
 const actionPins = {
@@ -155,9 +156,21 @@ if (
 if (
   !releaseWorkflow.includes("if: always()") ||
   !releaseWorkflow.includes("security delete-keychain") ||
-  !releaseWorkflow.includes("AuthKey_*.p8")
+  !releaseWorkflow.includes("AuthKey_*.p8") ||
+  !releaseWorkflow.includes("keychain-search-list.mjs restore")
 ) {
   failures.push("The release workflow must remove temporary signing credentials.");
+}
+if (
+  !releaseWorkflow.includes("keychain-search-list.mjs add") ||
+  !releaseWorkflow.includes("APPLE_SIGNING_KEYCHAIN:") ||
+  /security list-keychain(?:s)? -d user -s/.test(releaseWorkflow) ||
+  !buildReleaseScript.includes("signingKeychainArguments") ||
+  !buildReleaseScript.includes("APPLE_SIGNING_KEYCHAIN")
+) {
+  failures.push(
+    "The release workflow must preserve the user keychain search list and restrict signing to the temporary keychain.",
+  );
 }
 if ((ciWorkflow.match(/fetch-depth:\s*0/g) ?? []).length < 2) {
   failures.push("CI jobs must fetch full history for attribution checks.");

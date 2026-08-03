@@ -18,6 +18,7 @@ import {
   requireDeveloperIdSignature,
   requireHardenedRuntime,
 } from "./code-signature.mjs";
+import { signingKeychainArguments } from "./signing-keychain.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -38,6 +39,10 @@ if (process.platform !== "darwin" || process.arch !== "arm64") {
 }
 
 const identity = process.env.APPLE_SIGNING_IDENTITY;
+const signingKeychainOptions = signingKeychainArguments({
+  identity,
+  keychainPath: process.env.APPLE_SIGNING_KEYCHAIN,
+});
 const revision = sourceRevision({ root });
 requireCleanSignedSource(revision, Boolean(identity));
 
@@ -60,6 +65,7 @@ const signingOptions = [
   "--options",
   "runtime",
   ...(identity ? ["--timestamp"] : []),
+  ...signingKeychainOptions,
   "--sign",
   signingIdentity,
 ];

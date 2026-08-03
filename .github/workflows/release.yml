@@ -51,18 +51,22 @@ jobs:
           umask 077
           CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/louder-bridge.keychain-db"
+          KEYCHAIN_STATE="$RUNNER_TEMP/louder-bridge-keychains.json"
           printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          chmod 600 "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm -f "$CERTIFICATE_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          node scripts/keychain-search-list.mjs add "$KEYCHAIN_PATH" "$KEYCHAIN_STATE"
 
       - name: Build signed app
         run: npm run release:build
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_KEYCHAIN: ${{ runner.temp }}/louder-bridge.keychain-db
 
       - name: Notarize
         env:
@@ -115,5 +119,8 @@ jobs:
       - name: Remove signing credentials
         if: always()
         run: |
+          if [[ -f "$RUNNER_TEMP/louder-bridge-keychains.json" ]]; then
+            node scripts/keychain-search-list.mjs restore "$RUNNER_TEMP/louder-bridge-keychains.json" || true
+          fi
           security delete-keychain "$RUNNER_TEMP/louder-bridge.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP"/AuthKey_*.p8
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP/louder-bridge-keychains.json"

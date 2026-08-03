@@ -61,6 +61,11 @@ The build rejects signing identities that are not Developer ID Application
 certificates. An unset identity produces an ad hoc build for local testing
 only. Do not publish it.
 
+In CI, the signing identity lives in a temporary keychain. The workflow adds
+that keychain to the existing user search list, passes it directly to
+`codesign`, restores the original list, and deletes the keychain even when a
+later step fails.
+
 The SBOM records the exact Git revision. Ad hoc builds add a `+dirty` marker
 when the checkout has uncommitted changes. Developer ID builds require a clean
 checkout, and verification compares the SBOM revision with the current source.
