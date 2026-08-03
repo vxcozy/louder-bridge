@@ -83,6 +83,8 @@ and binaries that are not arm64-only. Before extraction, it limits the archive
 to 512 entries, 256 MiB compressed, and 512 MiB uncompressed. The project and
 protocol licenses must match their reviewed source files, and the Node.js
 license must be present and complete.
+The ZIP's macOS metadata directory may contain only AppleDouble entries for
+Louder Bridge.app.
 
 ## Notarize
 

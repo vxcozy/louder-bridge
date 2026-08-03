@@ -71,6 +71,8 @@ have not shipped appear under "Unreleased."
 - The security gate now rejects certificate, private-key, keychain, and
   provisioning files by filename, including binary files whose contents cannot
   be scanned as text.
+- Release verification now rejects unrelated files in the ZIP's macOS metadata
+  directory.
 - ChatGPT is no longer required for Codex Micro access.
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.

@@ -61,9 +61,14 @@ export function validateArchiveEntries(
       throw new Error(`The release archive contains an unsafe path: ${entry}`);
     }
     const parts = entry.split("/").filter(Boolean);
+    const insideApp = parts[0] === appRoot;
+    const insideAppMetadata =
+      parts[0] === "__MACOSX" &&
+      (parts.length === 1 || parts[1] === appRoot) &&
+      (entry.endsWith("/") || parts.at(-1).startsWith("._"));
     if (
       parts.some((part) => part === "." || part === "..") ||
-      (parts[0] !== appRoot && parts[0] !== "__MACOSX")
+      (!insideApp && !insideAppMetadata)
     ) {
       throw new Error(`The release archive contains an unsafe path: ${entry}`);
     }

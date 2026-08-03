@@ -81,6 +81,9 @@ test("accepts only release paths inside the app or metadata directory", () => {
     "Louder Bridge.app/../outside",
     "/Louder Bridge.app/Contents/Info.plist",
     "Louder Bridge.app\\..\\outside",
+    "__MACOSX/unrelated.txt",
+    "__MACOSX/Another App.app/Contents/Info.plist",
+    "__MACOSX/Louder Bridge.app/Contents/payload",
     "unexpected/file",
   ]) {
     assert.throws(
