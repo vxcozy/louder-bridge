@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRIDGE_URL } from "./config.mjs";
@@ -14,6 +14,7 @@ import {
   prepareRotatingLogs,
 } from "./logging.mjs";
 import { accessibilityStatus } from "./macos/accessibility.mjs";
+import { showActivationDialog } from "./macos/activation-dialog.mjs";
 import { platformSupport } from "./macos/platform.mjs";
 import {
   beginClaudeSettingsUpdate,
@@ -142,18 +143,6 @@ function openPrivacySettings(url) {
   child.unref();
 }
 
-function activationDialog(
-  message,
-  { error = false, settingsLabel } = {},
-) {
-  const buttons = settingsLabel ? `{"${settingsLabel}"}` : '{"OK"}';
-  const icon = error ? "stop" : "note";
-  const script = `display dialog (item 1 of argv) with title "Louder Bridge" buttons ${buttons} default button 1 with icon ${icon}`;
-  spawnSync("/usr/bin/osascript", ["-e", script, "--", message], {
-    stdio: "ignore",
-  });
-}
-
 function attemptRollback(error, description, operation) {
   try {
     operation();
@@ -178,7 +167,7 @@ if (command === "help" || command === "--help" || command === "-h") {
     requireSupportedApplicationLocation(runtime.app);
   } catch (error) {
     console.error(error.message);
-    activationDialog(error.message, { error: true });
+    showActivationDialog(error.message, { error: true });
     process.exitCode = 1;
   }
 } else if (command === "package-preflight") {
@@ -195,7 +184,7 @@ if (command === "help" || command === "--help" || command === "-h") {
 ) {
   const inputMonitoring = command === "input-monitoring-timeout";
   const permission = inputMonitoring ? "Input Monitoring" : "Accessibility";
-  activationDialog(
+  showActivationDialog(
     `Setup stopped because ${permission} is still off. Enable Louder Bridge in System Settings, then open the app again.`,
     { error: true, settingsLabel: `Open ${permission}` },
   );
@@ -381,14 +370,14 @@ if (command === "help" || command === "--help" || command === "-h") {
     if (authentication?.created) {
       removeAuthToken({ identity: authentication.identity });
     }
-    activationDialog(`Setup failed: ${error.message}`, { error: true });
+    showActivationDialog(`Setup failed: ${error.message}`, { error: true });
     process.exitCode = 1;
   }
   if (!process.exitCode) {
     console.log(`Claude Code hooks installed in ${file}.`);
     if (agent) {
       console.log(`Background agent installed in ${agent.plist}.`);
-      activationDialog(
+      showActivationDialog(
         "Louder Bridge is ready. Open Claude Desktop and turn on the Codex Micro.",
       );
     } else {
@@ -396,7 +385,7 @@ if (command === "help" || command === "--help" || command === "-h") {
       const label = needsInputMonitoring
         ? "Open Input Monitoring"
         : "Open Accessibility";
-      activationDialog(
+      showActivationDialog(
         `${needsInputMonitoring ? "Input Monitoring" : "Accessibility"} is still off. Enable Louder Bridge, then open Louder Bridge again.`,
         { settingsLabel: label },
       );
