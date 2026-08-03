@@ -105,3 +105,95 @@ test("rejects a non-file staging result without replacing artifacts", () => {
     fs.rmSync(files.directory, { recursive: true, force: true });
   }
 });
+
+test("restores both artifacts when checksum publication fails", () => {
+  const files = fixture();
+  try {
+    let renameCalls = 0;
+    const fileSystem = new Proxy(fs, {
+      get(target, property) {
+        if (property !== "renameSync") return Reflect.get(target, property);
+        return (source, destination) => {
+          renameCalls += 1;
+          if (renameCalls === 4) {
+            throw new Error("checksum publication failed");
+          }
+          return target.renameSync(source, destination);
+        };
+      },
+    });
+
+    assert.throws(
+      () =>
+        publishNotarizedArchive({
+          archive: files.archive,
+          app: files.app,
+          fileSystem,
+          run(_command, args) {
+            fs.writeFileSync(args.at(-1), "notarized archive");
+          },
+        }),
+      /checksum publication failed/,
+    );
+
+    assert.equal(fs.readFileSync(files.archive, "utf8"), "old archive");
+    assert.equal(fs.readFileSync(files.checksum, "utf8"), "old checksum\n");
+    assert.deepEqual(
+      fs.readdirSync(files.directory).sort(),
+      ["Louder Bridge.app", "Louder-Bridge.zip", "Louder-Bridge.zip.sha256"],
+    );
+  } finally {
+    fs.rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps the published artifact when its rollback backup is missing", () => {
+  const files = fixture();
+  try {
+    let renameCalls = 0;
+    const fileSystem = new Proxy(fs, {
+      get(target, property) {
+        if (property !== "renameSync") return Reflect.get(target, property);
+        return (source, destination) => {
+          renameCalls += 1;
+          if (renameCalls === 4) {
+            const archiveBackup = fs
+              .readdirSync(files.directory)
+              .find(
+                (entry) =>
+                  entry.startsWith(`${path.basename(files.archive)}.`) &&
+                  !entry.startsWith(`${path.basename(files.checksum)}.`) &&
+                  entry.endsWith(".previous"),
+              );
+            assert.ok(archiveBackup);
+            fs.unlinkSync(path.join(files.directory, archiveBackup));
+            throw new Error("checksum publication failed");
+          }
+          return target.renameSync(source, destination);
+        };
+      },
+    });
+
+    assert.throws(
+      () =>
+        publishNotarizedArchive({
+          archive: files.archive,
+          app: files.app,
+          fileSystem,
+          run(_command, args) {
+            fs.writeFileSync(args.at(-1), "notarized archive");
+          },
+        }),
+      (error) => {
+        assert.equal(error.name, "AggregateError");
+        assert.match(error.message, /could not be published or restored/);
+        return true;
+      },
+    );
+
+    assert.equal(fs.readFileSync(files.archive, "utf8"), "notarized archive");
+    assert.equal(fs.readFileSync(files.checksum, "utf8"), "old checksum\n");
+  } finally {
+    fs.rmSync(files.directory, { recursive: true, force: true });
+  }
+});
