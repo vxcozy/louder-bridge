@@ -28,6 +28,7 @@ const requiredFiles = [
   "docs/testing.md",
   "docs/tutorial.md",
   "scripts/publish-release.mjs",
+  "scripts/release-environment-check.mjs",
 ];
 const failures = [];
 
@@ -142,6 +143,12 @@ if (!releaseWorkflow.includes("LOUDER_RELEASE_BRANCH_REF:")) {
 }
 if (!releaseWorkflow.includes("npm run release:credentials")) {
   failures.push("The release workflow must validate signing credentials.");
+}
+if (
+  metadata.scripts?.["release:environment"] !==
+  "node scripts/release-environment-check.mjs"
+) {
+  failures.push("The release environment check must remain available.");
 }
 if (
   releaseWorkflow.indexOf("name: Check source") < 0 ||

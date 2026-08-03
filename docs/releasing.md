@@ -4,7 +4,15 @@ This guide is for maintainers preparing a macOS release.
 
 ## Configure GitHub once
 
-Create a `production` environment and add these environment secrets:
+Create a `production` environment. Add a required maintainer reviewer, allow
+only tags matching `v*`, and turn off administrator bypass. Check the live
+settings before preparing a release:
+
+```bash
+npm run release:environment
+```
+
+Then add these environment secrets:
 
 | Secret | Value |
 |---|---|
