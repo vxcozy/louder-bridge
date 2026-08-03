@@ -110,7 +110,9 @@ export async function startBridge({
   const resolvedHttpLimits = { ...DEFAULT_HTTP_LIMITS, ...httpLimits };
   const store = new SessionStore();
   let device = null;
+  let pendingDeviceCleanup = null;
   let deviceRequested = autoConnectDevice;
+  let deviceLifecycle = Promise.resolve();
   let lastDeviceError = null;
   let lastHookAt = null;
   let agentQueue = Promise.resolve();
@@ -210,8 +212,29 @@ export async function startBridge({
         ? new MockDevice(options)
         : new WorkLouderDevice(options));
 
-  async function connectDevice() {
+  function runDeviceLifecycle(operation) {
+    const next = deviceLifecycle.catch(() => {}).then(operation);
+    deviceLifecycle = next;
+    return next;
+  }
+
+  async function retryPendingDeviceCleanup() {
+    if (!pendingDeviceCleanup) return;
+    const cleanupTarget = pendingDeviceCleanup;
+    try {
+      await cleanupTarget.stop();
+      if (pendingDeviceCleanup === cleanupTarget) {
+        pendingDeviceCleanup = null;
+      }
+    } catch (error) {
+      lastDeviceError = error?.message ?? String(error);
+      throw error;
+    }
+  }
+
+  async function connectDeviceNow() {
     deviceRequested = true;
+    await retryPendingDeviceCleanup();
     if (device) return device;
     const nextDevice = createDevice({
       logger,
@@ -229,20 +252,38 @@ export async function startBridge({
     } catch (error) {
       device = null;
       lastDeviceError = error?.message ?? String(error);
-      await nextDevice.stop().catch(() => {});
+      try {
+        await nextDevice.stop();
+      } catch (cleanupError) {
+        pendingDeviceCleanup = nextDevice;
+        lastDeviceError = [error, cleanupError]
+          .map((failure) => failure?.message ?? String(failure))
+          .join("; ");
+        throw new AggregateError(
+          [error, cleanupError],
+          "Louder Bridge could not open the Codex Micro, and cleanup also failed.",
+        );
+      }
       throw error;
     }
   }
 
-  async function disconnectDevice() {
+  function connectDevice() {
+    return runDeviceLifecycle(connectDeviceNow);
+  }
+
+  async function disconnectDeviceNow() {
     deviceRequested = false;
     const currentDevice = device;
     device = null;
     const failures = [];
-    try {
-      await currentDevice?.stop();
-    } catch (error) {
-      failures.push(error);
+    if (currentDevice) pendingDeviceCleanup = currentDevice;
+    if (pendingDeviceCleanup) {
+      try {
+        await retryPendingDeviceCleanup();
+      } catch (error) {
+        failures.push(error);
+      }
     }
     try {
       await pushToTalk.reset();
@@ -250,14 +291,25 @@ export async function startBridge({
       failures.push(error);
     }
     if (failures.length) {
+      lastDeviceError = failures
+        .map((error) => error?.message ?? String(error))
+        .join("; ");
       throw new AggregateError(
         failures,
         "Louder Bridge could not release the Codex Micro cleanly.",
       );
     }
+    lastDeviceError = null;
+  }
+
+  function disconnectDevice() {
+    return runDeviceLifecycle(disconnectDeviceNow);
   }
 
   function currentDeviceStatus() {
+    if (pendingDeviceCleanup) {
+      return { state: "error", error: lastDeviceError };
+    }
     return device?.status?.() ?? {
       state: deviceRequested
         ? (lastDeviceError ? "error" : "starting")

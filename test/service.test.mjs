@@ -338,6 +338,50 @@ test("keeps both ownership and device cleanup failures", async () => {
   await service.stop();
 });
 
+test("retries a failed Codex handoff before reconnecting", async () => {
+  let codexIsRunning = false;
+  let cleanupFails = true;
+  const calls = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => codexIsRunning,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {
+        calls.push("connect");
+      },
+      async disconnectDevice() {
+        calls.push("disconnect");
+        if (cleanupFails) throw new Error("device cleanup failed");
+      },
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  codexIsRunning = true;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect"]);
+
+  cleanupFails = false;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect", "disconnect"]);
+
+  codexIsRunning = false;
+  await service.sync();
+  assert.deepEqual(calls, [
+    "connect",
+    "disconnect",
+    "disconnect",
+    "connect",
+  ]);
+  await service.stop();
+});
+
 test("connects the device only while Claude Desktop is open", async () => {
   let claudeIsRunning = false;
   const calls = [];

@@ -792,3 +792,111 @@ test("closes the server and releases voice when device cleanup fails", async () 
   assert.equal(deviceStopCalls, 1);
   assert.equal(bridge.server.listening, false);
 });
+
+test("retries failed device cleanup before opening a replacement", async (context) => {
+  let factoryCalls = 0;
+  let cleanupCalls = 0;
+  let cleanupFails = true;
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+    deviceFactory() {
+      factoryCalls += 1;
+      const firstDevice = factoryCalls === 1;
+      return {
+        async start() {},
+        async render() {},
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {
+          if (!firstDevice) return;
+          cleanupCalls += 1;
+          if (cleanupFails) throw new Error("device cleanup failed");
+        },
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+
+  await bridge.connectDevice();
+  await assert.rejects(bridge.disconnectDevice(), /release.*cleanly/);
+  assert.equal(factoryCalls, 1);
+  assert.deepEqual(bridge.deviceStatus(), {
+    state: "error",
+    error: "device cleanup failed",
+  });
+
+  await assert.rejects(bridge.connectDevice(), /device cleanup failed/);
+  assert.equal(factoryCalls, 1);
+  assert.equal(cleanupCalls, 2);
+
+  cleanupFails = false;
+  await bridge.disconnectDevice();
+  assert.equal(cleanupCalls, 3);
+  assert.equal(factoryCalls, 1);
+  assert.deepEqual(bridge.deviceStatus(), {
+    state: "inactive",
+    error: null,
+  });
+
+  await bridge.connectDevice();
+  assert.equal(factoryCalls, 2);
+  assert.deepEqual(bridge.deviceStatus(), {
+    state: "connected",
+    error: null,
+  });
+});
+
+test("retains failed cleanup after device startup fails", async (context) => {
+  let factoryCalls = 0;
+  let cleanupCalls = 0;
+  let cleanupFails = true;
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+    deviceFactory() {
+      factoryCalls += 1;
+      const firstDevice = factoryCalls === 1;
+      return {
+        async start() {
+          if (firstDevice) throw new Error("device startup failed");
+        },
+        async render() {},
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {
+          if (!firstDevice) return;
+          cleanupCalls += 1;
+          if (cleanupFails) throw new Error("device cleanup failed");
+        },
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+
+  await assert.rejects(
+    bridge.connectDevice(),
+    /cleanup also failed/i,
+  );
+  assert.deepEqual(bridge.deviceStatus(), {
+    state: "error",
+    error: "device startup failed; device cleanup failed",
+  });
+
+  await assert.rejects(bridge.connectDevice(), /device cleanup failed/);
+  assert.equal(factoryCalls, 1);
+  assert.equal(cleanupCalls, 2);
+
+  cleanupFails = false;
+  await bridge.connectDevice();
+  assert.equal(cleanupCalls, 3);
+  assert.equal(factoryCalls, 2);
+});

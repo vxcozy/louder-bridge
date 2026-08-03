@@ -58,6 +58,7 @@ export async function startDesktopService({
   let contentionWasActive = false;
   let contentionNoticeShown = false;
   let deviceRequested = false;
+  let deviceReleasePending = false;
   let previousPermission = null;
   let previousAccessibility = null;
   let stopped = false;
@@ -65,6 +66,13 @@ export async function startDesktopService({
   let update = Promise.resolve();
   let syncRunning = false;
   let syncRequested = false;
+
+  async function releaseDevice() {
+    deviceRequested = false;
+    deviceReleasePending = true;
+    await bridge.disconnectDevice();
+    deviceReleasePending = false;
+  }
 
   async function sync() {
     if (stopped) return;
@@ -119,10 +127,9 @@ export async function startDesktopService({
       .map((result) => result.reason);
     if (processFailures.length) {
       let cleanupError = null;
-      if (deviceRequested) {
+      if (deviceRequested || deviceReleasePending) {
         try {
-          await bridge.disconnectDevice();
-          deviceRequested = false;
+          await releaseDevice();
         } catch (error) {
           cleanupError = error;
         }
@@ -152,22 +159,20 @@ export async function startDesktopService({
       permission !== "granted" ||
       accessibility !== "granted"
     ) {
-      if (deviceRequested) {
+      if (deviceRequested || deviceReleasePending) {
         logger.info(
           claudeIsRunning
             ? "A required macOS permission is unavailable. Releasing Codex Micro."
             : "Claude Desktop closed. Releasing Codex Micro.",
         );
-        await bridge.disconnectDevice();
-        deviceRequested = false;
+        await releaseDevice();
       }
       claudeWasRunning = claudeIsRunning;
       return;
     }
     if (contentionIsActive) {
-      if (deviceRequested) {
-        await bridge.disconnectDevice();
-        deviceRequested = false;
+      if (deviceRequested || deviceReleasePending) {
+        await releaseDevice();
       }
       if (!contentionNoticeShown) {
         contentionNoticeShown = true;
@@ -191,6 +196,7 @@ export async function startDesktopService({
       }
       await bridge.connectDevice();
       deviceRequested = true;
+      deviceReleasePending = false;
       claudeWasRunning = true;
     }
   }
