@@ -118,6 +118,12 @@ notary credential.
 Push the version tag. The release workflow creates a draft GitHub release and
 attaches the notarized ZIP, checksum, and SBOM. It does not publish the release.
 
+GitHub serializes workflow runs for the same tag. If a run stops after creating
+the draft, rerun the failed job. The next run updates that draft and replaces
+the three expected assets. It then compares their names and byte sizes with the
+local files. The job stops if the release has already been published or if the
+draft contains another asset, so a maintainer can inspect it.
+
 Download the ZIP from that draft rather than reusing a local build. Run the
 full [hardware acceptance checklist](testing.md) against the download. Test a
 clean install, an upgrade, both first-launch permissions, login startup, Micro

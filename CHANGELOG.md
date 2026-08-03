@@ -60,6 +60,9 @@ have not shipped appear under "Unreleased."
   configuration.
 - The release workflow now runs its source gates before passing signing or
   notarization credentials to repository scripts.
+- Release jobs for the same tag now run one at a time. A rerun can resume an
+  existing draft, replace the three expected files, and verify their remote
+  sizes. It refuses to change published releases or drafts with other assets.
 - The security gate now rejects certificate, private-key, keychain, and
   provisioning files by filename, including binary files whose contents cannot
   be scanned as text.

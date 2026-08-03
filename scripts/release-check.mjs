@@ -27,6 +27,7 @@ const requiredFiles = [
   "docs/releasing.md",
   "docs/testing.md",
   "docs/tutorial.md",
+  "scripts/publish-release.mjs",
 ];
 const failures = [];
 
@@ -107,6 +108,7 @@ function readIfPresent(relative) {
 const ciWorkflow = readIfPresent(".github/workflows/ci.yml");
 const releaseWorkflow = readIfPresent(".github/workflows/release.yml");
 const buildReleaseScript = readIfPresent("scripts/build-release.mjs");
+const publishReleaseScript = readIfPresent("scripts/publish-release.mjs");
 const codeOwners = readIfPresent(".github/CODEOWNERS");
 const nodeEntitlements = readIfPresent("release/node.entitlements.plist");
 const actionPins = {
@@ -224,31 +226,52 @@ for (const [action, revision] of Object.entries(actionPins)) {
     }
   }
 }
-if (!releaseWorkflow.includes("--draft")) {
+if (
+  !releaseWorkflow.includes("npm run release:publish") ||
+  metadata.scripts?.["release:publish"] !==
+    "node scripts/publish-release.mjs" ||
+  !publishReleaseScript.includes('"--draft"')
+) {
   failures.push(
     "The release workflow must create a draft for physical qualification.",
   );
 }
 if (
-  !releaseWorkflow.includes(
-    'ARCHIVE="dist/Louder-Bridge-${VERSION}-macOS-arm64.zip"',
+  !publishReleaseScript.includes(
+    "`Louder-Bridge-${version}-macOS-arm64.zip`",
   ) ||
-  !releaseWorkflow.includes('CHECKSUM="${ARCHIVE}.sha256"') ||
-  !releaseWorkflow.includes(
-    'SBOM="dist/Louder-Bridge-${VERSION}.spdx.json"',
-  ) ||
-  /dist\/\*\.(?:zip|sha256|spdx\.json)/.test(releaseWorkflow)
+  !publishReleaseScript.includes("`${archive}.sha256`") ||
+  !publishReleaseScript.includes("`Louder-Bridge-${version}.spdx.json`") ||
+  /dist\/\*\.(?:zip|sha256|spdx\.json)/.test(publishReleaseScript)
 ) {
   failures.push(
     "The release workflow must upload the exact versioned archive, checksum, and SBOM.",
   );
 }
 if (
-  !releaseWorkflow.includes('--notes-file "$NOTES_FILE"') ||
-  releaseWorkflow.includes("--generate-notes")
+  !publishReleaseScript.includes('"--notes-file"') ||
+  publishReleaseScript.includes("--generate-notes")
 ) {
   failures.push(
     "The release workflow must use reviewed notes instead of generated notes.",
+  );
+}
+if (
+  !releaseWorkflow.includes("group: release-${{ github.ref }}") ||
+  !releaseWorkflow.includes("cancel-in-progress: false") ||
+  !publishReleaseScript.includes('"--clobber"') ||
+  !publishReleaseScript.includes("existing && !existing.draft") ||
+  !publishReleaseScript.includes("verifyDraftAssets(") ||
+  !publishReleaseScript.includes('"--verify-tag"') ||
+  !publishReleaseScript.includes('"--repo"')
+) {
+  failures.push(
+    "Draft publication must be serialized, resumable, verified, and unable to change a published release.",
+  );
+}
+if (/\bgh release (?:create|edit|upload)\b/.test(releaseWorkflow)) {
+  failures.push(
+    "The release workflow must use the tested draft publisher instead of inline GitHub CLI commands.",
   );
 }
 if (releaseWorkflow.includes("LOUDER_SKIP_RUNTIME_AVAILABILITY_CHECK")) {

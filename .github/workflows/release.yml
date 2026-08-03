@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: macos-26
@@ -86,36 +90,10 @@ jobs:
         env:
           LOUDER_REQUIRE_NOTARIZED: "1"
 
-      - name: Create draft GitHub release
+      - name: Create or update draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          NOTES_FILE="release-notes/${GITHUB_REF_NAME}.md"
-          ARCHIVE="dist/Louder-Bridge-${VERSION}-macOS-arm64.zip"
-          CHECKSUM="${ARCHIVE}.sha256"
-          SBOM="dist/Louder-Bridge-${VERSION}.spdx.json"
-          if [[ ! -f "$NOTES_FILE" ]]; then
-            echo "Release notes are missing: $NOTES_FILE" >&2
-            exit 1
-          fi
-          for ARTIFACT in "$ARCHIVE" "$CHECKSUM" "$SBOM"; do
-            if [[ ! -f "$ARTIFACT" ]]; then
-              echo "Release artifact is missing: $ARTIFACT" >&2
-              exit 1
-            fi
-          done
-          RELEASE_TYPE=()
-          case "$GITHUB_REF_NAME" in
-            v0.*) RELEASE_TYPE=(--prerelease) ;;
-          esac
-          gh release create "$GITHUB_REF_NAME" \
-            "$ARCHIVE" \
-            "$CHECKSUM" \
-            "$SBOM" \
-            --draft \
-            --notes-file "$NOTES_FILE" \
-            "${RELEASE_TYPE[@]}"
+        run: npm run release:publish
 
       - name: Remove signing credentials
         if: always()
