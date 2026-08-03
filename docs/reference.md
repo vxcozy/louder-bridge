@@ -156,6 +156,8 @@ ten-second restart throttle after a short-lived agent run. If the service never
 passes the check, installation restores the previous launch-agent file and load
 state. Setup checks the file again before replacement and rollback. If another
 process changed it, setup leaves the newer file alone.
+If a later setup check fails after activation, rollback stops the replacement
+agent before restoring the previous app and agent.
 
 The native launcher is compiled with strong stack protection, fortified libc
 calls, and fatal compiler and linker warnings. Package verification checks the

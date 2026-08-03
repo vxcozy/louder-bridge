@@ -63,7 +63,6 @@ import {
   launchAgentIsRunning,
   launchAgentPaths,
   removeLaunchAgent,
-  restoreRemovedLaunchAgent,
   waitForLaunchAgent,
 } from "./setup/launch-agent.mjs";
 
@@ -283,17 +282,11 @@ if (command === "help" || command === "--help" || command === "-h") {
             await rollbackSetupApplication(application, {
               installedApp,
               reopenPrevious: stoppedOnboarding,
+              previousAgent: agent,
             });
           } catch (rollbackError) {
-            error.message += ` The previous app could not be restored: ${rollbackError.message}`;
+            error.message += ` Setup rollback could not finish: ${rollbackError.message}`;
           }
-        }
-        if (agent?.removed) {
-          attemptRollback(
-            error,
-            "The previous background agent could not be restored",
-            () => restoreRemovedLaunchAgent(agent),
-          );
         }
         if (authentication?.created) {
           attemptRollback(

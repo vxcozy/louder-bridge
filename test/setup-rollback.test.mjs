@@ -31,6 +31,61 @@ test("stops onboarding before restoring the previous app", async () => {
   ]);
 });
 
+test("removes the replacement agent before restoring the app and previous agent", async () => {
+  const calls = [];
+  const previousAgent = { removed: true, plist: "/previous-agent.plist" };
+
+  await rollbackSetupApplication(application, {
+    previousAgent,
+    stopApplication(options) {
+      calls.push(["stop-app", options]);
+    },
+    removeCurrentAgent() {
+      calls.push(["remove-current-agent"]);
+    },
+    rollbackBundle(transaction) {
+      calls.push(["rollback-app", transaction]);
+    },
+    restorePreviousAgent(transaction) {
+      calls.push(["restore-previous-agent", transaction]);
+    },
+  });
+
+  assert.deepEqual(calls, [
+    ["stop-app", { launcher: application.launcher }],
+    ["remove-current-agent"],
+    ["rollback-app", application],
+    ["restore-previous-agent", previousAgent],
+  ]);
+});
+
+test("does not restore the app while a replacement agent cannot be removed", async () => {
+  const calls = [];
+
+  await assert.rejects(
+    () =>
+      rollbackSetupApplication(application, {
+        previousAgent: { removed: true },
+        stopApplication() {
+          calls.push("stop-app");
+        },
+        removeCurrentAgent() {
+          calls.push("remove-current-agent");
+          throw new Error("replacement agent changed");
+        },
+        rollbackBundle() {
+          calls.push("rollback-app");
+        },
+        restorePreviousAgent() {
+          calls.push("restore-previous-agent");
+        },
+      }),
+    /replacement agent changed/,
+  );
+
+  assert.deepEqual(calls, ["stop-app", "remove-current-agent"]);
+});
+
 test("does not reopen an app that was not running before setup", async () => {
   const calls = [];
 

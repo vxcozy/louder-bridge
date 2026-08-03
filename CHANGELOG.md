@@ -115,6 +115,8 @@ have not shipped appear under "Unreleased."
   onboarding and rolls back the app, hooks, agent, and token changes.
 - Failed or interrupted source setup now stops the replacement onboarding app
   before restoring the previous application bundle.
+- Failed source upgrades now remove the replacement background agent before
+  restoring the previous app and agent.
 - Command failures no longer print stack traces or source checkout paths, and
   `status` exits unsuccessfully when the background service is unavailable.
 - The loopback API returns fixed error envelopes and uses 405 for unsupported
