@@ -346,6 +346,42 @@ test("reconnects after the native driver stops accepting commands", async () => 
   await device.stop();
 });
 
+test("automatically reconnects after the native driver stops accepting commands", async () => {
+  const first = new DisconnectingSendTransport();
+  const second = new FakeTransport();
+  let retryConnection;
+  const clearedTimers = [];
+  const timer = Symbol("reconnect timer");
+  const device = testDevice([first, second], {
+    logger: { info() {}, error() {} },
+    setReconnectInterval(callback, delay) {
+      assert.equal(delay, 3000);
+      retryConnection = callback;
+      return timer;
+    },
+    clearReconnectInterval(value) {
+      clearedTimers.push(value);
+    },
+  });
+
+  await device.start();
+  await assert.rejects(
+    device.render([{ slot: 0, state: "running", selected: false }]),
+    /stopped accepting commands/,
+  );
+  await waitForImmediate();
+  assert.equal(device.transport, null);
+
+  retryConnection();
+  await waitForImmediate();
+  assert.equal(device.transport, second);
+  assert.equal(device.status().state, "connected");
+  assert.equal(second.connectCalls, 1);
+
+  await device.stop();
+  assert.deepEqual(clearedTimers, [timer]);
+});
+
 test("stops latched voice input if the Micro disconnects", async () => {
   const actions = [];
   const transport = new FakeTransport();

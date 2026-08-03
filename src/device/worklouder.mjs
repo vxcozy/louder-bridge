@@ -14,6 +14,8 @@ export class WorkLouderDevice {
     onVoiceButton = () => {},
     onSubmitButton = () => {},
     onDeviceDisconnect = () => {},
+    setReconnectInterval = setInterval,
+    clearReconnectInterval = clearInterval,
   } = {}) {
     this.transportFactory = transportFactory;
     this.runtime = runtime;
@@ -22,6 +24,8 @@ export class WorkLouderDevice {
     this.onVoiceButton = onVoiceButton;
     this.onSubmitButton = onSubmitButton;
     this.onDeviceDisconnect = onDeviceDisconnect;
+    this.setReconnectInterval = setReconnectInterval;
+    this.clearReconnectInterval = clearReconnectInterval;
     this.transport = null;
     this.reconnectTimer = null;
     this.connectPromise = null;
@@ -52,7 +56,7 @@ export class WorkLouderDevice {
     this.started = true;
     this.state = "waiting";
     await this.connect().catch((error) => this.reportConnectionError(error));
-    this.reconnectTimer = setInterval(() => {
+    this.reconnectTimer = this.setReconnectInterval(() => {
       if (this.started && !this.transport) {
         this.connect().catch((error) => this.reportConnectionError(error));
       }
@@ -260,7 +264,9 @@ export class WorkLouderDevice {
   async stop() {
     this.started = false;
     this.state = "stopping";
-    if (this.reconnectTimer) clearInterval(this.reconnectTimer);
+    if (this.reconnectTimer) {
+      this.clearReconnectInterval(this.reconnectTimer);
+    }
     this.reconnectTimer = null;
     await this.connectPromise?.catch(() => {});
     const failures = [];
