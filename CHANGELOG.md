@@ -51,6 +51,8 @@ have not shipped appear under "Unreleased."
 - The login agent now starts through the signed app executable.
 - GitHub release automation now creates a draft for hardware qualification and
   maintainer review instead of publishing immediately.
+- Draft releases now upload the exact archive, checksum, and SBOM for the tag
+  version instead of matching files with wildcards.
 - ChatGPT is no longer required for Codex Micro access.
 - Source setup now hands permission checks to the installed app instead of
   trusting permission state inherited from a terminal.

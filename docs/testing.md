@@ -148,9 +148,9 @@ dictated text in Claude, and the adjacent key submitted it once. After the
 tester returned to Codex, authenticated status showed Codex open, Claude
 closed, and the Micro released by the bridge.
 
-The tester also confirmed the core Claude Code interaction over USB-C. That
-check did not cover every restart, approval, or power-cycle case in this
-checklist.
+The tester also confirmed MIC hold and release, dictated text, and the adjacent
+send key in Claude Code over USB-C. That check did not cover every restart,
+approval, or power-cycle case in this checklist.
 
 The source installation completed after stale privacy records from earlier ad
 hoc builds were reset. This does not qualify a clean Developer ID installation.

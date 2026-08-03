@@ -90,8 +90,10 @@ returning to Codex so the bridge releases the Micro.
 This is a pre-1.0 project. On the current Bluetooth test build, a physical
 Codex Micro started and stopped dictation in Claude Code, inserted spoken text,
 sent it with the adjacent key, and displayed fresh lifecycle states. The
-visible Cowork composer route, double-tap latching, approval prompts, USB-C,
-and the complete recovery matrix still need release-candidate testing.
+same core MIC and send controls also passed over USB-C. The visible Cowork
+composer route, double-tap latching, approval prompts, wired restart and
+power-cycle cases, and the complete recovery matrix still need
+release-candidate testing.
 
 The preview still relies on three unsupported integration points: the
 independently documented Codex Micro protocol, Claude's local resume URL, and

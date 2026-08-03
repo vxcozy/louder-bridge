@@ -368,6 +368,6 @@ entries and older log files.
   requires a supported navigation route.
 - Claude's Accessibility surface for dictation is not a published Anthropic
   interface. Stable v1 requires a supported voice route.
-- Bluetooth MIC hold and release, transcript insertion, send, and lifecycle
-  response passed a focused physical test. The full USB-C and Bluetooth
-  acceptance matrix has not passed yet.
+- MIC hold and release, transcript insertion, and send passed focused physical
+  tests over Bluetooth and USB-C. Bluetooth lifecycle response also passed.
+  The full USB-C and Bluetooth acceptance matrix has not passed yet.

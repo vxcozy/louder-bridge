@@ -67,11 +67,16 @@ A later focused test passed over Bluetooth on August 2, 2026:
 | Driver | `native-iokit-protocol` over Bluetooth |
 | Verified behavior | MIC hold and release, transcript insertion, send key, lifecycle hooks |
 
+The tester later confirmed MIC hold and release, transcript insertion, and the
+send key in Claude Code over USB-C. Wired restart, approval, and power-cycle
+cases remain open.
+
 Codex was closed during the passing run so its built-in Micro integration did
-not receive the same controls. This focused test does not qualify the release
+not receive the same controls. These focused tests do not qualify the release
 candidate. The visible Cowork composer route, double-tap latching, approval
-prompts, USB-C controls, lighting matrix, recovery, and signed-package test
-remain open. See the [hardware acceptance checklist](testing.md).
+prompts, wired restart and power-cycle cases, lighting matrix, recovery, and
+signed-package test remain open. See the
+[hardware acceptance checklist](testing.md).
 
 ## Compatibility policy
 

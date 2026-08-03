@@ -189,6 +189,20 @@ if (!releaseWorkflow.includes("--draft")) {
   );
 }
 if (
+  !releaseWorkflow.includes(
+    'ARCHIVE="dist/Louder-Bridge-${VERSION}-macOS-arm64.zip"',
+  ) ||
+  !releaseWorkflow.includes('CHECKSUM="${ARCHIVE}.sha256"') ||
+  !releaseWorkflow.includes(
+    'SBOM="dist/Louder-Bridge-${VERSION}.spdx.json"',
+  ) ||
+  /dist\/\*\.(?:zip|sha256|spdx\.json)/.test(releaseWorkflow)
+) {
+  failures.push(
+    "The release workflow must upload the exact versioned archive, checksum, and SBOM.",
+  );
+}
+if (
   !releaseWorkflow.includes('--notes-file "$NOTES_FILE"') ||
   releaseWorkflow.includes("--generate-notes")
 ) {
