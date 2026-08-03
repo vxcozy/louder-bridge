@@ -16,9 +16,12 @@ Create a `production` environment and add these environment secrets:
 | `APPLE_NOTARY_ISSUER_ID` | App Store Connect issuer ID |
 | `APPLE_NOTARY_PRIVATE_KEY` | Contents of the App Store Connect `.p8` key |
 
-The release workflow stops at its credential check if any value is missing. It
-never prints secret values. Restrict the environment to maintainers who are
-allowed to prepare releases.
+The release workflow stops at its credential check if a value is missing or
+malformed. The check validates the certificate encoding and Developer ID
+identity. It also checks the App Store Connect identifiers and private-key
+format. It never prints secret values. Apple verifies the certificate password
+during import. Restrict the environment to maintainers who are allowed to
+prepare releases.
 
 ## Qualify the source
 

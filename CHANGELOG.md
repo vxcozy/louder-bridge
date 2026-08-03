@@ -223,3 +223,5 @@ have not shipped appear under "Unreleased."
   Release verification checks the resulting launcher binary.
 - Release tags must point to commits on the protected default branch, and CI
   audits production dependencies before packaging.
+- Release credential checks now reject malformed certificate data, signing
+  identities, App Store Connect identifiers, and private keys before import.
