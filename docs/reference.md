@@ -156,8 +156,11 @@ compiled binary for the required hardening symbols.
 The native device process has a three-second startup deadline and a one-second
 command-write deadline. If a write stalls, the bridge terminates that process.
 Shutdown calls share one cleanup operation, and the next process waits for it
-to finish. The device service then reconnects through its normal three-second
-retry loop.
+to finish. If cleanup fails during a Codex handoff, the server keeps the
+original device connection pending and retries its cleanup on the next service
+check. It does not open a replacement driver until cleanup succeeds. If Codex
+closes between attempts, the service finishes cleanup before reconnecting
+through its normal three-second retry loop.
 
 The hook server requires a random bearer token. Setup stores it in the current
 user's Application Support directory with mode `0600`. The token is never

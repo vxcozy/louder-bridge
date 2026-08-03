@@ -66,6 +66,9 @@ have not shipped appear under "Unreleased."
   Micro disconnected instead of opening it briefly to confirm the conflict.
   If Codex opens later, the bridge releases the Micro before showing the
   warning. It reconnects after Codex quits.
+- A failed Codex handoff now keeps the same Micro driver pending for cleanup
+  and retries it on the next service check. The bridge will not open a
+  replacement driver until that cleanup succeeds, even if Codex closes first.
 - Failures to launch the Codex conflict notice now appear in the private error
   log.
 - Permission onboarding now stops after a five-minute wait, names the missing
@@ -189,9 +192,12 @@ have not shipped appear under "Unreleased."
   made from a dirty checkout. Developer ID builds require clean source.
 - Notarized release verification now requires the app, launcher, and embedded
   runtime to share one Developer ID team and secure signing timestamps.
-- Notarization builds the stapled ZIP and checksum beside the previous files.
-  It replaces them only after both new artifacts are complete, so an archive
-  failure leaves the previous artifacts intact.
+- Notarization creates the stapled ZIP and checksum beside the current pair.
+  Publication moves both current files into verified backups before installing
+  either replacement. If creation or publication fails, rollback restores the
+  old pair when those backups are intact. File-identity checks protect files
+  changed by another process and preserve a published file if its backup has
+  disappeared.
 - Release verification now rejects unsafe ZIP paths, links, special files,
   group- or world-writable entries, and executables that are not arm64-only.
 - Release verification now checks the project and protocol licenses against
