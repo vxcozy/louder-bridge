@@ -120,9 +120,10 @@ attaches the notarized ZIP, checksum, and SBOM. It does not publish the release.
 
 GitHub serializes workflow runs for the same tag. If a run stops after creating
 the draft, rerun the failed job. The next run updates that draft and replaces
-the three expected assets. It then compares their names and byte sizes with the
-local files. The job stops if the release has already been published or if the
-draft contains another asset, so a maintainer can inspect it.
+the three expected assets. GitHub reports a SHA-256 digest for each upload. The
+job compares that digest and byte count with the local file and requires the
+upload state to be `uploaded`. It stops if the release is already public or if
+the draft contains unexpected or duplicate asset names.
 
 Download the ZIP from that draft rather than reusing a local build. Run the
 full [hardware acceptance checklist](testing.md) against the download. Test a

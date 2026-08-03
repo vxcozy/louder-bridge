@@ -263,11 +263,14 @@ if (
   !publishReleaseScript.includes('"--clobber"') ||
   !publishReleaseScript.includes("existing && !existing.draft") ||
   !publishReleaseScript.includes("verifyDraftAssets(") ||
+  !publishReleaseScript.includes('createHash("sha256")') ||
+  !publishReleaseScript.includes("asset.digest !== expected.digest") ||
+  !publishReleaseScript.includes('asset?.state !== "uploaded"') ||
   !publishReleaseScript.includes('"--verify-tag"') ||
   !publishReleaseScript.includes('"--repo"')
 ) {
   failures.push(
-    "Draft publication must be serialized, resumable, verified, and unable to change a published release.",
+    "Draft publication must run one tag at a time, resume existing drafts, verify asset digests, and refuse published releases.",
   );
 }
 if (/\bgh release (?:create|edit|upload)\b/.test(releaseWorkflow)) {

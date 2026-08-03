@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = path.resolve(
@@ -32,7 +33,7 @@ export function runGitHub(args, { cwd = projectRoot } = {}) {
   };
 }
 
-function requireReleaseFile(filename, label) {
+function releaseFileMetadata(filename, label) {
   let stat;
   try {
     stat = fs.lstatSync(filename);
@@ -48,7 +49,10 @@ function requireReleaseFile(filename, label) {
   if (stat.size === 0) {
     throw new Error(`${label} is empty: ${filename}`);
   }
-  return stat.size;
+  const digest = createHash("sha256")
+    .update(fs.readFileSync(filename))
+    .digest("hex");
+  return { size: stat.size, digest: `sha256:${digest}` };
 }
 
 function readRelease(execute, repository, tag) {
@@ -59,7 +63,7 @@ function readRelease(execute, repository, tag) {
     "GET",
     endpoint,
     "--jq",
-    "{draft: .draft, prerelease: .prerelease, tagName: .tag_name, assets: [.assets[] | {name: .name, size: .size}]}",
+    "{draft: .draft, prerelease: .prerelease, tagName: .tag_name, assets: [.assets[] | {name: .name, size: .size, digest: .digest, state: .state}]}",
   ];
   const result = execute(args);
   if (result.status !== 0) {
@@ -95,9 +99,10 @@ function verifyDraftAssets(release, expectedAssets) {
   if (!release?.draft) {
     throw new Error("GitHub did not preserve the release as a draft.");
   }
-  const actual = new Map(
-    release.assets.map((asset) => [asset.name, asset.size]),
-  );
+  const actual = new Map(release.assets.map((asset) => [asset.name, asset]));
+  if (actual.size !== release.assets.length) {
+    throw new Error("The draft contains a duplicate asset name.");
+  }
   const unexpected = [...actual.keys()].filter(
     (name) => !expectedAssets.has(name),
   );
@@ -106,16 +111,25 @@ function verifyDraftAssets(release, expectedAssets) {
       `The draft contains an unexpected asset: ${unexpected.join(", ")}`,
     );
   }
-  for (const [name, size] of expectedAssets) {
-    if (actual.get(name) !== size) {
+  for (const [name, expected] of expectedAssets) {
+    const asset = actual.get(name);
+    if (
+      asset?.state !== "uploaded" ||
+      asset.size !== expected.size ||
+      asset.digest !== expected.digest
+    ) {
       throw new Error(
-        `GitHub did not retain the expected ${name} asset (${size} bytes).`,
+        `GitHub did not retain the exact ${name} asset (${expected.size} bytes, ${expected.digest}).`,
       );
     }
   }
 }
 
 function verifyResumableDraft(release, expectedNames) {
+  const uniqueNames = new Set(release.assets.map((asset) => asset.name));
+  if (uniqueNames.size !== release.assets.length) {
+    throw new Error("The draft contains a duplicate asset name.");
+  }
   const unexpected = release.assets
     .map((asset) => asset.name)
     .filter((name) => !expectedNames.has(name));
@@ -157,11 +171,11 @@ export function publishDraft({
     `${archive}.sha256`,
     path.join(root, "dist", `Louder-Bridge-${version}.spdx.json`),
   ];
-  requireReleaseFile(notes, "Release notes");
+  releaseFileMetadata(notes, "Release notes");
   const expectedAssets = new Map(
     artifacts.map((filename) => [
       path.basename(filename),
-      requireReleaseFile(filename, "Release artifact"),
+      releaseFileMetadata(filename, "Release artifact"),
     ]),
   );
 

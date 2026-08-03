@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { publishDraft } from "../scripts/publish-release.mjs";
 
 function makeProject(t) {
@@ -40,6 +41,10 @@ function releaseFor(root, { draft = true, assets } = {}) {
       names.map((name) => ({
         name,
         size: fs.statSync(path.join(root, "dist", name)).size,
+        digest: `sha256:${createHash("sha256")
+          .update(fs.readFileSync(path.join(root, "dist", name)))
+          .digest("hex")}`,
+        state: "uploaded",
       })),
   });
 }
@@ -78,6 +83,7 @@ test("creates a new draft and verifies the uploaded assets", (t) => {
   });
 
   assert.equal(result.resumed, false);
+  assert.match(gh.calls[0].at(-1), /digest: \.digest, state: \.state/);
   assert.deepEqual(gh.calls[1].slice(0, 5), [
     "release",
     "create",
@@ -221,8 +227,76 @@ test("checks the remote asset sizes after upload", (t) => {
         repository: "vxcozy/louder-bridge",
         execute: gh.execute,
       }),
-    /did not retain the expected.*asset/,
+    /did not retain the exact.*asset/,
   );
+});
+
+test("rejects a same-size asset with a different remote digest", (t) => {
+  const root = makeProject(t);
+  const assets = JSON.parse(releaseFor(root)).assets;
+  assets[0].digest = `sha256:${"0".repeat(64)}`;
+  const gh = scripted([
+    response({ status: 1, stderr: "gh: Not Found (HTTP 404)" }),
+    response(),
+    response(),
+    response({ stdout: releaseFor(root, { assets }) }),
+  ]);
+
+  assert.throws(
+    () =>
+      publishDraft({
+        root,
+        tag: "v0.1.0",
+        repository: "vxcozy/louder-bridge",
+        execute: gh.execute,
+      }),
+    /did not retain the exact.*sha256:/,
+  );
+});
+
+test("requires GitHub to finish processing every asset", (t) => {
+  const root = makeProject(t);
+  const assets = JSON.parse(releaseFor(root)).assets;
+  assets[1].state = "new";
+  const gh = scripted([
+    response({ status: 1, stderr: "gh: Not Found (HTTP 404)" }),
+    response(),
+    response(),
+    response({ stdout: releaseFor(root, { assets }) }),
+  ]);
+
+  assert.throws(
+    () =>
+      publishDraft({
+        root,
+        tag: "v0.1.0",
+        repository: "vxcozy/louder-bridge",
+        execute: gh.execute,
+      }),
+    /did not retain the exact.*asset/,
+  );
+});
+
+test("refuses duplicate asset names in an existing draft", (t) => {
+  const root = makeProject(t);
+  const asset = JSON.parse(releaseFor(root)).assets[0];
+  const gh = scripted([
+    response({
+      stdout: releaseFor(root, { assets: [asset, { ...asset }] }),
+    }),
+  ]);
+
+  assert.throws(
+    () =>
+      publishDraft({
+        root,
+        tag: "v0.1.0",
+        repository: "vxcozy/louder-bridge",
+        execute: gh.execute,
+      }),
+    /duplicate asset name/,
+  );
+  assert.equal(gh.calls.length, 1);
 });
 
 test("leaves an interrupted draft for the next run to resume", (t) => {
