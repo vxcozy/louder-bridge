@@ -382,6 +382,36 @@ test("automatically reconnects after the native driver stops accepting commands"
   assert.deepEqual(clearedTimers, [timer]);
 });
 
+test("automatically reconnects after the native driver disconnects", async () => {
+  const first = new FakeTransport();
+  const second = new FakeTransport();
+  let retryConnection;
+  const device = testDevice([first, second], {
+    logger: { info() {}, error() {} },
+    setReconnectInterval(callback, delay) {
+      assert.equal(delay, 3000);
+      retryConnection = callback;
+      return Symbol("reconnect timer");
+    },
+    clearReconnectInterval() {},
+  });
+
+  await device.start();
+  first.disconnected(new Error("Bluetooth link was lost"));
+  await waitForImmediate();
+  assert.equal(device.transport, null);
+  assert.equal(device.status().state, "error");
+
+  retryConnection();
+  await waitForImmediate();
+  assert.equal(device.transport, second);
+  assert.equal(device.status().state, "connected");
+  assert.equal(device.status().error, null);
+  assert.equal(second.connectCalls, 1);
+
+  await device.stop();
+});
+
 test("stops latched voice input if the Micro disconnects", async () => {
   const actions = [];
   const transport = new FakeTransport();
