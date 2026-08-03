@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { publishNotarizedArchive } from "./notarized-artifacts.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.join(root, "dist");
@@ -71,20 +71,6 @@ run("/usr/bin/xcrun", [
 ]);
 run("/usr/bin/xcrun", ["stapler", "staple", app]);
 run("/usr/bin/xcrun", ["stapler", "validate", app]);
-fs.unlinkSync(archive);
-run("/usr/bin/ditto", [
-  "-c",
-  "-k",
-  "--sequesterRsrc",
-  "--keepParent",
-  app,
-  archive,
-]);
-const digest = createHash("sha256")
-  .update(fs.readFileSync(archive))
-  .digest("hex");
-fs.writeFileSync(`${archive}.sha256`, `${digest}  ${path.basename(archive)}\n`, {
-  mode: 0o644,
-});
+publishNotarizedArchive({ archive, app, run });
 run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
 console.log(`Notarized ${path.relative(root, archive)}`);

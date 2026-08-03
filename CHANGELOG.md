@@ -186,6 +186,9 @@ have not shipped appear under "Unreleased."
   made from a dirty checkout. Developer ID builds require clean source.
 - Notarized release verification now requires the app, launcher, and embedded
   runtime to share one Developer ID team and secure signing timestamps.
+- Notarization builds the stapled ZIP and checksum beside the previous files.
+  It replaces them only after both new artifacts are complete, so an archive
+  failure leaves the previous artifacts intact.
 - Release verification now rejects unsafe ZIP paths, links, special files,
   group- or world-writable entries, and executables that are not arm64-only.
 - Release verification now checks the project and protocol licenses against
