@@ -59,7 +59,7 @@ function runHook({ home, port, input }) {
   });
 }
 
-test("the hook sends only allowlisted lifecycle fields", async (context) => {
+test("the hook sends only allowlisted lifecycle fields", { timeout: 2000 }, async (context) => {
   const home = fixtureHome();
   context.after(() => fs.rmSync(home, { recursive: true }));
   let received;
