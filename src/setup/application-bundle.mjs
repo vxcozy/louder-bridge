@@ -152,7 +152,7 @@ export function applicationBundlePathsForCli(cliPath) {
   return applicationBundlePathsForApp(app);
 }
 
-export function applicationInfoPlist({ version = "0.1.1" } = {}) {
+export function applicationInfoPlist({ version = "0.1.2" } = {}) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

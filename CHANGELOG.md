@@ -5,6 +5,8 @@ have not shipped appear under "Unreleased."
 
 ## Unreleased
 
+## 0.1.2 - 2026-08-04
+
 ### Fixed
 
 - The launch-agent installer now allows enough time for macOS restart
