@@ -75,7 +75,7 @@ Codex was closed during the passing run so its built-in Micro integration did
 not receive the same controls. These focused tests do not qualify the release
 candidate. The visible Cowork composer route, double-tap latching, approval
 prompts, wired restart and power-cycle cases, lighting matrix, recovery, and
-signed-package test remain open. See the
+packaged-release test remain open. See the
 [hardware acceptance checklist](testing.md).
 
 ## Compatibility policy

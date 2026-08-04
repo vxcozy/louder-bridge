@@ -30,10 +30,9 @@ to check the current installation.
 | `npm run authorship:check` | Reject automated authorship credit in files and commits |
 | `npm run security:check` | Scan the repository for common credential leaks |
 | `npm run release:check` | Run syntax and release-hygiene checks |
-| `npm run release:credentials` | Check that release credentials are present without printing them |
 | `npm run release:build` | Build an Apple Silicon release archive |
-| `npm run release:notarize` | Submit a signed archive to Apple's notary service |
-| `npm run release:verify` | Verify the archive, checksum, SBOM, architecture, and signature |
+| `npm run release:notarize` | Optionally submit a Developer ID build to Apple's notary service |
+| `npm run release:verify` | Verify the archive, checksum, SBOM, architecture, and ad-hoc signature |
 
 ## CLI commands
 
@@ -366,8 +365,8 @@ entries and older log files.
 - Cloud and SSH sessions are not tracked because their hooks execute away from
   the local bridge.
 - macOS on Apple Silicon is the tested target.
-- Source builds do not have a stable Developer ID identity, so macOS may ask
-  for Input Monitoring or Accessibility again after an upgrade.
+- GitHub prereleases use an ad-hoc signature, so macOS may ask for Input
+  Monitoring or Accessibility again after an upgrade.
 - The native driver uses an independently documented, MIT-licensed protocol
   implementation. Stable v1 requires a vendor-supported Work Louder interface.
 - The native driver cannot claim exclusive ownership of the Micro. If Codex and
