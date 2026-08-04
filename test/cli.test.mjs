@@ -29,7 +29,7 @@ test("prints CLI help without starting the bridge", () => {
 test("prints the package version", () => {
   const result = run(["--version"]);
   assert.equal(result.status, 0);
-  assert.equal(result.stdout.trim(), "0.1.0");
+  assert.equal(result.stdout.trim(), "0.1.1");
 });
 
 test("checks source build tools before the native driver is installed", (context) => {

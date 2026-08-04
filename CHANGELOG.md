@@ -5,6 +5,8 @@ have not shipped appear under "Unreleased."
 
 ## Unreleased
 
+## 0.1.1 - 2026-08-03
+
 ### Added
 
 - A self-contained per-user macOS application bundle with an embedded Node.js

@@ -29,14 +29,14 @@ test("accepts the real authenticated bridge health endpoint", async (context) =>
 
   const health = await waitForBridgeReady({
     authToken,
-    expectedVersion: "0.1.0",
+    expectedVersion: "0.1.1",
     url: `http://127.0.0.1:${address.port}`,
     attempts: 1,
   });
 
   assert.equal(health.ok, true);
   assert.equal(health.service.mode, "service");
-  assert.equal(health.service.version, "0.1.0");
+  assert.equal(health.service.version, "0.1.1");
 });
 
 test("waits for the authenticated background agent health response", async () => {

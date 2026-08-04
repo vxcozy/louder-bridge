@@ -235,7 +235,7 @@ Returns bridge status and the six current slot states:
     "codexDesktop": "closed",
     "inputMonitoring": "granted",
     "accessibility": "granted",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "buildRevision": "0123456789abcdef0123456789abcdef01234567",
     "nodeVersion": "v24.8.0",
     "navigator": {
