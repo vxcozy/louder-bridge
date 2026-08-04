@@ -2,47 +2,11 @@
 
 This guide is for maintainers preparing a macOS release.
 
-## Configure GitHub once
-
-Create a `production` environment. Add a required maintainer reviewer, allow
-only tags matching `v*`, and turn off administrator bypass. Check the live
-settings before preparing a release:
-
-```bash
-npm run release:environment
-```
-
-Then add these environment secrets:
-
-| Secret | Value |
-|---|---|
-| `MACOS_CERTIFICATE` | Base64-encoded Developer ID Application PKCS#12 file |
-| `MACOS_CERTIFICATE_PASSWORD` | Password for the PKCS#12 file |
-| `KEYCHAIN_PASSWORD` | Random password used only for the temporary CI keychain |
-| `APPLE_SIGNING_IDENTITY` | Full Developer ID Application identity |
-| `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
-| `APPLE_NOTARY_ISSUER_ID` | App Store Connect issuer ID |
-| `APPLE_NOTARY_PRIVATE_KEY` | Contents of the App Store Connect `.p8` key |
-
-The environment check confirms that all seven secret names exist without
-reading their values. The release workflow stops at its credential check if a
-value is missing or malformed. That check validates the certificate encoding
-and Developer ID identity. It also checks the App Store Connect identifiers
-and private-key format. It never prints secret values. Apple verifies the
-certificate password during import. Restrict the environment to maintainers
-who are allowed to prepare releases.
-
-Checkout does not save the GitHub token in git configuration. The workflow
-runs its source gates before passing signing credentials to a repository
-script. It removes the temporary keychain and notarization key before the
-draft-release step receives a write-capable GitHub token.
-
 ## Qualify the source
 
 Choose a semantic version and update `package.json` and `CHANGELOG.md`. Write
 the public notes in `release-notes/v<version>.md`, then run `/humanizer` on the
-complete file. The release workflow uses that file as written. It does not
-generate public copy.
+complete file. The release workflow uses that file as written.
 
 Run the source checks:
 
@@ -54,111 +18,83 @@ npm run release:check
 ```
 
 The release check compares a release tag with the package version. It also
-refuses a stable version while the device driver, session navigator, or voice
-interface is experimental.
+keeps stable versions from being published while the device, navigation, or
+voice interface is experimental.
 
-## Build and sign
+## Build and verify
 
-Set `APPLE_SIGNING_IDENTITY` to a Developer ID Application identity and run:
+Run:
 
 ```bash
 npm run release:build
+npm run release:verify
 ```
 
-The command compiles the native permission helper, builds the app, signs each
-nested executable and the outer bundle, then starts the embedded runtime
-through the signed launcher. The launcher also runs the packaged location
-preflight from the staged Applications directory. The command creates an Apple
-Silicon ZIP, a SHA-256 checksum, and an SPDX SBOM.
+The build compiles the native permission helper, assembles the app, applies an
+ad-hoc signature, and tests the packaged launcher. It creates an Apple Silicon
+ZIP, a SHA-256 checksum, and an SPDX SBOM in `dist/`.
 
-The build rejects signing identities that are not Developer ID Application
-certificates. An unset identity produces an ad hoc build for local testing
-only. Do not publish it.
+An ad-hoc signature lets macOS verify that the bundle has not changed after it
+was built. It is not a Developer ID signature and does not identify the
+publisher to Apple. Louder Bridge does not require an Apple Developer account
+for its normal release process.
 
-In CI, the signing identity lives in a temporary keychain. The workflow adds
-that keychain to the existing user search list, passes it directly to
-`codesign`, restores the original list, and deletes the keychain even when a
-later step fails.
+Verification checks the checksum, SBOM, Git revision, archive layout,
+licenses, hardened runtime, entitlements, and arm64 architecture. It also
+rejects unsafe archive paths, links, special files, writable executables, and
+unexpected files.
 
-The app diagnostics and SBOM record the exact Git revision. Ad hoc builds add
-a `+dirty` marker when the checkout has uncommitted changes. Developer ID
-builds require a clean checkout, and verification compares the bundled app and
-SBOM revisions with the current source.
+## Create the draft release
 
-Final verification checks the app, launcher, and embedded Node.js runtime
-separately. All three must use the same Developer ID team, carry hardened
-runtime signatures, and include secure timestamps. The verifier also rejects
-unsafe archive paths, links, special files, group- or world-writable entries,
-and binaries that are not arm64-only. Before extraction, it limits the archive
-to 512 entries, 256 MiB compressed, and 512 MiB uncompressed. The project and
-protocol licenses must match their reviewed source files, and the Node.js
-license must be present and complete.
-The ZIP's macOS metadata directory may contain only AppleDouble entries for
-Louder Bridge.app.
+Push the version tag. The release workflow builds the same package on GitHub's
+native arm64 macOS runner, verifies it, and creates a draft release containing
+the ZIP, checksum, and SBOM. It does not publish the release.
 
-## Notarize
+Release jobs for the same tag run one at a time. A rerun updates the existing
+draft and replaces the three expected files. The publisher checks the digest,
+size, and upload state of every file.
 
-Create a `notarytool` keychain profile outside the repository and set
-`APPLE_NOTARY_PROFILE` to its name. You can instead provide an App Store
-Connect key through `APPLE_NOTARY_KEY_ID`, `APPLE_NOTARY_ISSUER_ID`, and
-`APPLE_NOTARY_KEY_PATH`.
+## Test the downloaded app
 
-Keep `APPLE_SIGNING_IDENTITY` set, then run:
+Download the ZIP from the draft release instead of reusing a local build.
+Verify its checksum, then run the full [hardware acceptance
+checklist](testing.md) against that download.
 
-```bash
-npm run release:notarize
-```
+Move **Louder Bridge.app** into **Applications** and try to open it. Because
+the app is not notarized, macOS may block the first launch. Open **System
+Settings → Privacy & Security**, find the Louder Bridge message, and choose
+**Open Anyway**. Only make this exception for an archive downloaded from this
+repository's Releases page. Apple documents the same process in [Open a Mac
+app from an unknown developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
 
-The command submits the ZIP, waits for Apple's result, staples and validates
-the ticket, rebuilds the archive and checksum, and asks Gatekeeper to assess
-the app.
+Test first launch, permissions, login startup, Micro power cycling, Claude
+lifecycle states, Agent Key navigation, push-to-talk, sending, upgrades, and
+removal. Record the tested macOS, Claude Desktop, bridge, firmware, and
+connection versions in the draft notes.
 
-Verify the final files:
+If qualification changes the notes, run `/humanizer` again. Read every piece
+of public text as it appears on GitHub before publishing.
 
-```bash
-LOUDER_REQUIRE_NOTARIZED=1 npm run release:verify
-```
+## Publish
 
-This follows Apple's [Developer ID and notarization
-requirements](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
-
-Never commit a certificate, private key, App Store Connect key, keychain, or
-notary credential.
-
-## Create and test the draft
-
-Push the version tag. The release workflow creates a draft GitHub release and
-attaches the notarized ZIP, checksum, and SBOM. It does not publish the release.
-
-GitHub serializes workflow runs for the same tag. If a run stops after creating
-the draft, rerun the failed job. The next run updates that draft and replaces
-the three expected assets. GitHub reports a SHA-256 digest for each upload. The
-job compares that digest and byte count with the local file and requires the
-upload state to be `uploaded`. It stops if the release is already public or if
-the draft contains unexpected or duplicate asset names.
-
-Download the ZIP from that draft rather than reusing a local build. Run the
-full [hardware acceptance checklist](testing.md) against the download. Test a
-clean install, an upgrade, both first-launch permissions, login startup, Micro
-power cycling, Claude lifecycle states, Agent Key navigation, push-to-talk,
-and removal.
-
-Record the tested component versions in the draft notes. If qualification
-changes the notes, run `/humanizer` again and update the draft with the reviewed
-file. Before publishing, the maintainer must read the notes and the other public
-text as they appear on GitHub.
-
-Publish the draft only when the checklist passes. Keep the notarized ZIP, its
-checksum, the SPDX SBOM, and the previous release available for rollback:
+Publish the draft only when the hardware checklist passes:
 
 ```bash
 gh release edit "v<version>" --draft=false
 ```
 
-The tag workflow runs on GitHub's native arm64 macOS runner. Tags below v1 are
-marked as prereleases. The `production` environment must hold the Developer ID
-certificate and App Store Connect secrets.
+Keep the ZIP, checksum, SBOM, and previous release available for rollback.
+Tags below v1 are marked as prereleases.
 
-Run `/humanizer` on release notes and other public text before tagging. Release
-commits and notes must contain no automated authorship credit or authorship
-trailers.
+Release commits and public text must contain no automated authorship credit or
+authorship trailers.
+
+## Optional Developer ID distribution
+
+The repository still contains scripts for Developer ID signing and Apple
+notarization. They are optional and are not part of the default GitHub release
+workflow. If a future maintainer chooses that route, set a Developer ID
+identity for `npm run release:build`, run `npm run release:notarize`, then run
+`LOUDER_REQUIRE_NOTARIZED=1 npm run release:verify`.
+
+Never commit certificates, private keys, keychains, or notary credentials.

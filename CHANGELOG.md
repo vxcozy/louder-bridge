@@ -28,11 +28,8 @@ have not shipped appear under "Unreleased."
   recent hook and device timestamps.
 - Build revision in authenticated diagnostics and packaged application
   metadata.
-- GitHub Actions workflows for native arm64 testing, signed releases,
-  notarization, checksums, and SPDX SBOM files.
-- A maintainer check for required reviewers, version-tag deployment policy,
-  disabled administrator bypass, and the required release secret names in the
-  production environment.
+- GitHub Actions workflows for native arm64 testing and draft prereleases with
+  checksums and SPDX SBOM files.
 - Repository checks for automated authorship credit in commits, current files,
   and every file version in reachable history.
 - Micro push-to-talk that starts Claude's own dictation on press and stops it
@@ -61,14 +58,12 @@ have not shipped appear under "Unreleased."
   maintainer review instead of publishing immediately.
 - Draft releases now upload the exact archive, checksum, and SBOM for the tag
   version instead of matching files with wildcards.
-- Release signing now keeps the runner's existing keychain search list and
-  restores it before deleting the temporary signing keychain.
 - CI and release checkouts no longer save GitHub credentials in git
   configuration.
-- The release workflow now runs its source gates before passing signing or
-  notarization credentials to repository scripts.
-- The release workflow now removes temporary signing and notarization files
-  before the draft-release step receives a write-capable GitHub token.
+- The default release workflow now uses an ad-hoc signature and does not
+  require an Apple Developer account or signing credentials.
+- The release workflow runs its source gates before building and verifying the
+  package.
 - Release jobs for the same tag now run one at a time. A rerun can resume an
   existing draft and replace the three expected files. The publisher checks
   GitHub's SHA-256 digest, byte count, and upload state for each one. It refuses

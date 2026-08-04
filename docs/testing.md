@@ -6,15 +6,16 @@ matches the [supported baseline](compatibility.md).
 
 ## Prepare the Mac
 
-1. Install the release candidate by the same route users will receive it. For a
-   source candidate, run `npm run setup`.
-2. For a packaged candidate, open the extracted app from Downloads before
-   moving it. Confirm Louder Bridge asks to be moved and does not request
-   permission, add hooks, or install a login agent.
-3. Move the packaged app into Applications and open it again. Approve Input
-   Monitoring and Accessibility. If macOS quits the app after either change,
-   confirm onboarding reopens it and the background agent starts without any
-   manual restart.
+1. Download the release candidate from its draft GitHub release. Do not reuse
+   a local build. Verify the attached checksum.
+2. Open the extracted app from Downloads before moving it. Confirm Louder
+   Bridge asks to be moved and does not request permission, add hooks, or
+   install a login agent.
+3. Move the app into Applications and try to open it. If macOS blocks the
+   first launch, use **System Settings → Privacy & Security → Open Anyway**.
+   Approve Input Monitoring and Accessibility. If macOS quits the app after
+   either change, confirm onboarding reopens it and the background agent starts
+   without a manual restart.
 4. In a clean test account, leave Input Monitoring off for five minutes.
    Confirm the dialog identifies the missing permission, opens the matching
    setting, and exits without installing hooks or a login agent. Confirm source
@@ -154,7 +155,8 @@ send key in Claude Code over USB-C. That check did not cover every restart,
 approval, or power-cycle case in this checklist.
 
 The source installation completed after stale privacy records from earlier ad
-hoc builds were reset. This does not qualify a clean Developer ID installation.
+hoc builds were reset. This does not qualify a clean packaged-release
+installation.
 The conflict notice with both apps kept open, double-tap latching, the visible
 Cowork composer route, approval prompts, USB-C restart and power-cycle cases,
 and the rest of this checklist remain open.

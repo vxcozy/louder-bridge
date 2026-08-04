@@ -23,9 +23,9 @@ after fixing the permission.
 For a manual development run with `npm start`, grant permission to the terminal
 application instead.
 
-A source build does not have a stable Developer ID signature. Reinstalling it
-can make macOS ask for permission again. Signed release builds keep the same
-identity across upgrades.
+GitHub prereleases use an ad-hoc signature rather than a stable Developer ID
+identity. macOS may ask for Input Monitoring or Accessibility again after an
+upgrade.
 
 With the hook server running, `npm run status` gets permission state from the
 background app. If the server is down, it launches a fresh app probe through
@@ -52,6 +52,15 @@ Quit Louder Bridge, move the app into Applications with Finder, then open it
 again. First launch stops in Downloads or a temporary Gatekeeper location. The
 login agent needs a stable app path. If you use a symlink, its target must be
 inside Applications.
+
+### macOS blocks the first launch
+
+Move Louder Bridge into Applications and try to open it once. Then open
+**System Settings → Privacy & Security**, find the Louder Bridge message, and
+choose **Open Anyway**.
+
+Only make this exception for an archive downloaded from this repository's
+Releases page. The checksum is attached to the same release.
 
 ## Troubleshoot the background agent
 

@@ -21,13 +21,15 @@ Claude or macOS handles dictation, depending on which route is available.
 
 ## Install
 
-Download the signed macOS archive from this repository's Releases page:
+Download the macOS archive from this repository's Releases page:
 
 1. Move **Louder Bridge.app** into **Applications**.
 2. Open it once.
-3. Approve Input Monitoring and Accessibility when macOS asks.
-4. Approve microphone access if macOS asks when you first use dictation.
-5. Open Claude Desktop and turn on the Micro.
+3. If macOS blocks it, open **System Settings → Privacy & Security** and choose
+   **Open Anyway** for Louder Bridge.
+4. Approve Input Monitoring and Accessibility when macOS asks.
+5. Approve microphone access if macOS asks when you first use dictation.
+6. Open Claude Desktop and turn on the Micro.
 
 Louder Bridge checks its location before requesting permissions. If you open it
 from Downloads, it asks you to move the app and exits without changing Claude.

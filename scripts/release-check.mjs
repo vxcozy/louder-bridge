@@ -28,8 +28,6 @@ const requiredFiles = [
   "docs/testing.md",
   "docs/tutorial.md",
   "scripts/publish-release.mjs",
-  "scripts/release-credential-names.mjs",
-  "scripts/release-environment-check.mjs",
 ];
 const failures = [];
 
@@ -143,65 +141,30 @@ if (!releaseWorkflow.includes("LOUDER_RELEASE_BRANCH_REF:")) {
     "The release workflow must verify tags against the default branch.",
   );
 }
-if (!releaseWorkflow.includes("npm run release:credentials")) {
-  failures.push("The release workflow must validate signing credentials.");
-}
-if (
-  metadata.scripts?.["release:environment"] !==
-  "node scripts/release-environment-check.mjs"
-) {
-  failures.push("The release environment check must remain available.");
-}
 if (
   releaseWorkflow.indexOf("name: Check source") < 0 ||
-  releaseWorkflow.indexOf("name: Check release credentials") < 0 ||
+  releaseWorkflow.indexOf("name: Build app") < 0 ||
+  releaseWorkflow.indexOf("name: Verify release") < 0 ||
   releaseWorkflow.indexOf("name: Check source") >
-    releaseWorkflow.indexOf("name: Check release credentials")
-  ) {
+    releaseWorkflow.indexOf("name: Build app") ||
+  releaseWorkflow.indexOf("name: Build app") >
+    releaseWorkflow.indexOf("name: Verify release")
+) {
   failures.push(
-    "The release workflow must check source before passing signing credentials to repository scripts.",
+    "The release workflow must check source before building and verifying the app.",
   );
 }
 if (!codeOwners.includes("release-notes/** @vxcozy")) {
   failures.push("Release notes must require maintainer review.");
 }
 if (
-  (releaseWorkflow.match(/umask 077/g) ?? []).length < 2 ||
-  (releaseWorkflow.includes("security import") &&
-    !releaseWorkflow.includes("-T /usr/bin/codesign")
-  )
+  /\b(?:APPLE_|MACOS_CERTIFICATE|KEYCHAIN_PASSWORD|LOUDER_REQUIRE_NOTARIZED|release:notarize|release:credentials)\b/.test(
+    releaseWorkflow,
+  ) ||
+  /\benvironment:\s*production\b/.test(releaseWorkflow)
 ) {
   failures.push(
-    "The release workflow must restrict temporary credentials to the signing process.",
-  );
-}
-if (
-  !releaseWorkflow.includes("if: always()") ||
-  !releaseWorkflow.includes("security delete-keychain") ||
-  !releaseWorkflow.includes("AuthKey_*.p8") ||
-  !releaseWorkflow.includes("keychain-search-list.mjs restore")
-) {
-  failures.push("The release workflow must remove temporary signing credentials.");
-}
-if (
-  releaseWorkflow.indexOf("name: Remove signing credentials") < 0 ||
-  releaseWorkflow.indexOf("name: Create or update draft GitHub release") < 0 ||
-  releaseWorkflow.indexOf("name: Remove signing credentials") >
-    releaseWorkflow.indexOf("name: Create or update draft GitHub release")
-) {
-  failures.push(
-    "The release workflow must remove signing credentials before it receives a write-capable GitHub token.",
-  );
-}
-if (
-  !releaseWorkflow.includes("keychain-search-list.mjs add") ||
-  !releaseWorkflow.includes("APPLE_SIGNING_KEYCHAIN:") ||
-  /security list-keychain(?:s)? -d user -s/.test(releaseWorkflow) ||
-  !buildReleaseScript.includes("signingKeychainArguments") ||
-  !buildReleaseScript.includes("APPLE_SIGNING_KEYCHAIN")
-) {
-  failures.push(
-    "The release workflow must preserve the user keychain search list and restrict signing to the temporary keychain.",
+    "The default release workflow must not require Apple credentials or notarization.",
   );
 }
 if ((ciWorkflow.match(/fetch-depth:\s*0/g) ?? []).length < 2) {
