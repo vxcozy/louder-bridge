@@ -5,6 +5,11 @@ have not shipped appear under "Unreleased."
 
 ## Unreleased
 
+### Fixed
+
+- The launch-agent installer now allows enough time for macOS restart
+  throttling, preventing a healthy upgrade from being rolled back.
+
 ## 0.1.1 - 2026-08-03
 
 ### Added

@@ -13,7 +13,7 @@ export const LAUNCH_AGENT_LABEL = "app.louder-bridge.agent";
 const MAX_PLIST_BYTES = 1024 * 1024;
 const COMMAND_OPTIONS = {
   encoding: "utf8",
-  timeout: 10_000,
+  timeout: 25_000,
   maxBuffer: 64 * 1024,
   windowsHide: true,
 };
