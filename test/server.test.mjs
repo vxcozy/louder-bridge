@@ -384,6 +384,8 @@ test("acknowledges Claude hooks even when device lighting fails", async (context
   assert.equal(logOutput.includes("private-prompt-sentinel"), false);
   assert.equal("id" in rendered.at(-1)[0], false);
   assert.equal("cwd" in rendered.at(-1)[0], false);
+  assert.equal(rendered.at(-1)[0].ambient, true);
+  assert.equal(rendered.at(-1)[1].state, "standby");
 
   const healthResponse = await fetch(`${bridgeUrl(bridge)}/health`, {
     headers: { authorization: `Bearer ${authToken}` },
@@ -642,6 +644,8 @@ test("serializes rapid Agent Key navigation in press order", async (context) => 
   assert.equal(bridge.store.snapshot()[0].selected, false);
   assert.equal(bridge.store.snapshot()[1].selected, true);
   assert.equal(rendered.at(-1)[1].selected, true);
+  assert.equal(rendered.at(-1)[1].ambient, true);
+  assert.equal(rendered.at(-1)[0].ambient, false);
 });
 
 test("serializes Micro voice press and release into Claude dictation", async (context) => {

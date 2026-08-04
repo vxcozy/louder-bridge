@@ -7,6 +7,12 @@ const EFFECT = {
 
 const STATUS_LIGHT = {
   off: { color: 0x000000, brightness: 0, effect: EFFECT.off, speed: 0 },
+  standby: {
+    color: 0xffffff,
+    brightness: 0.18,
+    effect: EFFECT.solid,
+    speed: 0,
+  },
   idle: { color: 0xffffff, brightness: 0.18, effect: EFFECT.solid, speed: 0 },
   running: {
     color: 0x3b82f6,
@@ -38,7 +44,7 @@ export function lightingForSlots(slots) {
   return slots.map((slot) => ({
     id: slot.slot,
     ...(STATUS_LIGHT[slot.state] ?? STATUS_LIGHT.off),
-    syncKeysLighting: slot.selected,
-    syncAmbientLighting: slot.selected,
+    syncKeysLighting: false,
+    syncAmbientLighting: slot.ambient === true,
   }));
 }

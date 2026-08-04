@@ -195,7 +195,11 @@ files alone.
 | `complete` | Turn stopped normally | green |
 | `needs_input` | Permission, elicitation, or idle prompt | breathing amber |
 | `error` | Turn ended with a failure | breathing red |
-| `off` | Session ended or slot unused | off |
+| `off` | Session ended or slot unused | dim white standby while connected |
+
+The ambient ring copies the color and effect of the session that changed most
+recently. Pressing an assigned Agent Key moves the ambient state to that
+session. The bridge turns all of its lighting off when it releases the Micro.
 
 ## Claude hook events
 

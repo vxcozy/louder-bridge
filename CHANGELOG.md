@@ -46,6 +46,8 @@ have not shipped appear under "Unreleased."
 
 ### Changed
 
+- Unused Agent Keys now stay dim white while Louder Bridge owns the Micro. The
+  ambient ring follows the latest Claude lifecycle color and pulse effect.
 - Logs no longer include project names or session identifiers.
 - The native device process now accepts only schema-checked thread-status
   lighting from Node. It rejects unused status and lighting-configuration
