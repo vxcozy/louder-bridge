@@ -54,7 +54,7 @@ test("installs and removes the launch agent without shell commands", async () =>
   const run = (command, args, options) => {
     assert.deepEqual(options, {
       encoding: "utf8",
-      timeout: 10_000,
+      timeout: 25_000,
       maxBuffer: 64 * 1024,
       windowsHide: true,
     });
