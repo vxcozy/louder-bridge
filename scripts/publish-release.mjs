@@ -56,18 +56,24 @@ function releaseFileMetadata(filename, label) {
 }
 
 function readRelease(execute, repository, tag) {
-  const endpoint = `repos/${repository}/releases/tags/${encodeURIComponent(tag)}`;
   const args = [
-    "api",
-    "--method",
-    "GET",
-    endpoint,
+    "release",
+    "view",
+    tag,
+    "--repo",
+    repository,
+    "--json",
+    "isDraft,isPrerelease,tagName,assets",
     "--jq",
-    "{draft: .draft, prerelease: .prerelease, tagName: .tag_name, assets: [.assets[] | {name: .name, size: .size, digest: .digest, state: .state}]}",
+    "{draft: .isDraft, prerelease: .isPrerelease, tagName: .tagName, assets: [.assets[] | {name: .name, size: .size, digest: .digest, state: .state}]}",
   ];
   const result = execute(args);
   if (result.status !== 0) {
-    if (/\bHTTP 404\b/.test(`${result.stderr}\n${result.stdout}`)) {
+    if (
+      /\b(?:HTTP 404|release not found)\b/i.test(
+        `${result.stderr}\n${result.stdout}`,
+      )
+    ) {
       return null;
     }
     throw commandFailure(args, result);

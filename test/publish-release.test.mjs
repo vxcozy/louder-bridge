@@ -69,7 +69,7 @@ function scripted(responses) {
 test("creates a new draft and verifies the uploaded assets", (t) => {
   const root = makeProject(t);
   const gh = scripted([
-    response({ status: 1, stderr: "gh: Not Found (HTTP 404)" }),
+    response({ status: 1, stderr: "release not found" }),
     response(),
     response(),
     response({ stdout: releaseFor(root) }),
@@ -83,7 +83,16 @@ test("creates a new draft and verifies the uploaded assets", (t) => {
   });
 
   assert.equal(result.resumed, false);
-  assert.match(gh.calls[0].at(-1), /digest: \.digest, state: \.state/);
+  assert.deepEqual(gh.calls[0].slice(0, 5), [
+    "release",
+    "view",
+    "v0.1.0",
+    "--repo",
+    "vxcozy/louder-bridge",
+  ]);
+  assert.ok(gh.calls[0].includes("isDraft,isPrerelease,tagName,assets"));
+  assert.match(gh.calls[0].at(-1), /draft: \.isDraft/);
+  assert.ok(!gh.calls[0].includes("api"));
   assert.deepEqual(gh.calls[1].slice(0, 5), [
     "release",
     "create",
