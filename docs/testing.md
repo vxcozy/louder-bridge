@@ -124,7 +124,35 @@ also record the Claude account type and whether an organization policy applies.
 For `macOS Dictation`, record the selected Dictation language and processing
 setting.
 
-## Latest development-build result
+## Latest release result
+
+The v0.1.2 archive downloaded from its GitHub release passed a focused physical
+test on August 4, 2026:
+
+| Component | Version or result |
+|---|---|
+| macOS | 26.5.2 (25F84) |
+| Claude Desktop | 1.24012.9 |
+| Louder Bridge | 0.1.2, revision `5b579d203e325cd75be5de214879b89dc93db671` |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | Bluetooth |
+| Installation | Upgraded the existing app and background agent without rollback |
+| Permissions | Input Monitoring and Accessibility recovered after approval |
+| Voice and send | MIC hold and release inserted spoken text; the adjacent key sent Return |
+| Lighting | Six-key standby, lifecycle colors, exterior effects, and pulsing passed |
+| App handoff | Closing Claude released the Micro for Codex |
+
+The tester confirmed the lighting visually. Authenticated diagnostics also
+recorded fresh voice, send, lifecycle, connection, and release events from the
+installed v0.1.2 service. No new errors appeared during the run. The same core
+MIC and send controls passed over USB-C on the same hardware.
+
+This focused qualification does not cover every item in this document. The
+visible Cowork composer route, double-tap latching, approval prompts, wired
+restart and power-cycle cases, and the remaining recovery checks remain open.
+
+## Earlier development-build results
 
 The following focused test passed over Bluetooth on August 2, 2026:
 
@@ -157,8 +185,9 @@ send key in Claude Code over USB-C. That check did not cover every restart,
 approval, or power-cycle case in this checklist.
 
 The source installation completed after stale privacy records from earlier ad
-hoc builds were reset. This does not qualify a clean packaged-release
-installation.
+hoc builds were reset. That run did not qualify a clean packaged-release
+installation; the later v0.1.2 test above qualified the downloaded package on
+the same Mac.
 The conflict notice with both apps kept open, double-tap latching, the visible
 Cowork composer route, approval prompts, USB-C restart and power-cycle cases,
 and the rest of this checklist remain open.
