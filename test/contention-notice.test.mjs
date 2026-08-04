@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   CODEX_CONTENTION_MESSAGE,
+  codexContentionMessage,
   showCodexContentionNotice,
 } from "../src/macos/contention-notice.mjs";
 
@@ -44,6 +45,13 @@ test("shows the Codex conflict without blocking the service", () => {
       options: { detached: true, stdio: "ignore" },
     },
   ]);
+});
+
+test("names Hermes Desktop in the Codex conflict notice", () => {
+  assert.equal(
+    codexContentionMessage("Hermes Desktop"),
+    "Codex is open too. Quit Codex to use the Micro in Hermes Desktop. Louder Bridge will reconnect when Codex closes.",
+  );
 });
 
 test("contains a synchronous dialog launch failure", () => {

@@ -22,14 +22,14 @@ test("prints CLI help without starting the bridge", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /^Usage: louder-bridge <command>/);
-  assert.match(result.stdout, /status\s+Show permission, Claude, device, and voice state/);
+  assert.match(result.stdout, /status\s+Show permissions, apps, device, and voice state/);
   assert.equal(result.stderr, "");
 });
 
 test("prints the package version", () => {
   const result = run(["--version"]);
   assert.equal(result.status, 0);
-  assert.equal(result.stdout.trim(), "0.1.2");
+  assert.equal(result.stdout.trim(), "0.2.0");
 });
 
 test("checks source build tools before the native driver is installed", (context) => {

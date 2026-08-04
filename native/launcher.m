@@ -28,6 +28,8 @@ static volatile sig_atomic_t hold_stop_requested = 0;
 #define PERMISSION_POLL_ATTEMPTS 600
 #define PERMISSION_POLL_INTERVAL_US 500000
 #define PERMISSION_WAIT_SECONDS 300
+#define HERMES_ACCESSIBILITY_ATTEMPTS 10
+#define HERMES_ACCESSIBILITY_RETRY_US 100000
 
 static void forward_signal(int signal_number) {
   pid_t process = (pid_t)runtime_process;
@@ -158,23 +160,40 @@ static Boolean copy_rect(
   return success;
 }
 
-static pid_t claude_process_identifier(void) {
+static pid_t process_identifier_for_bundle(const char *bundle_identifier) {
   @autoreleasepool {
+    NSString *identifier = [NSString stringWithUTF8String:bundle_identifier];
     NSArray<NSRunningApplication *> *applications =
       [NSRunningApplication runningApplicationsWithBundleIdentifier:
-        @"com.anthropic.claudefordesktop"];
+        identifier];
     NSRunningApplication *application = applications.firstObject;
     return application == nil ? 0 : application.processIdentifier;
   }
 }
 
-static Boolean frontmost_application_is_claude(void) {
+static pid_t claude_process_identifier(void) {
+  return process_identifier_for_bundle("com.anthropic.claudefordesktop");
+}
+
+static pid_t hermes_process_identifier(void) {
+  return process_identifier_for_bundle("com.nousresearch.hermes");
+}
+
+static Boolean frontmost_application_has_bundle(const char *bundle_identifier) {
   @autoreleasepool {
     NSRunningApplication *application =
       [NSWorkspace sharedWorkspace].frontmostApplication;
-    return [application.bundleIdentifier
-      isEqualToString:@"com.anthropic.claudefordesktop"];
+    NSString *identifier = [NSString stringWithUTF8String:bundle_identifier];
+    return [application.bundleIdentifier isEqualToString:identifier];
   }
+}
+
+static Boolean frontmost_application_is_claude(void) {
+  return frontmost_application_has_bundle("com.anthropic.claudefordesktop");
+}
+
+static Boolean frontmost_application_is_hermes(void) {
+  return frontmost_application_has_bundle("com.nousresearch.hermes");
 }
 
 typedef enum {
@@ -205,6 +224,15 @@ static int print_composer_gesture_plan(const char *mode) {
   );
   return 0;
 }
+
+static int print_hermes_accessibility_plan(void) {
+  printf(
+    "AXManualAccessibility %d %d\n",
+    HERMES_ACCESSIBILITY_ATTEMPTS,
+    HERMES_ACCESSIBILITY_RETRY_US
+  );
+  return 0;
+}
 #endif
 
 static Boolean element_label_equals(
@@ -213,10 +241,11 @@ static Boolean element_label_equals(
 ) {
   return
     string_attribute_equals(element, kAXDescriptionAttribute, expected) ||
-    string_attribute_equals(element, kAXTitleAttribute, expected);
+    string_attribute_equals(element, kAXTitleAttribute, expected) ||
+    string_attribute_equals(element, kAXHelpAttribute, expected);
 }
 
-static ComposerButtonMode composer_button_mode(AXUIElementRef element) {
+static ComposerButtonMode claude_composer_button_mode(AXUIElementRef element) {
   if (!string_attribute_equals(element, kAXRoleAttribute, "AXButton")) {
     return kComposerButtonMissing;
   }
@@ -235,14 +264,27 @@ static ComposerButtonMode composer_button_mode(AXUIElementRef element) {
   return kComposerButtonMissing;
 }
 
+static ComposerButtonMode hermes_composer_button_mode(AXUIElementRef element) {
+  if (element_label_equals(element, "Voice dictation")) {
+    return kComposerButtonToggle;
+  }
+  if (element_label_equals(element, "Stop dictation")) {
+    return kComposerButtonActive;
+  }
+  return kComposerButtonMissing;
+}
+
+typedef ComposerButtonMode (*ComposerButtonResolver)(AXUIElementRef element);
+
 static AXUIElementRef find_record_button(
   AXUIElementRef element,
   ComposerButtonMode *mode,
-  int *remaining
+  int *remaining,
+  ComposerButtonResolver resolve_mode
 ) {
   if (*remaining <= 0) return NULL;
   *remaining -= 1;
-  ComposerButtonMode candidate = composer_button_mode(element);
+  ComposerButtonMode candidate = resolve_mode(element);
   if (candidate != kComposerButtonMissing) {
     *mode = candidate;
     return (AXUIElementRef)CFRetain(element);
@@ -268,10 +310,13 @@ static AXUIElementRef find_record_button(
     index < CFArrayGetCount(children) && *remaining > 0;
     index += 1
   ) {
+    CFTypeRef child = CFArrayGetValueAtIndex(children, index);
+    if (CFGetTypeID(child) != AXUIElementGetTypeID()) continue;
     match = find_record_button(
-      (AXUIElementRef)CFArrayGetValueAtIndex(children, index),
+      (AXUIElementRef)child,
       mode,
-      remaining
+      remaining,
+      resolve_mode
     );
     if (match != NULL) break;
   }
@@ -279,37 +324,117 @@ static AXUIElementRef find_record_button(
   return match;
 }
 
-static AXUIElementRef focused_claude_record_button(
-  ComposerButtonMode *mode
+static AXUIElementRef focused_record_button(
+  pid_t process_identifier,
+  ComposerButtonMode *mode,
+  ComposerButtonResolver resolve_mode,
+  Boolean enable_manual_accessibility
 ) {
-  pid_t process_identifier = claude_process_identifier();
   if (process_identifier == 0) return NULL;
   AXUIElementRef application = AXUIElementCreateApplication(
     process_identifier
   );
+  if (enable_manual_accessibility) {
+    AXUIElementSetAttributeValue(
+      application,
+      CFSTR("AXManualAccessibility"),
+      kCFBooleanTrue
+    );
+  }
   CFTypeRef focused_window = NULL;
-  AXError error = AXUIElementCopyAttributeValue(
+  AXError focused_error = AXUIElementCopyAttributeValue(
     application,
     kAXFocusedWindowAttribute,
     &focused_window
   );
-  CFRelease(application);
   if (
-    error != kAXErrorSuccess ||
-    focused_window == NULL ||
-    CFGetTypeID(focused_window) != AXUIElementGetTypeID()
+    focused_error == kAXErrorSuccess &&
+    focused_window != NULL &&
+    CFGetTypeID(focused_window) == AXUIElementGetTypeID()
   ) {
-    if (focused_window != NULL) CFRelease(focused_window);
+    int remaining = 20000;
+    AXUIElementRef button = find_record_button(
+      (AXUIElementRef)focused_window,
+      mode,
+      &remaining,
+      resolve_mode
+    );
+    CFRelease(focused_window);
+    if (button != NULL) {
+      CFRelease(application);
+      return button;
+    }
+  } else if (focused_window != NULL) {
+    CFRelease(focused_window);
+  }
+
+  CFTypeRef windows_value = NULL;
+  AXError windows_error = AXUIElementCopyAttributeValue(
+    application,
+    kAXWindowsAttribute,
+    &windows_value
+  );
+  if (
+    windows_error != kAXErrorSuccess ||
+    windows_value == NULL ||
+    CFGetTypeID(windows_value) != CFArrayGetTypeID()
+  ) {
+    if (windows_value != NULL) CFRelease(windows_value);
+    CFRelease(application);
     return NULL;
   }
-  int remaining = 20000;
-  AXUIElementRef button = find_record_button(
-    (AXUIElementRef)focused_window,
-    mode,
-    &remaining
-  );
-  CFRelease(focused_window);
+
+  CFArrayRef windows = (CFArrayRef)windows_value;
+  AXUIElementRef button = NULL;
+  for (CFIndex index = 0; index < CFArrayGetCount(windows); index += 1) {
+    CFTypeRef window = CFArrayGetValueAtIndex(windows, index);
+    if (CFGetTypeID(window) != AXUIElementGetTypeID()) continue;
+    int remaining = 20000;
+    button = find_record_button(
+      (AXUIElementRef)window,
+      mode,
+      &remaining,
+      resolve_mode
+    );
+    if (button != NULL) break;
+  }
+  CFRelease(windows_value);
+  CFRelease(application);
   return button;
+}
+
+static AXUIElementRef focused_claude_record_button(
+  ComposerButtonMode *mode
+) {
+  return focused_record_button(
+    claude_process_identifier(),
+    mode,
+    claude_composer_button_mode,
+    false
+  );
+}
+
+static AXUIElementRef focused_hermes_record_button(
+  ComposerButtonMode *mode
+) {
+  pid_t process_identifier = hermes_process_identifier();
+  for (
+    int attempt = 0;
+    attempt < HERMES_ACCESSIBILITY_ATTEMPTS;
+    attempt += 1
+  ) {
+    AXUIElementRef button = focused_record_button(
+      process_identifier,
+      mode,
+      hermes_composer_button_mode,
+      true
+    );
+    if (button != NULL) return button;
+    if (attempt + 1 < HERMES_ACCESSIBILITY_ATTEMPTS) {
+      usleep(HERMES_ACCESSIBILITY_RETRY_US);
+    }
+  }
+  return NULL;
 }
 
 static CGEventRef mouse_event(CGEventType type, CGPoint point) {
@@ -366,14 +491,28 @@ static Boolean click_point(CGPoint point) {
   return true;
 }
 
-static int hold_composer_dictation(
-  AXUIElementRef button,
-  ComposerButtonMode mode
-) {
+static Boolean activate_toggle_control(AXUIElementRef element) {
+  if (click_accessibility_button(element)) return true;
   CGPoint position;
   CGSize size;
-  if (!copy_rect(button, &position, &size)) {
-    fputs("Louder Bridge could not locate Claude's dictation control.\n", stderr);
+  if (!copy_rect(element, &position, &size)) return false;
+  return click_point(CGPointMake(
+    position.x + size.width / 2,
+    position.y + size.height / 2
+  ));
+}
+
+static int hold_composer_dictation(
+  AXUIElementRef button,
+  ComposerButtonMode mode,
+  const char *surface,
+  const char *ready_method
+) {
+  Boolean uses_toggle = composer_button_uses_toggle(mode);
+  CGPoint position = CGPointZero;
+  CGSize size = CGSizeZero;
+  if (!uses_toggle && !copy_rect(button, &position, &size)) {
+    fprintf(stderr, "Louder Bridge could not locate %s's dictation control.\n", surface);
     return 6;
   }
   CGPoint point = CGPointMake(
@@ -381,24 +520,23 @@ static int hold_composer_dictation(
     position.y + size.height / 2
   );
   if (mode == kComposerButtonActive) {
-    if (!click_point(point)) {
-      fputs("Louder Bridge could not stop the active Claude dictation.\n", stderr);
+    if (!activate_toggle_control(button)) {
+      fprintf(stderr, "Louder Bridge could not stop the active %s dictation.\n", surface);
       return 6;
     }
-    fputs("Claude dictation was already running, so Louder Bridge stopped it. Press MIC again to start.\n", stderr);
+    fprintf(stderr, "%s dictation was already running, so Louder Bridge stopped it. Press MIC again to start.\n", surface);
     return 8;
   }
 
-  Boolean uses_toggle = composer_button_uses_toggle(mode);
   if (uses_toggle) {
-    if (!click_point(point)) {
-      fputs("Louder Bridge could not start Claude dictation.\n", stderr);
+    if (!activate_toggle_control(button)) {
+      fprintf(stderr, "Louder Bridge could not start %s dictation.\n", surface);
       return 6;
     }
   } else {
     CGEventRef down = mouse_event(kCGEventLeftMouseDown, point);
     if (down == NULL) {
-      fputs("Louder Bridge could not start Claude dictation.\n", stderr);
+      fprintf(stderr, "Louder Bridge could not start %s dictation.\n", surface);
       return 6;
     }
     CGEventPost(kCGHIDEventTap, down);
@@ -406,7 +544,7 @@ static int hold_composer_dictation(
   }
   CFAbsoluteTime pressed_at = CFAbsoluteTimeGetCurrent();
   usleep(50000);
-  puts("ready claude-composer");
+  printf("ready %s\n", ready_method);
   fflush(stdout);
   int wait_error = wait_for_stop_signal();
 
@@ -415,14 +553,14 @@ static int hold_composer_dictation(
     usleep((useconds_t)((0.55 - held_for) * 1000000));
   }
   if (uses_toggle) {
-    if (!click_point(point)) {
-      fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
+    if (!activate_toggle_control(button)) {
+      fprintf(stderr, "Louder Bridge could not stop %s dictation.\n", surface);
       return 6;
     }
   } else {
     CGEventRef up = mouse_event(kCGEventLeftMouseUp, point);
     if (up == NULL) {
-      fputs("Louder Bridge could not stop Claude dictation.\n", stderr);
+      fprintf(stderr, "Louder Bridge could not stop %s dictation.\n", surface);
       return 6;
     }
     CGEventPost(kCGHIDEventTap, up);
@@ -468,6 +606,78 @@ static int submit_in_claude(void) {
     fputs("Louder Bridge could not release Return in Claude.\n", stderr);
     return 6;
   }
+  return 0;
+}
+
+static int submit_in_hermes(void) {
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (!frontmost_application_is_hermes()) {
+    fputs("Bring Hermes to the front before using the send key.\n", stderr);
+    return 4;
+  }
+  if (!post_key_event(36, true, false)) {
+    fputs("Louder Bridge could not press Return in Hermes.\n", stderr);
+    return 6;
+  }
+  usleep(30000);
+  if (!post_key_event(36, false, false)) {
+    fputs("Louder Bridge could not release Return in Hermes.\n", stderr);
+    return 6;
+  }
+  return 0;
+}
+
+static int activate_hermes(void) {
+  @autoreleasepool {
+    NSArray<NSRunningApplication *> *applications =
+      [NSRunningApplication runningApplicationsWithBundleIdentifier:
+        @"com.nousresearch.hermes"];
+    NSRunningApplication *application = applications.firstObject;
+    if (application == nil) return 4;
+    if (![application activateWithOptions:0]) {
+      return 4;
+    }
+  }
+  for (int attempt = 0; attempt < 20; attempt += 1) {
+    if (frontmost_application_is_hermes()) return 0;
+    usleep(25000);
+  }
+  return 4;
+}
+
+static int open_hermes_session_slot(const char *slot_text) {
+  static const CGKeyCode key_codes[] = {
+    18, 19, 20, 21, 23, 22, 26, 28, 25
+  };
+  char *end = NULL;
+  long slot = strtol(slot_text, &end, 10);
+  if (end == slot_text || *end != '\0' || slot < 1 || slot > 9) return 2;
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (activate_hermes() != 0) {
+    fputs("Open Hermes before using an Agent Key.\n", stderr);
+    return 4;
+  }
+  CGEventRef down = CGEventCreateKeyboardEvent(NULL, key_codes[slot - 1], true);
+  CGEventRef up = CGEventCreateKeyboardEvent(NULL, key_codes[slot - 1], false);
+  if (down == NULL || up == NULL) {
+    if (down != NULL) CFRelease(down);
+    if (up != NULL) CFRelease(up);
+    fputs("Louder Bridge could not select the Hermes session.\n", stderr);
+    return 6;
+  }
+  CGEventSetFlags(down, kCGEventFlagMaskControl);
+  CGEventSetFlags(up, kCGEventFlagMaskControl);
+  CGEventPost(kCGHIDEventTap, down);
+  usleep(30000);
+  CGEventPost(kCGHIDEventTap, up);
+  CFRelease(down);
+  CFRelease(up);
   return 0;
 }
 
@@ -617,7 +827,44 @@ static int hold_claude_dictation(void) {
   ComposerButtonMode mode = kComposerButtonMissing;
   AXUIElementRef button = focused_claude_record_button(&mode);
   if (button == NULL) return hold_system_dictation();
-  int result = hold_composer_dictation(button, mode);
+  int result = hold_composer_dictation(
+    button,
+    mode,
+    "Claude",
+    "claude-composer"
+  );
+  CFRelease(button);
+  return result;
+}
+
+static int hold_hermes_dictation(void) {
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (!frontmost_application_is_hermes()) {
+    fputs("Bring Hermes to the front before using the MIC key.\n", stderr);
+    return 4;
+  }
+  hold_stop_requested = 0;
+  struct sigaction stop_action = { 0 };
+  stop_action.sa_handler = request_hold_stop;
+  sigemptyset(&stop_action.sa_mask);
+  sigaction(SIGINT, &stop_action, NULL);
+  sigaction(SIGTERM, &stop_action, NULL);
+
+  ComposerButtonMode mode = kComposerButtonMissing;
+  AXUIElementRef button = focused_hermes_record_button(&mode);
+  if (button == NULL) {
+    fputs("Hermes does not expose its Voice dictation control.\n", stderr);
+    return 5;
+  }
+  int result = hold_composer_dictation(
+    button,
+    mode,
+    "Hermes",
+    "hermes-composer"
+  );
   CFRelease(button);
   return result;
 }
@@ -1029,6 +1276,18 @@ int main(int argc, char *argv[]) {
   if (argc > 1 && strcmp(argv[1], "--claude-submit") == 0) {
     return submit_in_claude();
   }
+  if (argc > 1 && strcmp(argv[1], "--hermes-dictation-hold") == 0) {
+    return hold_hermes_dictation();
+  }
+  if (argc > 1 && strcmp(argv[1], "--hermes-submit") == 0) {
+    return submit_in_hermes();
+  }
+  if (
+    argc == 3 &&
+    strcmp(argv[1], "--hermes-session-slot") == 0
+  ) {
+    return open_hermes_session_slot(argv[2]);
+  }
   if (argc > 1 && strcmp(argv[1], "--micro-device") == 0) {
     return run_micro_device();
   }
@@ -1050,6 +1309,12 @@ int main(int argc, char *argv[]) {
     strcmp(argv[1], "--test-composer-gesture") == 0
   ) {
     return print_composer_gesture_plan(argv[2]);
+  }
+  if (
+    argc == 2 &&
+    strcmp(argv[1], "--test-hermes-accessibility-plan") == 0
+  ) {
+    return print_hermes_accessibility_plan();
   }
 #endif
   if (argc > 1 && strcmp(argv[1], "--input-monitoring-status-code") == 0) {

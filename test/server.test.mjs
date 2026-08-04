@@ -23,6 +23,17 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+function postHook(bridge, body) {
+  return fetch(`${bridgeUrl(bridge)}/hook`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${authToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 test("refuses to listen beyond the local machine", async () => {
   await assert.rejects(
     startBridge({
@@ -122,7 +133,8 @@ test("reports service and device health", async (context) => {
       codexDesktop: "unknown",
       inputMonitoring: "unknown",
       accessibility: "unknown",
-      version: "0.1.2",
+      activeSurface: "claude",
+      version: "0.2.0",
       buildRevision: null,
       nodeVersion: process.version,
       navigator: {
@@ -730,6 +742,125 @@ test("routes the Micro send key to Claude", async (context) => {
 
   await submitButton();
   assert.deepEqual(actions, ["submit"]);
+});
+
+test("keeps Hermes sessions isolated and routes every Micro control to Hermes", async (context) => {
+  const actions = [];
+  const rendered = [];
+  let controls;
+  const adapter = (surface) => ({
+    label: surface === "hermes" ? "Hermes" : "Claude",
+    navigator: {
+      metadata: () => ({ id: `${surface}-navigator`, support: "test" }),
+      async open(sessionId) {
+        actions.push([surface, "open", sessionId]);
+      },
+    },
+    submit: {
+      async submit() {
+        actions.push([surface, "submit"]);
+      },
+    },
+    voice: {
+      metadata: () => ({ id: `${surface}-voice`, support: "test" }),
+      status: () => ({
+        id: `${surface}-voice`,
+        support: "test",
+        state: "idle",
+      }),
+      async start() {
+        actions.push([surface, "voice-start"]);
+      },
+      async stop() {
+        actions.push([surface, "voice-stop"]);
+      },
+    },
+  });
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger,
+    surfaceAdapters: {
+      claude: adapter("claude"),
+      hermes: adapter("hermes"),
+    },
+    deviceFactory(options) {
+      controls = options;
+      return {
+        async start() {},
+        async render(slots) {
+          rendered.push(slots);
+        },
+        status() {
+          return { state: "connected", error: null };
+        },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+
+  await bridge.setSurface("hermes");
+  const beforeHooks = rendered.length;
+  assert.equal(
+    (await postHook(bridge, {
+      surface: "claude",
+      session_id: "claude-session",
+      hook_event_name: "SessionStart",
+    })).status,
+    200,
+  );
+  assert.equal(rendered.length, beforeHooks);
+
+  assert.equal(
+    (await postHook(bridge, {
+      surface: "hermes",
+      session_id: "20260804_090000_abc123",
+      hook_event_name: "UserPromptSubmit",
+    })).status,
+    200,
+  );
+  assert.equal(rendered.at(-1)[0].state, "running");
+  assert.equal(bridge.health().service.activeSurface, "hermes");
+  assert.equal(bridge.health().slots[0].state, "running");
+  assert.equal(bridge.health().service.navigator.id, "hermes-navigator");
+
+  await controls.onAgentKey(0);
+  await controls.onSubmitButton();
+  await controls.onVoiceButton("press");
+  await bridge.setSurface("claude");
+  assert.deepEqual(actions, [
+    ["hermes", "open", "20260804_090000_abc123"],
+    ["hermes", "submit"],
+    ["hermes", "voice-start"],
+    ["hermes", "voice-stop"],
+  ]);
+  assert.equal(bridge.health().service.activeSurface, "claude");
+  assert.equal(bridge.health().slots[0].state, "idle");
+  assert.equal(bridge.health().service.navigator.id, "claude-navigator");
+});
+
+test("rejects hooks from unknown surfaces", async (context) => {
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    autoConnectDevice: false,
+    authToken,
+    logger,
+  });
+  context.after(() => bridge.stop());
+
+  const response = await postHook(bridge, {
+    surface: "unknown",
+    session_id: "private-session",
+    hook_event_name: "SessionStart",
+  });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: "Unknown hook surface.",
+  });
 });
 
 test("stops latched Claude dictation when the Micro disconnects", async (context) => {

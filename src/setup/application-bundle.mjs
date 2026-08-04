@@ -152,7 +152,7 @@ export function applicationBundlePathsForCli(cliPath) {
   return applicationBundlePathsForApp(app);
 }
 
-export function applicationInfoPlist({ version = "0.1.2" } = {}) {
+export function applicationInfoPlist({ version = "0.2.0" } = {}) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -178,7 +178,7 @@ export function applicationInfoPlist({ version = "0.1.2" } = {}) {
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>NSAccessibilityUsageDescription</key>
-    <string>Louder Bridge uses Accessibility to control Claude dictation while you hold the Micro's MIC key.</string>
+    <string>Louder Bridge uses Accessibility to control dictation in Claude and Hermes while you hold the Micro's MIC key.</string>
   </dict>
 </plist>
 `;

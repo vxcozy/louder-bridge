@@ -28,6 +28,7 @@ const payload = Object.fromEntries(
     input[field],
   ]),
 );
+payload.surface = "claude";
 
 try {
   const authToken = readAuthToken();

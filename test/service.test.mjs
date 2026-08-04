@@ -3,8 +3,16 @@ import assert from "node:assert/strict";
 import {
   isClaudeDesktopRunning,
   isCodexDesktopRunning,
-  startDesktopService,
+  isHermesDesktopRunning,
+  startDesktopService as startDesktopServiceImplementation,
 } from "../src/service.mjs";
+
+function startDesktopService(options) {
+  return startDesktopServiceImplementation({
+    checkHermes: async () => false,
+    ...options,
+  });
+}
 
 test("detects whether Claude Desktop is running", async () => {
   const calls = [];
@@ -49,6 +57,93 @@ test("detects the ChatGPT and Codex desktop process names", async () => {
     ["/usr/bin/pgrep", "-x", "ChatGPT"],
     ["/usr/bin/pgrep", "-x", "Codex"],
   ]);
+});
+
+test("detects whether Hermes Desktop is running", async () => {
+  const calls = [];
+  assert.equal(
+    await isHermesDesktopRunning(async (command, args, options) => {
+      calls.push({ command, args, options });
+      return { stdout: "123\n" };
+    }),
+    true,
+  );
+  assert.deepEqual(calls, [
+    {
+      command: "/usr/bin/pgrep",
+      args: ["-x", "Hermes"],
+      options: { timeout: 2000, maxBuffer: 1024, windowsHide: true },
+    },
+  ]);
+});
+
+test("gives Hermes Desktop ownership of the Micro", async () => {
+  const calls = [];
+  const service = await startDesktopService({
+    checkClaude: async () => false,
+    checkHermes: async () => true,
+    checkCodex: async () => false,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async setSurface(surface) {
+        calls.push(["surface", surface]);
+      },
+      async connectDevice() {
+        calls.push(["connect"]);
+      },
+      async disconnectDevice() {
+        calls.push(["disconnect"]);
+      },
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  assert.deepEqual(calls, [["surface", "hermes"], ["connect"]]);
+  await service.stop();
+});
+
+test("releases the Micro while Claude and Hermes are both open", async () => {
+  let hermesIsRunning = false;
+  const calls = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkHermes: async () => hermesIsRunning,
+    checkCodex: async () => false,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async setSurface(surface) {
+        calls.push(["surface", surface]);
+      },
+      async connectDevice() {
+        calls.push(["connect"]);
+      },
+      async disconnectDevice() {
+        calls.push(["disconnect"]);
+      },
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  assert.deepEqual(calls, [["surface", "claude"], ["connect"]]);
+  hermesIsRunning = true;
+  await service.sync();
+  assert.deepEqual(calls, [
+    ["surface", "claude"],
+    ["connect"],
+    ["disconnect"],
+    ["surface", null],
+  ]);
+  await service.stop();
 });
 
 test("reports Micro input contention once for each app overlap", async () => {
@@ -108,6 +203,7 @@ test("reports Micro input contention once for each app overlap", async () => {
   assert.deepEqual(statuses.at(-1), {
     claudeDesktop: "open",
     codexDesktop: "open",
+    hermesDesktop: "closed",
   });
   await service.stop();
 });
@@ -223,6 +319,7 @@ test("releases the Micro when desktop ownership cannot be checked", async () => 
   assert.deepEqual(statuses.at(-1), {
     claudeDesktop: "open",
     codexDesktop: "unknown",
+    hermesDesktop: "closed",
   });
   assert.deepEqual(errors, ["process check failed"]);
 
@@ -276,12 +373,13 @@ test("reports both desktop ownership check failures", async () => {
   assert.deepEqual(statuses.at(-1), {
     claudeDesktop: "unknown",
     codexDesktop: "unknown",
+    hermesDesktop: "closed",
   });
   assert.equal(errors.length, 1);
   assert.equal(errors[0] instanceof AggregateError, true);
   assert.equal(
     errors[0].message,
-    "Louder Bridge could not check whether Claude or Codex is open.",
+    "Louder Bridge could not check whether a supported app or Codex is open.",
   );
   assert.deepEqual(
     errors[0].errors.map((error) => error.message),

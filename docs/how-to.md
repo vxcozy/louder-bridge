@@ -5,15 +5,15 @@ For a first-time setup, start with the [tutorial](tutorial.md).
 ## Grant macOS permissions
 
 Louder Bridge needs macOS Input Monitoring permission to open the Micro in
-non-exclusive HID mode. It needs Accessibility permission to operate Claude's
-dictation control.
+non-exclusive HID mode. It needs Accessibility permission to operate dictation
+and composer controls in Claude or Hermes.
 
 1. Open **System Settings → Privacy & Security → Input Monitoring**.
 2. Add or enable **Louder Bridge**.
 3. Open **Privacy & Security → Accessibility** and enable **Louder Bridge**
    there too.
-4. Return to Claude Desktop. The background agent starts as soon as both
-   permissions are available.
+4. Return to Claude Desktop or Hermes Desktop. The background agent starts as
+   soon as both permissions are available.
 
 The app waits up to five minutes for each permission. If that time expires, it
 opens the missing setting and asks you to open Louder Bridge again after you
@@ -64,8 +64,8 @@ Releases page. The checksum is attached to the same release.
 
 ## Troubleshoot the background agent
 
-`npm run status` reports the launch agent, authenticated hook server, Claude
-Desktop, and the Micro. When the server is down, it reads the installed app
+`npm run status` reports the launch agent, authenticated hook server, supported
+desktop apps, and the Micro. When the server is down, it reads the installed app
 version and asks a fresh app process for both macOS permission states. If the
 agent or server is unavailable, reinstall and restart it:
 
@@ -110,7 +110,7 @@ Grant Input Monitoring permission to Louder Bridge. If the error remains:
 1. Confirm `npm run status` reports Input Monitoring as granted.
 2. Quit any other app that is actively controlling the Micro.
 3. Disconnect and reconnect the Micro.
-4. Quit and reopen Claude Desktop.
+4. Quit and reopen the app you want to use with the Micro.
 
 ### MIC does not start Claude dictation
 
@@ -142,6 +142,27 @@ Code](https://code.claude.com/docs/en/voice-dictation). The fallback depends on
 instead. Check the Mac's Dictation language and processing settings when that
 route is active.
 
+### MIC does not start Hermes dictation
+
+Run `npm run status` first. Hermes Desktop must be the active app, and Input
+Monitoring and Accessibility must both report `granted`.
+
+Then check the following:
+
+1. Quit Codex and Claude Desktop.
+2. Focus the composer in a local Hermes session.
+3. Confirm the composer shows a **Voice dictation** control.
+4. Allow microphone access for Hermes when macOS asks.
+5. Hold MIC until Hermes starts listening, then release it.
+
+If lifecycle lighting works, the plugin is already loaded. MIC uses a separate
+Accessibility route, so check the Voice dictation button and macOS permissions
+instead. A new plugin installation needs a full Hermes restart before its hooks
+load.
+
+Agent Key navigation uses Hermes's default `Ctrl+1` through `Ctrl+9` recent
+session shortcuts. Restore those bindings if session navigation fails.
+
 ### The local port is already in use
 
 Choose another loopback port and reinstall:
@@ -155,7 +176,7 @@ Non-loopback addresses are rejected.
 
 ## Verify state changes without waiting for Claude
 
-Open Claude Desktop and turn on the Micro, then simulate states:
+Open one supported desktop app and turn on the Micro, then simulate states:
 
 ```bash
 node src/cli.mjs simulate running
@@ -215,17 +236,17 @@ The bridge reads or writes `settings.json` inside that directory.
 
 ## Return lighting control to Codex
 
-ChatGPT and Louder Bridge can overwrite each other's RGB updates while both
-Claude and ChatGPT are open.
+Codex and Louder Bridge can overwrite each other's RGB updates while Codex and
+a supported app are open.
 
 To return full lighting ownership to Codex:
 
-1. Quit Claude Desktop.
+1. Quit Claude Desktop and Hermes Desktop.
 2. Bring ChatGPT or Codex to the foreground.
 3. Trigger a Codex session update if the lighting does not refresh
    immediately.
 
-The background agent notices that Claude has closed and releases the Micro.
+The background agent releases the Micro when neither supported app is open.
 
 ## Remove Louder Bridge from Claude Code
 
@@ -242,6 +263,7 @@ npm run uninstall
 ```
 
 The command stops the bridge and preserves unrelated settings and hooks in
-`~/.claude/settings.json`. It also removes the installed app and private
+`~/.claude/settings.json`. It removes only the managed Hermes plugin and its
+configuration entries. It also removes the installed app and private
 authentication token. Logs remain in `~/Library/Logs/LouderBridge`; you can
 delete them separately.

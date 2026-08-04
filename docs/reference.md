@@ -8,9 +8,9 @@
 | Node.js for source setup | 22 or newer |
 | Hardware | Work Louder Codex Micro |
 | Hardware connection | USB-C or Bluetooth |
-| Agent surface | Local sessions in Claude Desktop's Code tab |
-| Voice service | Claude voice when its composer control is available; otherwise macOS Dictation |
-| Permissions | Input Monitoring and Accessibility for Louder Bridge; Microphone for Claude Desktop |
+| Agent surfaces | Local Claude Code sessions in Claude Desktop; local sessions in Hermes Desktop |
+| Voice service | Claude voice, Hermes Voice dictation, or macOS Dictation |
+| Permissions | Input Monitoring and Accessibility for Louder Bridge; Microphone for the app handling dictation |
 | Device driver | Bundled native IOKit driver; vendor-supported interface required for v1 |
 | Protocol reference | FreeMicro revision `64258eb6cc3312a43f9f9f86d87e55e0b609ccc5` (MIT) |
 
@@ -96,6 +96,22 @@ If failed setup needs to remove a settings file that it created, rollback
 checks the file and its bridge hooks first. A file that was replaced, cleared,
 or given other settings is left in place.
 
+## Hermes plugin
+
+When the `hermes` executable is available, opening Louder Bridge installs a
+managed plugin at `~/.hermes/plugins/louder-bridge` and enables it without tool
+override permission. The plugin sends only the surface name, session ID, and
+lifecycle state to the authenticated loopback server.
+
+Setup refuses to overwrite a plugin with the same name unless it has the Louder
+Bridge ownership marker. Upgrades stage the replacement and restore the old
+plugin and configuration if activation fails. Uninstall removes only the
+managed plugin and its entries from Hermes's enabled, disabled, and tool
+override settings.
+
+Hermes loads newly enabled plugins at startup. Restart Hermes Desktop after the
+first installation or an upgrade.
+
 ## Background agent
 
 Setup creates a per-user launch agent with these properties:
@@ -104,7 +120,7 @@ Setup creates a per-user launch agent with these properties:
 |---|---|
 | Label | `app.louder-bridge.agent` |
 | Start policy | After permission approval, then at login with automatic restart |
-| Device policy | Connect while Claude Desktop is open |
+| Device policy | Connect while exactly one of Claude Desktop or Hermes Desktop is open |
 | Hook server | Always available on the configured loopback address |
 | Standard log | `~/Library/Logs/LouderBridge/bridge.log` |
 | Error log | `~/Library/Logs/LouderBridge/bridge-error.log` |
@@ -189,10 +205,10 @@ files alone.
 
 ## Lighting states
 
-| Internal state | Claude condition | Agent Key |
+| Internal state | Agent condition | Agent Key |
 |---|---|---|
 | `idle` | Session ready | dim white |
-| `running` | Prompt submitted; Claude is working | breathing blue |
+| `running` | Prompt submitted; the agent is working | breathing blue |
 | `complete` | Turn stopped normally | green |
 | `needs_input` | Permission, elicitation, or idle prompt | breathing amber |
 | `error` | Turn ended with a failure | breathing red |
@@ -219,6 +235,24 @@ Setup registers command hooks for:
 Each hook has a two-second Claude timeout. The hook's loopback request has a
 400-millisecond timeout and exits successfully when the bridge is unavailable.
 
+## Hermes hook events
+
+The managed plugin maps Hermes hooks to the same internal states:
+
+| Hermes hook | Resulting state |
+|---|---|
+| `on_session_start` | `idle` |
+| `pre_llm_call` | `running` |
+| `post_llm_call` | `complete` |
+| `pre_approval_request` | `needs_input` |
+| `post_approval_response` | `running` |
+| unsuccessful `on_session_end` | `error` |
+| `on_session_finalize` | `off` |
+
+The plugin queues requests in a daemon thread, uses a 400-millisecond network
+timeout, and ignores delivery failures. Hermes keeps working when Louder Bridge
+or the Micro is unavailable.
+
 ## Loopback HTTP interface
 
 The event server listens only on the configured loopback address.
@@ -233,10 +267,12 @@ Returns bridge status and the six current slot states:
   "service": {
     "mode": "service",
     "claudeDesktop": "open",
+    "hermesDesktop": "closed",
     "codexDesktop": "closed",
+    "activeSurface": "claude",
     "inputMonitoring": "granted",
     "accessibility": "granted",
-    "version": "0.1.2",
+    "version": "0.2.0",
     "buildRevision": "0123456789abcdef0123456789abcdef01234567",
     "nodeVersion": "v24.8.0",
     "navigator": {
@@ -305,13 +341,15 @@ requests.
 
 ### `POST /hook`
 
-Accepts a Claude hook event as JSON. Request bodies are limited to 64 KiB.
+Accepts a Claude or Hermes hook event as JSON. Request bodies are limited to
+64 KiB.
 
 Recognized fields are:
 
 - `session_id`
 - `hook_event_name`
 - `notification_type`
+- `surface` (`claude` or `hermes`)
 
 The hook does not forward working directories, prompts, responses, model
 names, tool data, or transcripts. The health response omits session IDs. The
@@ -322,17 +360,18 @@ entries and older log files.
 
 - The bridge exposes six slots numbered 1–6 to users and 0–5 internally.
 - A new session takes the first unused slot.
-- A known session keeps its slot until Claude sends `SessionEnd`.
+- A known session keeps its slot until its app sends `SessionEnd`.
 - An ended session releases its slot and is no longer available through its
   Agent Key.
 - When all slots are occupied, the oldest inactive session is replaced first.
 - Sessions in `running` or `needs_input` state are treated as active.
-- Pressing an assigned Agent Key selects its slot and opens its Claude session.
-- Holding MIC starts dictation in the active Claude Code composer.
+- Pressing an assigned Agent Key selects its slot and opens its session.
+- Holding MIC starts dictation in the active composer.
 - Releasing MIC stops dictation without submitting the composer.
 - Double-tapping MIC within 350 ms latches dictation until the next press.
 - A device disconnect while MIC is held or latched stops dictation.
-- Pressing the key to the right of MIC sends Return to Claude once per press.
+- Pressing the key to the right of MIC sends Return to the active app once per
+  press.
 
 ## Source layout
 
@@ -340,7 +379,7 @@ entries and older log files.
 |---|---|
 | `src/cli.mjs` | CLI entry point |
 | `src/server.mjs` | Loopback event server and orchestration |
-| `src/service.mjs` | Claude-aware background lifecycle |
+| `src/service.mjs` | Desktop app ownership and background lifecycle |
 | `src/hook.mjs` | Claude hook client and payload filtering |
 | `src/state/session-store.mjs` | Six-slot allocation and lifecycle state |
 | `src/device/worklouder.mjs` | Device discovery, connection, and Agent Keys |
@@ -351,10 +390,14 @@ entries and older log files.
 | `src/claude/open-session.mjs` | Experimental Claude resume URL |
 | `src/claude/voice.mjs` | Experimental Claude dictation adapter |
 | `src/claude/submit.mjs` | Claude composer and approval submit adapter |
+| `src/hermes/plugin/` | Hermes lifecycle plugin |
+| `src/hermes/navigator.mjs` | Hermes recent-session navigation adapter |
+| `src/hermes/voice.mjs` | Hermes Voice dictation adapter |
+| `src/hermes/submit.mjs` | Hermes composer and approval submit adapter |
+| `src/setup/hermes-plugin.mjs` | Hermes plugin installation and rollback |
 | `src/macos/input-monitoring.mjs` | Native permission status checks |
-| `src/macos/accessibility.mjs` | Native Accessibility permission status checks |
 | `src/macos/native-executable.mjs` | Mach-O validation shared by native helpers |
-| `native/launcher.m` | App launcher, permission onboarding, and Claude dictation control |
+| `native/launcher.m` | App launcher, permission onboarding, dictation, submit, and Hermes navigation controls |
 | `native/micro_device.m` | IOKit device discovery, framing, and input reports |
 | `src/setup/claude-hooks.mjs` | Settings merge and removal |
 | `src/setup/launch-agent.mjs` | macOS launch agent installation |
@@ -375,12 +418,18 @@ entries and older log files.
 - The native driver uses an independently documented, MIT-licensed protocol
   implementation. Stable v1 requires a vendor-supported Work Louder interface.
 - The native driver cannot claim exclusive ownership of the Micro. If Codex and
-  Claude are open together, Louder Bridge warns once and releases its device
-  connection until Codex quits.
+  a supported app are open together, Louder Bridge warns once and releases its
+  device connection until Codex quits. It also waits when Claude and Hermes are
+  both open.
 - Claude's resume URL is not part of Anthropic's public interface. Stable v1
   requires a supported navigation route.
 - Claude's Accessibility surface for dictation is not a published Anthropic
   interface. Stable v1 requires a supported voice route.
-- MIC hold and release, transcript insertion, and send passed focused physical
-  tests over Bluetooth and USB-C. Bluetooth lifecycle response also passed.
+- Hermes lifecycle events use its supported plugin API. Voice and submit use
+  macOS Accessibility. Agent Key navigation uses Hermes's default recent-session
+  shortcuts and is limited to the nine most recent sessions.
+- Hermes lifecycle lighting, Agent Key navigation, MIC hold and release,
+  transcript insertion, and send passed a focused Bluetooth hardware test.
+- Claude MIC hold and release, transcript insertion, and send passed focused
+  physical tests over Bluetooth and USB-C. Bluetooth lifecycle response also passed.
   The full USB-C and Bluetooth acceptance matrix has not passed yet.

@@ -8,6 +8,9 @@ import {
 import { createClaudeNavigator } from "./claude/navigator.mjs";
 import { createClaudeSubmit } from "./claude/submit.mjs";
 import { createClaudeVoice } from "./claude/voice.mjs";
+import { createHermesNavigator } from "./hermes/navigator.mjs";
+import { createHermesSubmit } from "./hermes/submit.mjs";
+import { createHermesVoice } from "./hermes/voice.mjs";
 import { createPushToTalk } from "./device/push-to-talk.mjs";
 import { WorkLouderDevice, MockDevice } from "./device/worklouder.mjs";
 import { applicationMetadata } from "./runtime/metadata.mjs";
@@ -97,6 +100,8 @@ export async function startBridge({
   navigator = createClaudeNavigator(),
   submit = createClaudeSubmit(),
   voice = createClaudeVoice(),
+  surfaceAdapters,
+  initialSurface = "claude",
   openSession,
   runtimeMode = "manual",
   authToken,
@@ -108,7 +113,30 @@ export async function startBridge({
     throw new Error("A Louder Bridge authentication token is required.");
   }
   const resolvedHttpLimits = { ...DEFAULT_HTTP_LIMITS, ...httpLimits };
-  const store = new SessionStore();
+  const adapters = surfaceAdapters ?? {
+    claude: {
+      label: "Claude",
+      navigator,
+      submit,
+      voice,
+    },
+    hermes: {
+      label: "Hermes",
+      navigator: createHermesNavigator(),
+      submit: createHermesSubmit(),
+      voice: createHermesVoice(),
+    },
+  };
+  if (!adapters[initialSurface]) {
+    throw new Error(`Unknown Louder Bridge surface: ${initialSurface}`);
+  }
+  const stores = new Map();
+  const storeFor = (surface) => {
+    if (!stores.has(surface)) stores.set(surface, new SessionStore());
+    return stores.get(surface);
+  };
+  const store = storeFor(initialSurface);
+  let activeSurface = initialSurface;
   let device = null;
   let pendingDeviceCleanup = null;
   let deviceRequested = autoConnectDevice;
@@ -121,10 +149,10 @@ export async function startBridge({
   let voiceQueue = Promise.resolve();
   let submitQueue = Promise.resolve();
   let stopPromise = null;
-  let ambientSlot = 0;
+  const ambientSlots = new Map([[initialSurface, 0]]);
   const metadata = applicationMetadata();
   if (openSession) {
-    navigator = {
+    adapters[initialSurface].navigator = {
       metadata: () => ({ id: "test-navigator", support: "test" }),
       open: openSession,
     };
@@ -135,20 +163,43 @@ export async function startBridge({
     codexDesktop: "unknown",
     inputMonitoring: "unknown",
     accessibility: "unknown",
+    activeSurface,
   };
+  function currentAdapter() {
+    return activeSurface ? adapters[activeSurface] : null;
+  }
+  function currentStore() {
+    return activeSurface ? storeFor(activeSurface) : null;
+  }
+  function ambientSlot() {
+    return activeSurface ? (ambientSlots.get(activeSurface) ?? 0) : 0;
+  }
   function slotStates() {
-    return store.snapshot().map(({ slot, state, selected }) => ({
+    const snapshot = currentStore()?.snapshot() ??
+      Array.from({ length: 6 }, (_, slot) => ({
+        slot,
+        state: "off",
+        selected: false,
+      }));
+    return snapshot.map(({ slot, state, selected }) => ({
       slot,
       state,
       selected,
     }));
   }
   function deviceSlotStates() {
-    return store.snapshot().map(({ slot, id, state, selected }) => ({
+    const snapshot = currentStore()?.snapshot() ??
+      Array.from({ length: 6 }, (_, slot) => ({
+        slot,
+        id: null,
+        state: "off",
+        selected: false,
+      }));
+    return snapshot.map(({ slot, id, state, selected }) => ({
       slot,
       state: id === null ? "standby" : state,
       selected,
-      ambient: slot === ambientSlot,
+      ambient: slot === ambientSlot(),
     }));
   }
   async function renderDevice(slots, context) {
@@ -165,18 +216,21 @@ export async function startBridge({
   }
 
   const openAgentSlot = async (slot) => {
-    const session = store.sessionAt(slot);
+    const adapter = currentAdapter();
+    const activeStore = currentStore();
+    if (!adapter || !activeStore) return;
+    const session = activeStore.sessionAt(slot);
     if (!session) {
-      logger.info(`Agent Key ${slot + 1} has no assigned Claude session.`);
+      logger.info(`Agent Key ${slot + 1} has no assigned ${adapter.label} session.`);
       return;
     }
-    await Promise.resolve(navigator.open(session.id));
-    const selected = store.select(slot);
+    await Promise.resolve(adapter.navigator.open(session.id));
+    const selected = activeStore.select(slot);
     if (selected?.id === session.id) {
-      ambientSlot = slot;
+      ambientSlots.set(activeSurface, slot);
       await renderDevice(deviceSlotStates(), "Agent Key");
     }
-    logger.info(`Opened Claude session in slot ${slot + 1}.`);
+    logger.info(`Opened ${adapter.label} session in slot ${slot + 1}.`);
   };
   const onAgentKey = (slot) => {
     agentQueue = agentQueue
@@ -189,11 +243,13 @@ export async function startBridge({
     voiceQueue = voiceQueue
       .catch(() => {})
       .then(async () => {
-        await voice[operation]();
+        const adapter = currentAdapter();
+        if (!adapter) return;
+        await adapter.voice[operation]();
         logger.info(
           operation === "start"
-            ? "Claude voice input started."
-            : "Claude voice input stopped.",
+            ? `${adapter.label} voice input started.`
+            : `${adapter.label} voice input stopped.`,
         );
       });
     return voiceQueue;
@@ -211,8 +267,10 @@ export async function startBridge({
     submitQueue = submitQueue
       .catch(() => {})
       .then(async () => {
-        await submit.submit();
-        logger.info("Sent Return to Claude.");
+        const adapter = currentAdapter();
+        if (!adapter) return;
+        await adapter.submit.submit();
+        logger.info(`Sent Return to ${adapter.label}.`);
       });
     return submitQueue;
   };
@@ -384,6 +442,7 @@ export async function startBridge({
   }
 
   function health() {
+    const adapter = currentAdapter();
     return {
       ok: true,
       service: {
@@ -391,8 +450,8 @@ export async function startBridge({
         version: metadata.version,
         buildRevision: metadata.buildRevision,
         nodeVersion: process.version,
-        navigator: navigator.metadata(),
-        voice: voice.status(),
+        navigator: adapter?.navigator.metadata() ?? null,
+        voice: adapter?.voice.status() ?? null,
         lastHookAt,
         device: currentDeviceStatus(),
       },
@@ -441,11 +500,15 @@ export async function startBridge({
     }
     try {
       const event = await readJson(request);
+      const surface = event.surface ?? "claude";
+      if (!adapters[surface]) {
+        throw new HttpError(400, "Unknown hook surface.");
+      }
       lastHookAt = now().toISOString();
-      const changed = store.apply(event);
-      if (changed) {
-        ambientSlot = changed.slot;
-        await renderDevice(deviceSlotStates(), "Claude hook");
+      const changed = storeFor(surface).apply(event);
+      if (changed && surface === activeSurface) {
+        ambientSlots.set(surface, changed.slot);
+        await renderDevice(deviceSlotStates(), `${adapters[surface].label} hook`);
         logger.info(`Slot ${changed.slot + 1}: ${changed.state}`);
       }
       response.end(JSON.stringify({ ok: true }));
@@ -510,6 +573,16 @@ export async function startBridge({
     health,
     setRuntimeStatus(nextStatus) {
       runtimeStatus = { ...runtimeStatus, ...nextStatus };
+    },
+    async setSurface(surface) {
+      if (surface !== null && !adapters[surface]) {
+        throw new Error(`Unknown Louder Bridge surface: ${surface}`);
+      }
+      if (surface === activeSurface) return;
+      await pushToTalk.reset();
+      activeSurface = surface;
+      runtimeStatus = { ...runtimeStatus, activeSurface };
+      if (device) await renderDevice(deviceSlotStates(), "surface change");
     },
     get device() {
       return device;

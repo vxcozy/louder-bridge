@@ -1,9 +1,9 @@
 {
   "name": "louder-bridge",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
-  "description": "Use a Work Louder Codex Micro with local Claude Code Desktop sessions",
+  "description": "Use a Work Louder Codex Micro with Claude Desktop and Hermes Desktop",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vxcozy/louder-bridge.git"
@@ -48,6 +48,14 @@
     },
     "claudeVoice": {
       "id": "claude-accessibility-dictation",
+      "support": "experimental"
+    },
+    "hermesNavigator": {
+      "id": "hermes-recent-session-shortcut",
+      "support": "experimental"
+    },
+    "hermesVoice": {
+      "id": "hermes-accessibility-dictation",
       "support": "experimental"
     }
   }

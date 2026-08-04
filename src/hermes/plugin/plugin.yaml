@@ -1,0 +1,11 @@
+name: louder-bridge
+version: "0.2.0"
+description: Send Hermes session state to a locally installed Louder Bridge
+provides_hooks:
+  - on_session_start
+  - pre_llm_call
+  - post_llm_call
+  - on_session_end
+  - on_session_finalize
+  - pre_approval_request
+  - post_approval_response

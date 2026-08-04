@@ -15,7 +15,7 @@ body:
     id: proposal
     attributes:
       label: Proposed behavior
-      description: Explain what the Micro and Claude Desktop should do.
+      description: Explain what the Micro and the active desktop app should do.
     validations:
       required: true
   - type: textarea
@@ -28,7 +28,7 @@ body:
     attributes:
       label: Scope
       options:
-        - label: This request concerns a local Claude Code workspace on Apple Silicon.
+        - label: This request concerns a local workspace in Claude Desktop or Hermes Desktop on Apple Silicon.
           required: true
         - label: I searched for an existing request.
           required: true

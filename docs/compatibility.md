@@ -2,8 +2,8 @@
 
 This page records the versions that have been exercised together. "Supported"
 means the automated suite covers that runtime. "Physically verified" means the
-full path from a Claude hook to the Codex Micro and back to Claude Desktop has
-also been tested on hardware.
+full path through the desktop app, bridge, and Codex Micro has also been tested
+on hardware.
 
 ## Supported baseline
 
@@ -14,10 +14,39 @@ also been tested on hardware.
 | Node.js for source setup | 22, 24, or 26 |
 | Device | Work Louder Codex Micro |
 | Claude | Local Code sessions in Claude Desktop |
+| Hermes | Local sessions in Hermes Desktop |
 | Device driver | Bundled native IOKit driver, experimental until vendor-supported |
 
 Louder Bridge embeds the Node.js executable used during setup, so Node does not
 need to remain on the user's shell path after installation.
+
+## Latest Hermes candidate qualification
+
+A locally built v0.2.0 candidate archive passed a focused Hermes Desktop test
+on August 4, 2026:
+
+| Component | Version or result |
+|---|---|
+| Mac architecture | Apple Silicon (`arm64`) |
+| macOS | 26.5.2 (25F84) |
+| Hermes Desktop | 0.17.0 |
+| Hermes Agent | 0.19.0 (2026.7.20), upstream `a4973c3f` |
+| Louder Bridge | 0.2.0 candidate archive |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | Bluetooth Low Energy |
+| Voice and send | MIC hold and release inserted spoken text; the adjacent key sent it |
+| Session controls | Agent Key navigation, lifecycle lighting, exterior effects, and sound feedback passed |
+| Installation | Fresh app and background-agent upgrade passed after permission approval |
+| App handoff | Codex released the Micro to Hermes and regained it afterward |
+
+The tester confirmed the transcript appeared in the Hermes composer before
+using the send key. Authenticated diagnostics recorded three start-and-stop
+dictation cycles, one send action, a running lifecycle event, and a completed
+lifecycle event. The bridge received no audio or transcript text.
+
+This test used the locally generated ad-hoc archive, not an asset downloaded
+from GitHub.
 
 ## Latest release qualification
 
