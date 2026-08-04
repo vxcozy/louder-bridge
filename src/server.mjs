@@ -121,6 +121,7 @@ export async function startBridge({
   let voiceQueue = Promise.resolve();
   let submitQueue = Promise.resolve();
   let stopPromise = null;
+  let ambientSlot = 0;
   const metadata = applicationMetadata();
   if (openSession) {
     navigator = {
@@ -140,6 +141,14 @@ export async function startBridge({
       slot,
       state,
       selected,
+    }));
+  }
+  function deviceSlotStates() {
+    return store.snapshot().map(({ slot, id, state, selected }) => ({
+      slot,
+      state: id === null ? "standby" : state,
+      selected,
+      ambient: slot === ambientSlot,
     }));
   }
   async function renderDevice(slots, context) {
@@ -164,7 +173,8 @@ export async function startBridge({
     await Promise.resolve(navigator.open(session.id));
     const selected = store.select(slot);
     if (selected?.id === session.id) {
-      await renderDevice(slotStates(), "Agent Key");
+      ambientSlot = slot;
+      await renderDevice(deviceSlotStates(), "Agent Key");
     }
     logger.info(`Opened Claude session in slot ${slot + 1}.`);
   };
@@ -290,7 +300,7 @@ export async function startBridge({
     device = nextDevice;
     try {
       await nextDevice.start();
-      await nextDevice.render(slotStates());
+      await nextDevice.render(deviceSlotStates());
       lastDeviceError = null;
       return nextDevice;
     } catch (error) {
@@ -434,7 +444,8 @@ export async function startBridge({
       lastHookAt = now().toISOString();
       const changed = store.apply(event);
       if (changed) {
-        await renderDevice(slotStates(), "Claude hook");
+        ambientSlot = changed.slot;
+        await renderDevice(deviceSlotStates(), "Claude hook");
         logger.info(`Slot ${changed.slot + 1}: ${changed.state}`);
       }
       response.end(JSON.stringify({ ok: true }));

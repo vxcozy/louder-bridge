@@ -7,6 +7,10 @@ Each session keeps the same Agent Key while the bridge is running. The key
 shows whether Claude is working, finished, waiting for input, or stopped by an
 error. Press the key to open its session in Claude Desktop.
 
+All six Agent Keys stay softly white while the bridge owns the Micro. A live
+session changes its key to blue, green, amber, or red. The exterior lighting
+follows the session that changed most recently, including its pulse effect.
+
 Hold the Micro's MIC control to dictate into the active Claude Code composer.
 Release it to stop, or double-tap MIC to keep recording without holding it.
 Press MIC again to stop a latched recording. Louder Bridge uses Claude's own

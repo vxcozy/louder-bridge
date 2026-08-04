@@ -53,12 +53,14 @@ driver, Claude Desktop, and Louder Bridge versions in the release notes.
 
 Start a local Claude Code session and verify the assigned Agent Key:
 
-1. `SessionStart` produces dim white.
-2. Submitting a prompt produces breathing blue.
-3. A permission request produces breathing amber.
-4. A successful stop produces green.
-5. A failed stop produces breathing red.
-6. Ending the session turns the slot off.
+1. Before any session starts, all six Agent Keys and the ambient ring are dim
+   white.
+2. `SessionStart` keeps its assigned key white.
+3. Submitting a prompt produces breathing blue on the key and ambient ring.
+4. A permission request produces breathing amber on both.
+5. A successful stop produces solid green on both.
+6. A failed stop produces breathing red on both.
+7. Ending the session returns its key and the ambient ring to dim white.
 
 Repeat with six simultaneous sessions. Confirm each session keeps its Agent Key
 and a seventh inactive session replaces the oldest inactive slot.

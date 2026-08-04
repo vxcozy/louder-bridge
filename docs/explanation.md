@@ -103,18 +103,22 @@ Claude session IDs are not kept on disk.
 
 Each state has its own color or animation:
 
-- White means available but inactive.
+- Soft white means the key is unused or its session is idle.
 - Breathing blue means work is in progress.
 - Green means the latest turn completed.
 - Breathing amber demands attention.
 - Breathing red reports failure.
-- Off means no live assignment.
 
 Running, needs-input, and error states breathe. Idle and complete states stay
 solid.
 
-When you select an Agent Key, the bridge also applies that slot's color to the
-other keys and ambient ring. The other five status lights do not change.
+The ambient ring follows the session whose state changed most recently. It
+uses the same color and animation as that session. Pressing an assigned Agent
+Key makes its session the ambient state until another Claude lifecycle event
+arrives. The other five Agent Keys keep their own colors.
+
+When the bridge releases the Micro, it turns its lighting off so Codex can take
+over cleanly.
 
 ## Device driver boundary
 
