@@ -145,8 +145,8 @@ and removal.
 
 Record the tested component versions in the draft notes. If qualification
 changes the notes, run `/humanizer` again and update the draft with the reviewed
-file. Another maintainer must review the notes and the other public text in the
-release.
+file. Before publishing, the maintainer must read the notes and the other public
+text as they appear on GitHub.
 
 Publish the draft only when the checklist passes. Keep the notarized ZIP, its
 checksum, the SPDX SBOM, and the previous release available for rollback:
