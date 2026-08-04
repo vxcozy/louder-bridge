@@ -122,7 +122,7 @@ test("reports service and device health", async (context) => {
       codexDesktop: "unknown",
       inputMonitoring: "unknown",
       accessibility: "unknown",
-      version: "0.1.1",
+      version: "0.1.2",
       buildRevision: null,
       nodeVersion: process.version,
       navigator: {
