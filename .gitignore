@@ -10,3 +10,15 @@ node_modules/
 config.json
 credentials.*
 .claude/
+*.cer
+*.crt
+*.der
+*.key
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.p8
+*.p12
+*.pem
+*.pfx
+*.provisionprofile

@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for helping make Louder Bridge more reliable. Bug reports are especially
-useful when they include the exact macOS, ChatGPT, Claude Desktop, Node.js, and
-Work Louder runtime versions.
+useful when they include the exact macOS, Claude Desktop, Node.js, Codex Micro
+firmware, and connection type.
 
 ## Before opening a change
 

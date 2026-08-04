@@ -8,13 +8,16 @@ shows whether Claude is working, finished, waiting for input, or stopped by an
 error. Press the key to open its session in Claude Desktop.
 
 Hold the Micro's MIC control to dictate into the active Claude Code composer.
-Release it to stop. Louder Bridge uses Claude's own dictation control, so the
-transcript stays in the session you are already using.
+Release it to stop, or double-tap MIC to keep recording without holding it.
+Press MIC again to stop a latched recording. Louder Bridge uses Claude's own
+composer control when one is available and macOS Dictation in Code views that
+do not expose one. Press the key to the right of MIC to send the composer or
+accept the focused approval.
 
 Louder Bridge reads Claude Code lifecycle hooks and sends the resulting state
 to the Micro. The bridge itself runs on your Mac and does not modify either
 desktop app. It does not collect audio, transcripts, or conversation content.
-Claude handles dictation under Anthropic's own data policy.
+Claude or macOS handles dictation, depending on which route is available.
 
 ## Install
 
@@ -23,8 +26,14 @@ Download the signed macOS archive from this repository's Releases page:
 1. Move **Louder Bridge.app** into **Applications**.
 2. Open it once.
 3. Approve Input Monitoring and Accessibility when macOS asks.
-4. Give Claude Desktop microphone access when you first use dictation.
+4. Approve microphone access if macOS asks when you first use dictation.
 5. Open Claude Desktop and turn on the Micro.
+
+Louder Bridge checks its location before requesting permissions. If you open it
+from Downloads, it asks you to move the app and exits without changing Claude.
+Permission setup waits up to five minutes for each approval. If a permission
+stays off, the app tells you which setting needs attention and exits. Enable
+that permission, then open Louder Bridge again.
 
 Louder Bridge starts at login and connects whenever Claude Desktop is open.
 Node.js and a source checkout are not required after installation.
@@ -70,22 +79,27 @@ newer.
 The bridge tracks local Claude Code sessions. It cannot track cloud or SSH
 sessions because their hooks run on another machine.
 
-ChatGPT and Louder Bridge can both connect to the Micro, but their RGB writes
-are not coordinated. Quit Claude Desktop before returning to active Codex work.
-The background agent will release the device.
+ChatGPT is not required. Louder Bridge talks to the Micro through a bundled
+native macOS driver. If Codex and Claude are open when the Micro connects,
+Louder Bridge shows a warning and releases its device connection. Quit
+Codex and the bridge reconnects automatically. Quit Claude Desktop before
+returning to Codex so the bridge releases the Micro.
 
 ## Project status
 
-This is a pre-1.0 project. The hardware, hooks, background agent, lighting, and
-session navigation have passed a physical test on a Codex Micro. Micro-triggered
-dictation is implemented and covered by automated tests, but it is not part of
-the physical baseline until the USB-C and Bluetooth checklist passes.
+This is a pre-1.0 project. On the current Bluetooth test build, a physical
+Codex Micro started and stopped dictation in Claude Code, inserted spoken text,
+sent it with the adjacent key, and displayed fresh lifecycle states. The
+same core MIC and send controls also passed over USB-C. The visible Cowork
+composer route, double-tap latching, approval prompts, wired restart and
+power-cycle cases, and the complete recovery matrix still need
+release-candidate testing.
 
-The current preview uses three private integration points: the Work Louder
-runtime installed with ChatGPT, Claude's local resume URL, and Claude's
-Accessibility surface for dictation. They sit behind adapters, but neither
-vendor documents them as public interfaces. A stable v1 will require supported
-replacements. Until then, signed builds must be published as prereleases.
+The preview still relies on three unsupported integration points: the
+independently documented Codex Micro protocol, Claude's local resume URL, and
+Claude's Accessibility surface for dictation. Each sits behind a small adapter.
+A stable v1 requires vendor-supported interfaces, so releases remain marked as
+prereleases until those are available and verified.
 
 Run the tests and local compatibility check with:
 

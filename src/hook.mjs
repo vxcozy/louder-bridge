@@ -3,14 +3,8 @@ import { readAuthToken } from "./setup/auth-token.mjs";
 
 const ALLOWED_FIELDS = [
   "session_id",
-  "cwd",
   "hook_event_name",
   "notification_type",
-  "reason",
-  "source",
-  "model",
-  "tool_name",
-  "agent_id",
 ];
 
 async function stdinJson() {

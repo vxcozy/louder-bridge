@@ -10,6 +10,100 @@ import { applicationBundlePaths } from "./application-bundle.mjs";
 import { writeFileAtomic } from "./atomic-file.mjs";
 
 export const LAUNCH_AGENT_LABEL = "app.louder-bridge.agent";
+const MAX_PLIST_BYTES = 1024 * 1024;
+const COMMAND_OPTIONS = {
+  encoding: "utf8",
+  timeout: 10_000,
+  maxBuffer: 64 * 1024,
+  windowsHide: true,
+};
+const SLEEP_OPTIONS = { ...COMMAND_OPTIONS, timeout: 2000 };
+
+function commandError(command, result) {
+  const detail =
+    result?.error?.message ||
+    result?.stderr?.trim() ||
+    result?.stdout?.trim() ||
+    `exit ${result?.status ?? "unknown"}`;
+  return new Error(`${command} failed: ${detail}`);
+}
+
+function prepareLogDirectory(directory) {
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      directory,
+      fs.constants.O_RDONLY |
+        fs.constants.O_DIRECTORY |
+        fs.constants.O_NOFOLLOW,
+    );
+    const entry = fs.fstatSync(descriptor);
+    if (!entry.isDirectory() || entry.uid !== process.getuid()) {
+      throw new Error("not a user-owned directory");
+    }
+    fs.fchmodSync(descriptor, 0o700);
+  } catch (error) {
+    throw new Error(
+      "Louder Bridge log storage is not a user-owned directory.",
+      { cause: error },
+    );
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+function readLaunchAgentPlist(filename) {
+  let descriptor;
+  try {
+    descriptor = fs.openSync(
+      filename,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+    );
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw new Error(
+      "The existing Louder Bridge launch agent is not a regular file.",
+      { cause: error },
+    );
+  }
+  try {
+    const entry = fs.fstatSync(descriptor);
+    if (
+      !entry.isFile() ||
+      entry.uid !== process.getuid() ||
+      entry.nlink !== 1 ||
+      entry.size > MAX_PLIST_BYTES
+    ) {
+      throw new Error(
+        "The existing Louder Bridge launch agent is not a regular user-owned file.",
+      );
+    }
+    return {
+      contents: fs.readFileSync(descriptor, "utf8"),
+      mode: entry.mode & 0o777,
+      identity: { device: entry.dev, inode: entry.ino },
+    };
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+function sameLaunchAgentState(expected, current) {
+  if (expected === null || current === null) return expected === current;
+  return (
+    expected.identity.device === current.identity.device &&
+    expected.identity.inode === current.identity.inode &&
+    expected.contents === current.contents &&
+    expected.mode === current.mode
+  );
+}
+
+function requireLaunchAgentState(filename, expected, message) {
+  const current = readLaunchAgentPlist(filename);
+  if (!sameLaunchAgentState(expected, current)) throw new Error(message);
+  return current;
+}
 
 function xmlEscape(value) {
   return String(value)
@@ -88,10 +182,9 @@ ${environmentXml}
 }
 
 function runLaunchctl(args, { allowFailure = false, run = spawnSync } = {}) {
-  const result = run("/bin/launchctl", args, { encoding: "utf8" });
+  const result = run("/bin/launchctl", args, COMMAND_OPTIONS);
   if (!allowFailure && result.status !== 0) {
-    const detail = result.stderr?.trim() || `exit ${result.status}`;
-    throw new Error(`launchctl ${args[0]} failed: ${detail}`);
+    throw commandError(`launchctl ${args[0]}`, result);
   }
   return result;
 }
@@ -107,8 +200,7 @@ function bootoutLaunchAgent(serviceTarget, run) {
       `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
     )
   ) {
-    const detail = result.stderr?.trim() || `exit ${result.status}`;
-    throw new Error(`launchctl bootout failed: ${detail}`);
+    throw commandError("launchctl bootout", result);
   }
 }
 
@@ -120,62 +212,117 @@ function bootstrapLaunchAgent(userId, plist, run) {
       run,
     });
     if (result.status === 0) return;
-    if (attempt < 2) run("/bin/sleep", ["0.5"], { encoding: "utf8" });
+    if (attempt < 2) {
+      const waited = run("/bin/sleep", ["0.5"], SLEEP_OPTIONS);
+      if (waited.status !== 0) throw commandError("sleep", waited);
+    }
   }
-  const detail = result.stderr?.trim() || `exit ${result.status}`;
-  throw new Error(`launchctl bootstrap failed: ${detail}`);
+  throw commandError("launchctl bootstrap", result);
 }
 
-export function installLaunchAgent({
+export async function installLaunchAgent({
   homeDirectory = os.homedir(),
   userId = process.getuid(),
   run = spawnSync,
   runtime = applicationBundlePaths(homeDirectory),
+  verify = async () => {},
 } = {}) {
   if (process.platform !== "darwin") {
     throw new Error("The background service currently requires macOS.");
   }
   const paths = launchAgentPaths(homeDirectory);
-  fs.mkdirSync(paths.logs, { recursive: true, mode: 0o700 });
-  fs.chmodSync(paths.logs, 0o700);
+  prepareLogDirectory(paths.logs);
   const serviceTarget = `gui/${userId}/${LAUNCH_AGENT_LABEL}`;
-  const previousPlist = fs.existsSync(paths.plist)
-    ? fs.readFileSync(paths.plist, "utf8")
-    : null;
+  const previous = readLaunchAgentPlist(paths.plist);
+  const previousPlist = previous?.contents ?? null;
   const wasLoaded =
     runLaunchctl(["print", serviceTarget], {
       allowFailure: true,
       run,
     }).status === 0;
 
-  bootoutLaunchAgent(serviceTarget, run);
-
+  const replacementPlist = launchAgentPlist({ paths, runtime });
+  let replacement = null;
+  let replacementPublished = false;
   try {
-    writeFileAtomic(paths.plist, launchAgentPlist({ paths, runtime }), {
+    bootoutLaunchAgent(serviceTarget, run);
+    writeFileAtomic(paths.plist, replacementPlist, {
       mode: 0o644,
+      beforeRename() {
+        requireLaunchAgentState(
+          paths.plist,
+          previous,
+          "The launch-agent file changed before setup could replace it.",
+        );
+      },
     });
+    replacementPublished = true;
+    replacement = readLaunchAgentPlist(paths.plist);
+    if (
+      replacement === null ||
+      replacement.contents !== replacementPlist ||
+      replacement.mode !== 0o644
+    ) {
+      throw new Error(
+        "The replacement launch-agent file changed before setup could load it.",
+      );
+    }
     bootstrapLaunchAgent(userId, paths.plist, run);
     runLaunchctl(["kickstart", "-k", serviceTarget], { run });
+    await verify(paths);
   } catch (error) {
     try {
       bootoutLaunchAgent(serviceTarget, run);
     } catch (rollbackError) {
       error.message += ` Rollback could not stop the replacement agent: ${rollbackError.message}.`;
     }
-    if (previousPlist === null) {
-      if (fs.existsSync(paths.plist)) fs.unlinkSync(paths.plist);
-    } else {
-      writeFileAtomic(paths.plist, previousPlist, { mode: 0o644 });
-      if (wasLoaded) {
-        try {
-          bootstrapLaunchAgent(userId, paths.plist, run);
-          runLaunchctl(
-            ["kickstart", "-k", serviceTarget],
-            { allowFailure: true, run },
+    let fileRestored = false;
+    try {
+      if (replacementPublished) {
+        if (replacement === null) {
+          throw new Error(
+            "The replacement launch-agent file could not be identified. It was left untouched.",
           );
-        } catch (rollbackError) {
-          error.message += ` Rollback also failed: ${rollbackError.message}.`;
         }
+        requireLaunchAgentState(
+          paths.plist,
+          replacement,
+          "The launch-agent file changed during rollback. It was left untouched.",
+        );
+        if (previousPlist === null) {
+          fs.unlinkSync(paths.plist);
+        } else {
+          writeFileAtomic(paths.plist, previousPlist, {
+            mode: previous.mode,
+            beforeRename() {
+              requireLaunchAgentState(
+                paths.plist,
+                replacement,
+                "The launch-agent file changed during rollback. It was left untouched.",
+              );
+            },
+          });
+        }
+      } else {
+        requireLaunchAgentState(
+          paths.plist,
+          previous,
+          "The launch-agent file changed during rollback. It was left untouched.",
+        );
+      }
+      fileRestored = true;
+    } catch (rollbackError) {
+      error.message += ` Rollback could not restore the previous launch-agent file: ${rollbackError.message}`;
+    }
+    if (fileRestored && previousPlist !== null && wasLoaded) {
+      try {
+        bootstrapLaunchAgent(userId, paths.plist, run);
+        runLaunchctl(
+          ["kickstart", "-k", serviceTarget],
+          { allowFailure: true, run },
+        );
+      } catch (rollbackError) {
+        error.message += ` Rollback also failed: ${rollbackError.message}.`;
       }
     }
     throw error;
@@ -191,17 +338,30 @@ export function removeLaunchAgent({
   if (process.platform !== "darwin") return launchAgentPaths(homeDirectory);
   const paths = launchAgentPaths(homeDirectory);
   const serviceTarget = `gui/${userId}/${LAUNCH_AGENT_LABEL}`;
+  const previous = readLaunchAgentPlist(paths.plist);
+  const previousPlist = previous?.contents ?? null;
   const wasLoaded =
     runLaunchctl(["print", serviceTarget], {
       allowFailure: true,
       run,
     }).status === 0;
-  bootoutLaunchAgent(serviceTarget, run);
   try {
-    if (fs.existsSync(paths.plist)) fs.unlinkSync(paths.plist);
+    bootoutLaunchAgent(serviceTarget, run);
+    requireLaunchAgentState(
+      paths.plist,
+      previous,
+      "The launch-agent file changed before removal. It was left untouched.",
+    );
+    if (previous !== null) fs.unlinkSync(paths.plist);
   } catch (error) {
-    if (wasLoaded) {
+    if (wasLoaded && previous !== null) {
       try {
+        requireLaunchAgentState(
+          paths.plist,
+          previous,
+          "The previous launch-agent file changed before it could be reloaded.",
+        );
+        bootoutLaunchAgent(serviceTarget, run);
         bootstrapLaunchAgent(userId, paths.plist, run);
         runLaunchctl(["kickstart", "-k", serviceTarget], {
           allowFailure: true,
@@ -213,7 +373,67 @@ export function removeLaunchAgent({
     }
     throw error;
   }
-  return paths;
+  return {
+    ...paths,
+    previousPlist,
+    previousMode: previous?.mode ?? null,
+    wasLoaded,
+    userId,
+    removed: true,
+  };
+}
+
+export function restoreRemovedLaunchAgent(
+  removal,
+  { run = spawnSync } = {},
+) {
+  if (!removal?.removed) return removal;
+  if (process.platform !== "darwin") return removal;
+  const serviceTarget = `gui/${removal.userId}/${LAUNCH_AGENT_LABEL}`;
+  if (removal.previousPlist === null) {
+    requireLaunchAgentState(
+      removal.plist,
+      null,
+      "A launch-agent file appeared during rollback. It was left untouched.",
+    );
+    return removal;
+  }
+  requireLaunchAgentState(
+    removal.plist,
+    null,
+    "A launch-agent file appeared during rollback. It was left untouched.",
+  );
+  bootoutLaunchAgent(serviceTarget, run);
+  writeFileAtomic(removal.plist, removal.previousPlist, {
+    mode: removal.previousMode,
+    beforeRename() {
+      requireLaunchAgentState(
+        removal.plist,
+        null,
+        "A launch-agent file appeared during rollback. It was left untouched.",
+      );
+    },
+  });
+  const restored = readLaunchAgentPlist(removal.plist);
+  if (
+    restored === null ||
+    restored.contents !== removal.previousPlist ||
+    restored.mode !== removal.previousMode
+  ) {
+    throw new Error(
+      "The restored launch-agent file changed before rollback could finish.",
+    );
+  }
+  if (removal.wasLoaded) {
+    requireLaunchAgentState(
+      removal.plist,
+      restored,
+      "The restored launch-agent file changed before it could be loaded.",
+    );
+    bootstrapLaunchAgent(removal.userId, removal.plist, run);
+    runLaunchctl(["kickstart", "-k", serviceTarget], { run });
+  }
+  return removal;
 }
 
 export function launchAgentIsRunning({
@@ -226,4 +446,22 @@ export function launchAgentIsRunning({
     { allowFailure: true, run },
   );
   return result.status === 0 && /\bstate = running\b/.test(result.stdout ?? "");
+}
+
+export function waitForLaunchAgent({
+  userId = process.getuid(),
+  run = spawnSync,
+  attempts = 20,
+} = {}) {
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error("Launch agent wait attempts must be a positive integer.");
+  }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (launchAgentIsRunning({ userId, run })) return true;
+    if (attempt + 1 < attempts) {
+      const waited = run("/bin/sleep", ["0.1"], SLEEP_OPTIONS);
+      if (waited.status !== 0) throw commandError("sleep", waited);
+    }
+  }
+  return false;
 }

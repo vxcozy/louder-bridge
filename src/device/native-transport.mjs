@@ -1,0 +1,330 @@
+import { spawn } from "node:child_process";
+import { isNativeExecutable } from "../macos/native-executable.mjs";
+
+const MAX_LINE_BYTES = 64 * 1024;
+const STARTUP_TIMEOUT_MS = 3000;
+const COMMAND_TIMEOUT_MS = 1000;
+const CLOSE_TIMEOUT_MS = 1000;
+const RUNTIME_ID = "native-iokit-protocol";
+const RUNTIME_SUPPORT = "experimental";
+
+export function inspectNativeMicroRuntime({
+  launcher = process.env.LOUDER_BRIDGE_LAUNCHER,
+} = {}) {
+  const available = isNativeExecutable(launcher);
+  return {
+    id: RUNTIME_ID,
+    support: RUNTIME_SUPPORT,
+    version: null,
+    available,
+    error: available
+      ? null
+      : "The installed Codex Micro driver is unavailable.",
+  };
+}
+
+export function threadLightingMessage(lights) {
+  return {
+    m: "v.oai.thstatus",
+    p: lights.map((light) => ({
+      id: light.id,
+      c: light.color,
+      b: light.brightness,
+      e: light.effect,
+      s: light.speed,
+      sk: light.syncKeysLighting ? 1 : 0,
+      sa: light.syncAmbientLighting ? 1 : 0,
+    })),
+  };
+}
+
+export class NativeMicroTransport {
+  constructor({
+    launcher = process.env.LOUDER_BRIDGE_LAUNCHER,
+    spawnProcess = spawn,
+    startupTimeoutMs = STARTUP_TIMEOUT_MS,
+    commandTimeoutMs = COMMAND_TIMEOUT_MS,
+    closeTimeoutMs = CLOSE_TIMEOUT_MS,
+  } = {}) {
+    this.launcher = launcher;
+    this.spawnProcess = spawnProcess;
+    this.startupTimeoutMs = startupTimeoutMs;
+    this.commandTimeoutMs = commandTimeoutMs;
+    this.closeTimeoutMs = closeTimeoutMs;
+    this.child = null;
+    this.connected = false;
+    this.closing = false;
+    this.transport = null;
+    this.deviceStatus = null;
+    this.stderr = "";
+    this.onEvent = () => {};
+    this.onDisconnect = () => {};
+    this.disconnectReported = false;
+    this.closePromise = null;
+  }
+
+  metadata() {
+    return {
+      id: RUNTIME_ID,
+      support: RUNTIME_SUPPORT,
+      version: this.deviceStatus?.version ?? null,
+      transport: this.transport,
+    };
+  }
+
+  async connect({ onEvent = () => {}, onDisconnect = () => {} } = {}) {
+    if (!isNativeExecutable(this.launcher)) {
+      throw new Error("The installed Codex Micro driver is unavailable.");
+    }
+    if (this.closePromise) await this.closePromise;
+    if (this.child) {
+      if (this.connected && !this.closing) return this.metadata();
+      await this.close();
+    }
+    this.onEvent = onEvent;
+    this.onDisconnect = onDisconnect;
+    this.closing = false;
+    this.disconnectReported = false;
+    this.transport = null;
+    this.deviceStatus = null;
+    this.stderr = "";
+
+    const child = this.spawnProcess(this.launcher, ["--micro-device"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    this.child = child;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let childConnected = false;
+      let stdout = "";
+      let stderr = "";
+      const timer = setTimeout(() => {
+        finishStartup(
+          new Error("Codex Micro did not answer the device status check."),
+          { close: true },
+        );
+      }, this.startupTimeoutMs);
+
+      const finishStartup = (error, { close = false } = {}) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (!error) {
+          resolve(this.metadata());
+          return;
+        }
+        if (!close) {
+          reject(error);
+          return;
+        }
+        this.close().then(
+          () => reject(error),
+          (cleanupError) => {
+            reject(
+              new AggregateError(
+                [error, cleanupError],
+                "Codex Micro startup failed and its driver did not close cleanly.",
+              ),
+            );
+          },
+        );
+      };
+
+      const processLine = (line) => {
+        if (this.child !== child) return;
+        if (!line) return;
+        let message;
+        try {
+          message = JSON.parse(line);
+        } catch {
+          return;
+        }
+        const control = message?._louder;
+        if (control?.type === "connected") {
+          childConnected = true;
+          this.connected = true;
+          this.transport = control.transport ?? "Unknown";
+          this.deviceStatus = control.status ?? null;
+          finishStartup();
+          return;
+        }
+        if (control?.type === "disconnected") {
+          this.reportDisconnect(null, child);
+          return;
+        }
+        if (message?.m === "v.oai.hid" && message.p) {
+          this.onEvent({
+            key: message.p.k,
+            act: message.p.act,
+            agent: message.p.ag,
+          });
+        }
+      };
+
+      child.stdout.on("data", (chunk) => {
+        if (this.child !== child) return;
+        stdout += chunk.toString("utf8");
+        for (;;) {
+          const newline = stdout.indexOf("\n");
+          if (newline < 0) break;
+          const line = stdout.slice(0, newline).trim();
+          stdout = stdout.slice(newline + 1);
+          processLine(line);
+        }
+        if (Buffer.byteLength(stdout) > MAX_LINE_BYTES) {
+          const error = new Error("Codex Micro sent an oversized response.");
+          if (settled) {
+            this.reportDisconnect(error, child);
+            this.close().catch(() => {});
+          } else {
+            finishStartup(error, { close: true });
+          }
+        }
+      });
+      child.stderr.on("data", (chunk) => {
+        if (this.child !== child) return;
+        stderr = `${stderr}${chunk.toString("utf8")}`.slice(-4096);
+        this.stderr = stderr;
+      });
+      child.once("error", (error) => {
+        finishStartup(error);
+        if (this.child !== child) return;
+        this.reportDisconnect(error, child);
+        this.child = null;
+        this.connected = false;
+      });
+      child.once("exit", (code, signal) => {
+        const detail = stderr.trim();
+        const error =
+          code === 0 || this.closing
+            ? null
+            : new Error(
+                detail ||
+                  `Codex Micro driver exited (${signal ?? `code ${code}`}).`,
+              );
+        finishStartup(
+          error ??
+            (childConnected
+              ? null
+              : new Error(detail || "Codex Micro driver stopped.")),
+        );
+        if (this.child !== child) return;
+        this.reportDisconnect(error, child);
+        this.child = null;
+        this.connected = false;
+      });
+    });
+  }
+
+  reportDisconnect(error = null, expectedChild = this.child) {
+    if (
+      this.disconnectReported ||
+      this.closing ||
+      !expectedChild ||
+      this.child !== expectedChild
+    ) {
+      return;
+    }
+    this.disconnectReported = true;
+    this.connected = false;
+    const onDisconnect = this.onDisconnect;
+    Promise.resolve()
+      .then(() => onDisconnect(error))
+      .catch(() => {});
+  }
+
+  async send(message) {
+    const child = this.child;
+    if (!child || !this.connected || child.stdin.destroyed) {
+      throw new Error("Codex Micro is not connected.");
+    }
+    const line = `${JSON.stringify(message)}\n`;
+    if (Buffer.byteLength(line) > MAX_LINE_BYTES) {
+      throw new Error("Codex Micro command exceeds 64 KiB.");
+    }
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (error) => {
+        if (settled) return false;
+        settled = true;
+        clearTimeout(timer);
+        child.off("exit", onExit);
+        if (error) reject(error);
+        else resolve();
+        return true;
+      };
+      const recover = (error) => {
+        if (!settle(error)) return;
+        this.reportDisconnect(error, child);
+        if (this.child === child) this.close().catch(() => {});
+      };
+      const onExit = () => {
+        settle(
+          new Error("Codex Micro disconnected before accepting a command."),
+        );
+      };
+      const timer = setTimeout(() => {
+        recover(new Error("Codex Micro did not accept a command in time."));
+      }, this.commandTimeoutMs);
+      child.once("exit", onExit);
+      child.stdin.write(line, (error) => {
+        if (error) recover(error);
+        else settle();
+      });
+    });
+  }
+
+  close() {
+    if (this.closePromise) return this.closePromise;
+    const child = this.child;
+    if (!child) return Promise.resolve();
+    this.closing = true;
+    this.connected = false;
+    const operation = (async () => {
+      if (!child.stdin.destroyed) child.stdin.end();
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      if (await this.waitForExit(child)) return;
+      if (!child.kill("SIGTERM")) {
+        if (await this.waitForExit(child)) return;
+        throw new Error("Louder Bridge could not stop the Codex Micro driver.");
+      }
+      if (await this.waitForExit(child)) return;
+      if (!child.kill("SIGKILL")) {
+        if (await this.waitForExit(child)) return;
+        throw new Error("Louder Bridge could not stop the Codex Micro driver.");
+      }
+      if (!(await this.waitForExit(child))) {
+        throw new Error("The Codex Micro driver did not stop in time.");
+      }
+    })();
+    let tracked;
+    tracked = operation
+      .then(() => {
+        if (this.child === child) this.child = null;
+      })
+      .finally(() => {
+        if (this.closePromise === tracked) this.closePromise = null;
+      });
+    this.closePromise = tracked;
+    return tracked;
+  }
+
+  waitForExit(child) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const onExit = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        child.off("exit", onExit);
+        resolve(false);
+      }, this.closeTimeoutMs);
+      child.once("exit", onExit);
+    });
+  }
+}

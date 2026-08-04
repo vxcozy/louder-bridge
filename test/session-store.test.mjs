@@ -13,7 +13,9 @@ test("maps Claude lifecycle events to Micro states", () => {
       ...extra,
     });
 
-  assert.equal(event("SessionStart").state, "idle");
+  const started = event("SessionStart");
+  assert.equal(started.state, "idle");
+  assert.equal("cwd" in started, false);
   assert.equal(event("UserPromptSubmit").state, "running");
   assert.equal(event("PermissionRequest").state, "needs_input");
   assert.equal(event("Stop").state, "complete");
@@ -54,15 +56,67 @@ test("keeps six stable slots and evicts the oldest inactive session", () => {
   assert.equal(store.snapshot().length, 6);
 });
 
+test("does not allocate a slot for an unknown ended session", () => {
+  const store = new SessionStore();
+  const result = store.apply({
+    session_id: "already-ended",
+    hook_event_name: "SessionEnd",
+  });
+
+  assert.equal(result, null);
+  assert.equal(store.snapshot().every((slot) => slot.id === null), true);
+});
+
+test("releases the slot and selection when a session ends", () => {
+  const store = new SessionStore();
+  store.apply({
+    session_id: "session-a",
+    hook_event_name: "SessionStart",
+  });
+  store.select(0);
+
+  const ended = store.apply({
+    session_id: "session-a",
+    hook_event_name: "SessionEnd",
+  });
+
+  assert.equal(ended.state, "off");
+  assert.equal(store.snapshot()[0].id, null);
+  assert.equal(store.snapshot()[0].selected, false);
+  assert.equal(store.select(0), null);
+});
+
+test("clears selection when the selected inactive slot is evicted", () => {
+  let time = 1;
+  const store = new SessionStore({ now: () => time++ });
+  for (let index = 0; index < 6; index += 1) {
+    store.apply({
+      session_id: `session-${index}`,
+      hook_event_name: "SessionStart",
+    });
+  }
+  store.select(0);
+  store.apply({
+    session_id: "session-6",
+    hook_event_name: "SessionStart",
+  });
+
+  assert.equal(store.snapshot()[0].id, "session-6");
+  assert.equal(store.snapshot().some((slot) => slot.selected), false);
+});
+
 test("select returns the session assigned to an Agent Key", () => {
   const store = new SessionStore();
   store.apply({ session_id: "abc", hook_event_name: "SessionStart" });
+  assert.equal(store.sessionAt(0).id, "abc");
+  assert.equal(store.snapshot()[0].selected, false);
   assert.equal(store.select(0).id, "abc");
   assert.equal(store.snapshot()[0].selected, true);
   assert.equal(store.select(5), null);
+  assert.equal(store.sessionAt(-1), null);
 });
 
-test("rejects malformed session identifiers and working directories", () => {
+test("rejects malformed session identifiers", () => {
   const store = new SessionStore();
   assert.equal(
     store.apply({
@@ -73,8 +127,7 @@ test("rejects malformed session identifiers and working directories", () => {
   );
   assert.equal(
     store.apply({
-      session_id: "session-a",
-      cwd: { unexpected: true },
+      session_id: "x".repeat(257),
       hook_event_name: "SessionStart",
     }),
     null,

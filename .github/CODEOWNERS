@@ -4,6 +4,9 @@ CODE_OF_CONDUCT.md @vxcozy
 CONTRIBUTING.md @vxcozy
 SECURITY.md @vxcozy
 docs/** @vxcozy
+release-notes/** @vxcozy
 .github/** @vxcozy
+package.json @vxcozy
+scripts/** @vxcozy
 src/** @vxcozy
 native/** @vxcozy

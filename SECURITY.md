@@ -27,14 +27,19 @@ Louder Bridge:
 - binds only to a loopback address;
 - authenticates every HTTP request with a private local token;
 - stores that token and its logs with user-only permissions;
+- refuses foreign-owned or hard-linked Claude settings files;
 - allowlists hook fields and omits conversation and tool content; and
 - does not send data to a Louder Bridge cloud service.
 
-Preview builds load Work Louder code already installed inside ChatGPT, open a
-Claude Desktop resume URL, and use Claude's Accessibility controls for
-dictation. These adapters report that they are experimental, and stable release
-checks reject them. Treat them as part of the local trusted computing base
-until supported vendor interfaces replace them.
+Preview builds include a native IOKit driver for the independently documented
+Codex Micro protocol. The driver accepts only the status, lighting, and HID
+methods the bridge needs. It cannot issue filesystem, firmware, or bootloader
+commands. Preview builds also open a Claude Desktop resume URL and use Claude's
+Accessibility controls for dictation. These interfaces are experimental, and
+stable release checks reject them. Treat them as part of the local trusted
+computing base until supported vendor interfaces replace them.
 
 Louder Bridge sees MIC press and release events, but it does not receive audio
-or read dictated text. Claude Desktop owns microphone access and transcription.
+or read dictated text. Claude Desktop owns that path when its composer control
+is available. Claude Code views without that control use macOS Dictation, so
+the Mac's Dictation settings and privacy terms apply instead.

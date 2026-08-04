@@ -12,6 +12,7 @@ const forbiddenFiles = [
   /^\.mcp\.json$/,
   /^config\.json$/,
   /^credentials\./,
+  /\.(?:cer|crt|der|key|keychain|keychain-db|mobileprovision|p8|p12|pem|pfx|provisionprofile)$/i,
 ];
 const secretPatterns = [
   ["private key", /BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY/],
@@ -30,35 +31,48 @@ function files(directory) {
     if (entry.isDirectory() && excludedDirectories.has(entry.name)) continue;
     const filename = path.join(directory, entry.name);
     if (entry.isDirectory()) output.push(...files(filename));
-    else if (entry.isFile()) output.push(filename);
+    else if (entry.isFile() || entry.isSymbolicLink()) output.push(filename);
   }
   return output;
 }
 
-const findings = [];
-for (const filename of files(root)) {
-  const relative = path.relative(root, filename);
-  if (excludedPaths.has(relative)) continue;
-  const basename = path.basename(filename);
-  if (
-    !excludedFiles.has(basename) &&
-    forbiddenFiles.some((pattern) => pattern.test(basename))
-  ) {
-    findings.push(`${relative}: file should not be committed`);
-    continue;
+export function securityFindings(directory) {
+  const findings = [];
+  for (const filename of files(directory)) {
+    const relative = path.relative(directory, filename);
+    if (excludedPaths.has(relative)) continue;
+    if (fs.lstatSync(filename).isSymbolicLink()) {
+      findings.push(`${relative}: symbolic link should not be committed`);
+      continue;
+    }
+    const basename = path.basename(filename);
+    if (
+      !excludedFiles.has(basename) &&
+      forbiddenFiles.some((pattern) => pattern.test(basename))
+    ) {
+      findings.push(`${relative}: file should not be committed`);
+      continue;
+    }
+    const contents = fs.readFileSync(filename);
+    if (contents.includes(0)) continue;
+    const text = contents.toString("utf8");
+    for (const [label, pattern] of secretPatterns) {
+      if (pattern.test(text)) findings.push(`${relative}: possible ${label}`);
+    }
   }
-  const contents = fs.readFileSync(filename);
-  if (contents.includes(0)) continue;
-  const text = contents.toString("utf8");
-  for (const [label, pattern] of secretPatterns) {
-    if (pattern.test(text)) findings.push(`${relative}: possible ${label}`);
-  }
+  return findings;
 }
 
-if (findings.length) {
-  console.error("Security check failed:");
-  for (const finding of findings) console.error(`- ${finding}`);
-  process.exitCode = 1;
-} else {
-  console.log("Security check passed.");
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const findings = securityFindings(root);
+  if (findings.length) {
+    console.error("Security check failed:");
+    for (const finding of findings) console.error(`- ${finding}`);
+    process.exitCode = 1;
+  } else {
+    console.log("Security check passed.");
+  }
 }

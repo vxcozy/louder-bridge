@@ -52,7 +52,10 @@ export class SessionStore {
       }
     }
     const evictedId = this.slotSessions[candidate];
-    if (evictedId) this.sessions.delete(evictedId);
+    if (evictedId) {
+      this.sessions.delete(evictedId);
+      if (this.selectedSlot === candidate) this.selectedSlot = null;
+    }
     return candidate;
   }
 
@@ -61,9 +64,7 @@ export class SessionStore {
       !event ||
       typeof event.session_id !== "string" ||
       event.session_id.length < 1 ||
-      event.session_id.length > 256 ||
-      (event.cwd !== undefined &&
-        (typeof event.cwd !== "string" || event.cwd.length > 4096))
+      event.session_id.length > 256
     ) {
       return null;
     }
@@ -71,12 +72,12 @@ export class SessionStore {
     if (!state) return null;
 
     let session = this.sessions.get(event.session_id);
+    if (!session && state === "off") return null;
     if (!session) {
       const slot = this.chooseSlot();
       session = {
         id: event.session_id,
         slot,
-        cwd: event.cwd ?? null,
         state: "idle",
         updatedAt: this.now(),
       };
@@ -84,20 +85,38 @@ export class SessionStore {
       this.slotSessions[slot] = event.session_id;
     }
 
+    if (state === "off") {
+      const ended = {
+        ...session,
+        state,
+        updatedAt: this.now(),
+      };
+      this.sessions.delete(event.session_id);
+      this.slotSessions[session.slot] = null;
+      if (this.selectedSlot === session.slot) this.selectedSlot = null;
+      return ended;
+    }
+
     session.state = state;
-    session.cwd = event.cwd ?? session.cwd;
     session.updatedAt = this.now();
     return { ...session };
   }
 
-  select(slot) {
+  sessionAt(slot) {
     if (!Number.isInteger(slot) || slot < 0 || slot >= this.slotCount) {
       return null;
     }
     const sessionId = this.slotSessions[slot];
     if (!sessionId) return null;
+    const session = this.sessions.get(sessionId);
+    return session ? { ...session } : null;
+  }
+
+  select(slot) {
+    const session = this.sessionAt(slot);
+    if (!session) return null;
     this.selectedSlot = slot;
-    return { ...this.sessions.get(sessionId) };
+    return session;
   }
 
   snapshot() {

@@ -21,9 +21,9 @@ test("queries a native launcher without executing shell launchers", () => {
   const script = path.join(directory, "script");
   fs.writeFileSync(native, Buffer.from("cffaedfe", "hex"));
   fs.writeFileSync(script, "#!/bin/sh\n");
-  let calls = 0;
-  const run = () => {
-    calls += 1;
+  const calls = [];
+  const run = (command, args, options) => {
+    calls.push({ command, args, options });
     return { status: 0, stdout: "denied\n", stderr: "" };
   };
 
@@ -45,6 +45,17 @@ test("queries a native launcher without executing shell launchers", () => {
     }),
     "unknown",
   );
-  assert.equal(calls, 1);
+  assert.deepEqual(calls, [
+    {
+      command: native,
+      args: ["--input-monitoring-status"],
+      options: {
+        encoding: "utf8",
+        timeout: 2000,
+        maxBuffer: 1024,
+        windowsHide: true,
+      },
+    },
+  ]);
   fs.rmSync(directory, { recursive: true });
 });

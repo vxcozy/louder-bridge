@@ -2,12 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isClaudeDesktopRunning,
+  isCodexDesktopRunning,
   startDesktopService,
 } from "../src/service.mjs";
 
 test("detects whether Claude Desktop is running", async () => {
+  const calls = [];
   assert.equal(
-    await isClaudeDesktopRunning(async () => ({ stdout: "123\n" })),
+    await isClaudeDesktopRunning(async (command, args, options) => {
+      calls.push({ command, args, options });
+      return { stdout: "123\n" };
+    }),
     true,
   );
   assert.equal(
@@ -18,6 +23,363 @@ test("detects whether Claude Desktop is running", async () => {
     }),
     false,
   );
+  assert.deepEqual(calls, [
+    {
+      command: "/usr/bin/pgrep",
+      args: ["-x", "Claude"],
+      options: { timeout: 2000, maxBuffer: 1024, windowsHide: true },
+    },
+  ]);
+});
+
+test("detects the ChatGPT and Codex desktop process names", async () => {
+  const calls = [];
+  const running = await isCodexDesktopRunning(async (command, args) => {
+    calls.push([command, ...args]);
+    if (args[1] === "ChatGPT") {
+      const error = new Error("not found");
+      error.code = 1;
+      throw error;
+    }
+    return { stdout: "123\n" };
+  });
+
+  assert.equal(running, true);
+  assert.deepEqual(calls, [
+    ["/usr/bin/pgrep", "-x", "ChatGPT"],
+    ["/usr/bin/pgrep", "-x", "Codex"],
+  ]);
+});
+
+test("reports Micro input contention once for each app overlap", async () => {
+  let codexIsRunning = true;
+  const messages = [];
+  const deviceCalls = [];
+  let notices = 0;
+  const statuses = [];
+  const bridge = {
+    async connectDevice() {
+      deviceCalls.push("connect");
+    },
+    async disconnectDevice() {
+      deviceCalls.push("disconnect");
+    },
+    async stop() {},
+    deviceStatus() {
+      return { state: "connected" };
+    },
+    setRuntimeStatus(status) {
+      statuses.push(status);
+    },
+  };
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => codexIsRunning,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    notifyContention({ onError }) {
+      assert.equal(typeof onError, "function");
+      notices += 1;
+    },
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info(message) {
+        messages.push(message);
+      },
+      error() {},
+    },
+  });
+
+  await service.sync();
+  codexIsRunning = false;
+  await service.sync();
+  codexIsRunning = true;
+  await service.sync();
+
+  assert.equal(
+    messages.filter((message) => message.includes("give the Micro to Claude"))
+      .length,
+    2,
+  );
+  assert.equal(notices, 2);
+  assert.deepEqual(deviceCalls, ["connect", "disconnect"]);
+  assert.deepEqual(statuses.at(-1), {
+    claudeDesktop: "open",
+    codexDesktop: "open",
+  });
+  await service.stop();
+});
+
+test("does not open the Micro while Codex already owns its input", async () => {
+  let codexIsRunning = true;
+  const calls = [];
+  const bridge = {
+    async connectDevice() {
+      calls.push("connect");
+    },
+    async disconnectDevice() {
+      calls.push("disconnect");
+    },
+    async stop() {},
+    setRuntimeStatus() {},
+  };
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => codexIsRunning,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    notifyContention() {
+      calls.push("notice");
+    },
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  assert.deepEqual(calls, ["notice"]);
+  await service.sync();
+  assert.deepEqual(calls, ["notice"]);
+
+  codexIsRunning = false;
+  await service.sync();
+  assert.deepEqual(calls, ["notice", "connect"]);
+
+  codexIsRunning = true;
+  await service.sync();
+  assert.deepEqual(calls, ["notice", "connect", "disconnect", "notice"]);
+  await service.stop();
+});
+
+test("logs when the Codex conflict notice cannot be shown", async () => {
+  const errors = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => true,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    notifyContention: () => false,
+    createBridge: async () => ({
+      async connectDevice() {},
+      async disconnectDevice() {},
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error);
+      },
+    },
+  });
+
+  assert.deepEqual(errors, ["Could not show the Codex conflict notice."]);
+  await service.stop();
+});
+
+test("releases the Micro when desktop ownership cannot be checked", async () => {
+  let processCheckFails = false;
+  const calls = [];
+  const errors = [];
+  const statuses = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => {
+      if (processCheckFails) throw new Error("process check failed");
+      return false;
+    },
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {
+        calls.push("connect");
+      },
+      async disconnectDevice() {
+        calls.push("disconnect");
+      },
+      async stop() {},
+      setRuntimeStatus(status) {
+        statuses.push(status);
+      },
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error.message);
+      },
+    },
+  });
+
+  assert.deepEqual(calls, ["connect"]);
+  processCheckFails = true;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect"]);
+  assert.deepEqual(statuses.at(-1), {
+    claudeDesktop: "open",
+    codexDesktop: "unknown",
+  });
+  assert.deepEqual(errors, ["process check failed"]);
+
+  processCheckFails = false;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect", "connect"]);
+  await service.stop();
+});
+
+test("reports both desktop ownership check failures", async () => {
+  let processChecksFail = false;
+  const calls = [];
+  const errors = [];
+  const statuses = [];
+  const service = await startDesktopService({
+    checkClaude: async () => {
+      if (processChecksFail) throw new Error("Claude check failed");
+      return true;
+    },
+    checkCodex: async () => {
+      if (processChecksFail) throw new Error("Codex check failed");
+      return false;
+    },
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {
+        calls.push("connect");
+      },
+      async disconnectDevice() {
+        calls.push("disconnect");
+      },
+      async stop() {},
+      setRuntimeStatus(status) {
+        statuses.push(status);
+      },
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error);
+      },
+    },
+  });
+
+  processChecksFail = true;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect"]);
+  assert.deepEqual(statuses.at(-1), {
+    claudeDesktop: "unknown",
+    codexDesktop: "unknown",
+  });
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0] instanceof AggregateError, true);
+  assert.equal(
+    errors[0].message,
+    "Louder Bridge could not check whether Claude or Codex is open.",
+  );
+  assert.deepEqual(
+    errors[0].errors.map((error) => error.message),
+    ["Claude check failed", "Codex check failed"],
+  );
+
+  processChecksFail = false;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect", "connect"]);
+  await service.stop();
+});
+
+test("keeps both ownership and device cleanup failures", async () => {
+  let processCheckFails = false;
+  const errors = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => {
+      if (processCheckFails) throw new Error("process check failed");
+      return false;
+    },
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {},
+      async disconnectDevice() {
+        throw new Error("device cleanup failed");
+      },
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: {
+      info() {},
+      error(error) {
+        errors.push(error);
+      },
+    },
+  });
+
+  processCheckFails = true;
+  await service.sync();
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0] instanceof AggregateError, true);
+  assert.equal(
+    errors[0].message,
+    "Louder Bridge could not check the open desktop apps or release the Codex Micro cleanly.",
+  );
+  assert.deepEqual(
+    errors[0].errors.map((error) => error.message),
+    ["process check failed", "device cleanup failed"],
+  );
+  await service.stop();
+});
+
+test("retries a failed Codex handoff before reconnecting", async () => {
+  let codexIsRunning = false;
+  let cleanupFails = true;
+  const calls = [];
+  const service = await startDesktopService({
+    checkClaude: async () => true,
+    checkCodex: async () => codexIsRunning,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async connectDevice() {
+        calls.push("connect");
+      },
+      async disconnectDevice() {
+        calls.push("disconnect");
+        if (cleanupFails) throw new Error("device cleanup failed");
+      },
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  codexIsRunning = true;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect"]);
+
+  cleanupFails = false;
+  await service.sync();
+  assert.deepEqual(calls, ["connect", "disconnect", "disconnect"]);
+
+  codexIsRunning = false;
+  await service.sync();
+  assert.deepEqual(calls, [
+    "connect",
+    "disconnect",
+    "disconnect",
+    "connect",
+  ]);
+  await service.stop();
 });
 
 test("connects the device only while Claude Desktop is open", async () => {
@@ -42,6 +404,7 @@ test("connects the device only while Claude Desktop is open", async () => {
       return bridge;
     },
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     checkInputMonitoring: () => "granted",
     checkAccessibility: () => "granted",
     pollInterval: 60_000,
@@ -78,6 +441,7 @@ test("retries a failed device startup while Claude remains open", async () => {
     checkClaude: async () => true,
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     checkInputMonitoring: () => "granted",
     checkAccessibility: () => "granted",
     pollInterval: 60_000,
@@ -114,6 +478,7 @@ test("requests an agent restart when Input Monitoring becomes available", async 
     },
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
@@ -146,6 +511,7 @@ test("does not request the device before Input Monitoring is granted", async () 
     onPermissionGranted() {},
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
@@ -179,6 +545,7 @@ test("releases the device when Input Monitoring is revoked", async () => {
     checkAccessibility: () => "granted",
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
@@ -215,6 +582,7 @@ test("requires Accessibility before connecting the device", async () => {
     },
     createBridge: async () => bridge,
     authToken: "test-auth-token",
+    checkCodex: async () => false,
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
@@ -224,5 +592,72 @@ test("requires Accessibility before connecting the device", async () => {
   await service.sync();
   assert.equal(restarts, 1);
   assert.deepEqual(calls, []);
+  await service.stop();
+});
+
+test("stops the desktop service only once", async () => {
+  let bridgeStopCalls = 0;
+  const bridge = {
+    async connectDevice() {},
+    async disconnectDevice() {},
+    async stop() {
+      bridgeStopCalls += 1;
+    },
+    setRuntimeStatus() {},
+  };
+  const service = await startDesktopService({
+    checkClaude: async () => false,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    checkCodex: async () => false,
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  const firstStop = service.stop();
+  const secondStop = service.stop();
+  assert.equal(firstStop, secondStop);
+  await firstStop;
+  assert.equal(bridgeStopCalls, 1);
+});
+
+test("coalesces overlapping service sync requests", async () => {
+  let checks = 0;
+  let releaseCheck;
+  const bridge = {
+    async connectDevice() {},
+    async disconnectDevice() {},
+    async stop() {},
+    setRuntimeStatus() {},
+  };
+  const service = await startDesktopService({
+    checkClaude() {
+      checks += 1;
+      if (checks !== 2) return Promise.resolve(false);
+      return new Promise((resolve) => {
+        releaseCheck = resolve;
+      });
+    },
+    checkCodex: async () => false,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => bridge,
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+
+  const first = service.sync();
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = service.sync();
+  const third = service.sync();
+  assert.equal(first, second);
+  assert.equal(second, third);
+
+  releaseCheck(false);
+  await first;
+  assert.equal(checks, 3);
   await service.stop();
 });

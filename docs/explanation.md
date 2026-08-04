@@ -40,9 +40,11 @@ The bridge updates its session store and sends color data for all six slots.
 The device reports Agent Key presses back to the bridge. A press selects the
 assigned session and asks Claude Desktop to resume it.
 
-MIC reports separate press and release events. The bridge serializes those
-events, starts Claude's own dictation on press, and stops it on release. It also
-stops dictation if the Micro disconnects while MIC is held.
+MIC reports separate press and release events. The bridge applies the same
+350 ms gesture window as Codex. Holding MIC starts Claude's dictation and
+releasing it stops. A quick double-tap latches dictation until the next press.
+The bridge also stops dictation if the Micro disconnects while MIC is held or
+latched.
 
 ## Why run a background agent
 
@@ -56,6 +58,13 @@ server available.
 The service checks whether Claude Desktop is running. It connects to the Micro
 when Claude opens and disconnects when Claude quits. This keeps startup
 automatic without holding the device while the user works in Codex.
+
+macOS can cache a privacy decision in the process that requested it. A child
+process may also inherit the parent's privacy identity, which makes a direct
+status check misleading. During onboarding, Louder Bridge launches a short app
+probe through LaunchServices. The probe writes only the two permission states
+to a private temporary file, then exits. The onboarding process deletes that
+file and starts the background agent as soon as both permissions are granted.
 
 ## Why use Claude Code hooks
 
@@ -76,14 +85,16 @@ The Micro has six physical Agent Keys, while Claude Desktop can have more than
 six sessions. Louder Bridge therefore maintains a small working set:
 
 1. New sessions fill unused slots from left to right.
-2. Existing sessions keep their physical position.
+2. Existing sessions keep their physical position until they end.
 3. When the set is full, an inactive session is replaced before a session that
    is running or waiting for input.
 4. Among equally active candidates, the least recently updated session is
    replaced.
 
 Stable positions make the keys easier to remember. A session does not jump to
-another key merely because a different session produced a newer event.
+another key merely because a different session produced a newer event. A
+`SessionEnd` hook turns off the light, removes the in-memory session details,
+and frees the key for another session.
 
 Assignments live only in memory. Restarting the bridge clears them, so old
 Claude session IDs are not kept on disk.
@@ -105,23 +116,25 @@ solid.
 When you select an Agent Key, the bridge also applies that slot's color to the
 other keys and ambient ring. The other five status lights do not change.
 
-## Device provider boundary
+## Device driver boundary
 
-Device access goes through a small provider interface. The provider reports its
-name, version, availability, and support level. The rest of the bridge only
-depends on the operations it needs: discovery, lighting, Agent Key events, and
-disconnect.
+Device access runs in a small native child process. The Node service sees a
+narrow transport with four jobs: report availability, send lighting, receive
+Agent Key and MIC events, and close the connection.
 
-The preview provider reads Work Louder's Codex Micro library from the installed
-ChatGPT application. It does not copy or extract the package. The ASAR loader
-reads JavaScript in place and sends native-addon paths to ChatGPT's adjacent
-unpacked directory. ChatGPT stays signed and unmodified, and this repository
-does not redistribute Work Louder's code.
+The child process opens the Micro non-exclusively through IOKit. It frames JSON
+messages for USB-C or Bluetooth, requests `device.status`, and waits for a real
+reply before reporting a connection. The Node service can send only
+`v.oai.thstatus`. The child checks every lighting field, rejects duplicate or
+out-of-range slots, and accepts no more than six lights. It creates the fixed
+status request itself, so Node cannot send status, configuration, firmware,
+filesystem, or bootloader methods.
 
-That provider is experimental. A ChatGPT update can break it, so the release
-check will not allow a stable v1 while it remains selected. An official or
-explicitly licensed Work Louder SDK can replace it without changing session or
-lighting code.
+The framing and message names come from an independently documented,
+MIT-licensed implementation. The bridge includes that license notice and does
+not depend on ChatGPT or copy code from its application bundle. The protocol is
+still experimental because Work Louder does not support it as a public
+interface. Stable v1 remains blocked until that changes.
 
 ## Claude session navigation
 
@@ -137,55 +150,69 @@ until a supported navigator replaces it.
 ## Claude voice input
 
 Codex treats MIC as push-to-talk, so Louder Bridge preserves that interaction
-in Claude. It does not replace Claude's speech recognition or send audio to a
-separate service. Instead, a small native adapter finds the dictation control
-inside the frontmost Claude Code window through macOS Accessibility.
+in Claude. The native adapter uses one of two routes, depending on what the
+frontmost Claude window exposes through macOS Accessibility.
 
-On press, the adapter activates Claude and clicks the discovered dictation
-control. On release, it invokes the stop action on that same control. The
-adapter checks the control's role and surrounding structure rather than using
-screen coordinates. Press and release are idempotent, which prevents repeated
-device events from toggling dictation in the wrong direction.
+When a visible Claude composer button is available, the adapter holds that
+button for as long as MIC is held. It sends a real pointer-down event, waits at
+least as long as Claude's hold threshold, and sends pointer-up on release. This
+matches the button's own press-and-hold behavior instead of toggling it with a
+click.
 
-The bridge observes only the Micro control edge and whether Claude's dictation
-control entered or left its recording state. Claude owns microphone access
-and the resulting transcript. Anthropic's [voice dictation
-documentation](https://code.claude.com/docs/en/voice-dictation) says Claude
-streams recorded audio to its transcription service and does not count that
-work against messages or tokens. Louder Bridge never receives the audio and
-does not read the composer.
+Some Claude Code views have voice support but no accessible composer button.
+There, the adapter starts macOS Dictation through the Edit menu and stops it
+with Escape, Apple's documented stop gesture. This is the route that passed
+the August 2 Bluetooth hardware test.
 
-Anthropic does not document this Accessibility surface as a supported
-Desktop integration. The voice adapter is therefore experimental, and the
-release check blocks stable v1 until a supported interface replaces it.
+A quick double-tap keeps recording active, and the next press stops it. The
+bridge sees only device edges and native control state. It never receives
+audio, reads the transcript, or inspects the composer. Claude or macOS owns the
+microphone path, depending on the route used.
+
+That distinction also determines the applicable voice service and privacy
+terms. The composer-button route uses Claude's service. The fallback uses the
+Mac's Dictation configuration, whose processing behavior can vary by language
+and system settings. Louder Bridge does not choose or proxy either service.
+
+Neither route is a supported Anthropic Desktop integration. The adapter is
+experimental, and the release check blocks stable v1 until Anthropic provides
+a supported interface.
 
 ## Privacy boundary
 
 The hook receives more data than the lighting system needs, so it builds a new
 allowlisted payload before making the local request.
 
-The allowlist contains the session ID, working directory, event name,
-notification type, model, stop reason, and a few other lifecycle fields. It
-excludes prompt text, responses, transcripts, tool arguments, and tool results.
-The voice path does not carry audio or transcript text. Normal logs record slot
-numbers, states, and MIC edges, not session IDs or project names.
+The allowlist contains only the session ID, event name, and notification type.
+It excludes the working directory, model name, stop reason, prompt text,
+responses, transcripts, and tool data. The server keeps session IDs in memory
+for Agent Key navigation but omits them from diagnostics. The voice path does
+not carry audio or transcript text. Normal logs record slot numbers, states,
+and MIC edges, not session IDs or project names.
 
 The server accepts only loopback bind addresses. Every request also needs a
-random bearer token stored in a user-only file. This prevents another local
-process from forging Claude events merely because it can reach the port. There
-is no cloud service in the bridge and no account credential is required.
+random bearer token stored in a user-only file. A client cannot forge Claude
+events merely because it can reach the port; it must also present that token.
+The file permissions separate macOS user accounts, but they are not a security
+boundary between processes running as the same account. There is no cloud
+service in the bridge and no account credential is required.
 
 ## Coexisting with Codex
 
-The Work Louder library opens the device in non-exclusive mode. This lets
-ChatGPT and Louder Bridge both connect, but it does not coordinate their
-lighting writes. If Codex and Claude update at the same time, the last write
-wins.
+The native driver opens the device in non-exclusive mode. This lets Codex and
+Louder Bridge connect at the same time, but the apps do not coordinate input
+events or lighting writes. A MIC or send press can reach both apps, and the
+last lighting write wins.
 
-To avoid conflicting RGB updates, keep one desktop app active at a time:
+When the bridge finds a connected Micro while both desktop apps are open, it
+shows one conflict notice and releases the device. It stays disconnected until
+Codex quits, then reconnects to the Micro without restarting Claude.
+
+For predictable controls and lighting, keep one desktop app open at a time:
 
 - Open Claude Desktop while working in Claude.
-- Quit Claude Desktop when returning to Codex.
+- Quit Codex while using the Micro with Claude.
+- Quit Claude Desktop before returning to Codex.
 
 The background agent clears its Agent Key lighting and disconnects when Claude
 quits. The next Codex update can then restore Codex's state.
@@ -193,6 +220,8 @@ quits. The next Codex update can then restore Codex's state.
 ## Related projects and documentation
 
 - [Work Louder Codex Micro](https://worklouder.cc/codex-micro)
+- [FreeMicro protocol implementation](https://github.com/eliBenven/freemicro)
 - [Claude Code Desktop](https://code.claude.com/docs/en/desktop)
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 - [Claude Code voice dictation](https://code.claude.com/docs/en/voice-dictation)
+- [Dictate messages and documents on Mac](https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac)

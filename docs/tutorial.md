@@ -2,7 +2,8 @@
 
 After this tutorial, one Agent Key will show the state of a local Claude Code
 session and open that session when pressed. Holding MIC will start dictation in
-the active Code composer; releasing it will stop.
+the active Code composer; releasing it will stop. A quick double-tap keeps
+dictation running until you press MIC again.
 
 ## What you need
 
@@ -10,7 +11,6 @@ the active Code composer; releasing it will stop.
 - Node.js 22 or newer
 - Claude Desktop with the Code tab
 - a Codex Micro connected over USB-C or Bluetooth
-- ChatGPT for macOS while the preview device adapter is still in use
 
 Run the commands below from the Louder Bridge directory.
 
@@ -50,6 +50,17 @@ Run:
 npm run setup
 ```
 
+Keep the command open while macOS asks for Input Monitoring and Accessibility.
+Setup finishes after the installed version answers an authenticated health
+check. If the app closes early or activation fails, setup restores the previous
+installation. If you interrupt the command with Ctrl-C, setup finishes its
+rollback before exiting.
+
+The app waits up to five minutes for each permission. If you grant access in
+that time, setup continues on its own. If the wait expires, a dialog identifies
+the missing permission and source setup restores the previous installation.
+Enable the permission, then run `npm run setup` again.
+
 The command performs the one-time setup:
 
 - It creates a self-contained **Louder Bridge.app** with an embedded Node.js
@@ -59,11 +70,25 @@ The command performs the one-time setup:
 - It installs a macOS background agent after the required permissions are
   granted. The agent starts at login from then on.
 - It creates a private authentication token for the local hook server.
-- It starts the local hook server immediately.
+- It opens the installed app for permission approval.
 
-You do not need to keep a terminal open or run `npm start`.
+After setup finishes, you do not need to keep a terminal open or run
+`npm start`.
 
-## 4. Check the background agent
+## 4. Grant macOS permissions
+
+Open **System Settings → Privacy & Security** and enable **Louder Bridge** under
+both **Input Monitoring** and **Accessibility**. The installed app starts the
+agent as soon as both approvals arrive. You do not need to reopen it unless a
+five-minute permission wait has already expired.
+
+Input Monitoring lets the bridge receive Micro controls. Accessibility lets
+it operate Claude's composer control or macOS Dictation.
+
+If either permission is missing, follow [Grant macOS
+permissions](how-to.md#grant-macos-permissions).
+
+## 5. Check the background agent
 
 Run:
 
@@ -83,21 +108,12 @@ Codex Micro: inactive
 If either check fails, see [Troubleshoot the background
 agent](how-to.md#troubleshoot-the-background-agent).
 
-## 5. Open Claude and turn on the Micro
-
-Open **System Settings → Privacy & Security** and enable **Louder Bridge** under
-both **Input Monitoring** and **Accessibility**. The packaged app waits for
-approval and starts the agent automatically; you do not need to reopen it.
-Input Monitoring lets the bridge receive Micro controls. Accessibility lets it
-operate Claude's dictation button.
+## 6. Open Claude and turn on the Micro
 
 Open Claude Desktop and turn on the Codex Micro. The background agent detects
 Claude and connects without another terminal command.
 
-If either permission is missing, follow [Grant macOS
-permissions](how-to.md#grant-macos-permissions).
-
-## 6. Start a local Claude Code session
+## 7. Start a local Claude Code session
 
 In Claude Desktop, select the Code tab. Start a local session, then send a
 prompt.
@@ -114,14 +130,17 @@ fails, it breathes red.
 The bridge tracks only local sessions. Cloud and SSH sessions execute their
 hooks away from the local bridge.
 
-## 7. Open the session from the Micro
+## 8. Open the session from the Micro
 
 Press the illuminated Agent Key. Claude Desktop should come forward and open
 the session assigned to that slot.
 
 The bridge copies the selected slot's color to the other keys and ambient ring.
 
-## 8. Test push-to-talk
+## 9. Test push-to-talk
+
+Quit Codex before this test so its built-in Micro integration does not receive
+the same controls.
 
 Keep the current Code session open and place the cursor in its composer. Hold
 MIC, wait for Claude's listening indicator, and speak a short, distinctive
@@ -131,7 +150,13 @@ The sentence should appear in the same composer. It should not be sent
 automatically, open another session, or appear in Codex. Claude may ask for
 microphone permission the first time.
 
-## 9. Return to Codex
+Press the key to the right of MIC. The sentence should be sent once.
+
+Double-tap MIC quickly. Claude should keep listening after the second release.
+Speak another short sentence, then press MIC once to stop. The second sentence
+should stay in the same composer without being sent.
+
+## 10. Return to Codex
 
 Quit Claude Desktop. The background agent turns off its Agent Key lights and
 disconnects from the Micro. It stays loaded in the background, ready for the

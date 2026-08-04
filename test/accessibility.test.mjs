@@ -26,13 +26,24 @@ test("queries Accessibility through a native launcher", () => {
     launcher: native,
     environment: {},
     platform: "darwin",
-    run(command, args) {
-      calls.push([command, ...args]);
+    run(command, args, options) {
+      calls.push({ command, args, options });
       return { status: 0, stdout: "denied\n", stderr: "" };
     },
   });
 
   assert.equal(state, "denied");
-  assert.deepEqual(calls, [[native, "--accessibility-status"]]);
+  assert.deepEqual(calls, [
+    {
+      command: native,
+      args: ["--accessibility-status"],
+      options: {
+        encoding: "utf8",
+        timeout: 2000,
+        maxBuffer: 1024,
+        windowsHide: true,
+      },
+    },
+  ]);
   fs.rmSync(directory, { recursive: true });
 });

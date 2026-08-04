@@ -37,3 +37,17 @@ test("uses the system open command on macOS", async () => {
     args: ["claude://resume?session=abc-123"],
   });
 });
+
+test("bounds a stalled session-navigation launch", async () => {
+  const child = new EventEmitter();
+  child.unref = () => {};
+  const result = openClaudeSession(
+    "abc-123",
+    "darwin",
+    () => child,
+    1,
+  );
+
+  await assert.rejects(result, /navigation did not start in time/);
+  child.emit("error", new Error("late launch failure"));
+});

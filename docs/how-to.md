@@ -15,12 +15,22 @@ dictation control.
 4. Return to Claude Desktop. The background agent starts as soon as both
    permissions are available.
 
+The app waits up to five minutes for each permission. If that time expires, it
+opens the missing setting and asks you to open Louder Bridge again after you
+enable it. Source setup rolls back before it exits, so rerun `npm run setup`
+after fixing the permission.
+
 For a manual development run with `npm start`, grant permission to the terminal
 application instead.
 
 A source build does not have a stable Developer ID signature. Reinstalling it
 can make macOS ask for permission again. Signed release builds keep the same
 identity across upgrades.
+
+With the hook server running, `npm run status` gets permission state from the
+background app. If the server is down, it launches a fresh app probe through
+LaunchServices. A direct check from a terminal can report the terminal's
+permission instead.
 
 ## Troubleshoot startup
 
@@ -36,15 +46,27 @@ Then check the background agent:
 npm run status
 ```
 
+### Louder Bridge asks to be moved
+
+Quit Louder Bridge, move the app into Applications with Finder, then open it
+again. First launch stops in Downloads or a temporary Gatekeeper location. The
+login agent needs a stable app path. If you use a symlink, its target must be
+inside Applications.
+
 ## Troubleshoot the background agent
 
 `npm run status` reports the launch agent, authenticated hook server, Claude
-Desktop, and the Micro. If the agent or server is unavailable, reinstall and
-restart it:
+Desktop, and the Micro. When the server is down, it reads the installed app
+version and asks a fresh app process for both macOS permission states. If the
+agent or server is unavailable, reinstall and restart it:
 
 ```bash
 npm run setup
 ```
+
+Keep the command open until the app finishes permission onboarding. Setup
+commits the upgrade after the replacement background agent starts. If that
+step fails, it restores the previous installation.
 
 The service writes logs to:
 
@@ -62,21 +84,22 @@ To inspect recent errors:
 tail -n 50 ~/Library/Logs/LouderBridge/bridge-error.log
 ```
 
-### The Work Louder runtime is not found
+### The bundled Micro driver is unavailable
 
-The current preview adapter reads the Codex Micro runtime from the standard
-ChatGPT installation. Install the current ChatGPT macOS app in Applications,
-then run `npm run doctor` again.
+`npm run doctor` checks that the installed app contains its native Codex Micro
+driver. If the check fails, reinstall the app with `npm run setup`. If it still
+fails, save the full diagnostic output and open a bug report.
 
-This dependency is temporary. Stable v1 releases are blocked until the project
-has an official or explicitly licensed Work Louder SDK.
+The bundled driver uses an independently documented, MIT-licensed protocol
+implementation. It does not require ChatGPT. The interface remains
+experimental until Work Louder supports it.
 
 ### The Micro is detected but cannot be opened
 
 Grant Input Monitoring permission to Louder Bridge. If the error remains:
 
 1. Confirm `npm run status` reports Input Monitoring as granted.
-2. Quit ChatGPT if it is open.
+2. Quit any other app that is actively controlling the Micro.
 3. Disconnect and reconnect the Micro.
 4. Quit and reopen Claude Desktop.
 
@@ -88,20 +111,27 @@ report `granted`, and the voice adapter must not report an error.
 Then check the following:
 
 1. Open a local session in Claude Desktop's Code tab and focus its composer.
-2. Allow Claude Desktop to use the microphone when macOS asks.
-3. Hold MIC long enough for Claude's listening indicator to appear.
-4. Release MIC and confirm the indicator closes.
+2. Quit Codex so its built-in Micro integration cannot receive the same input.
+   If Louder Bridge reports the conflict, you do not need to restart anything;
+   it reconnects after Codex quits.
+3. Allow microphone access when macOS asks.
+4. Hold MIC long enough for the listening indicator to appear.
+5. Release MIC and confirm the indicator closes.
 
-Louder Bridge finds Claude's dictation control through Accessibility. It does
-not use fixed screen coordinates, read the composer, receive microphone audio,
-or inspect the transcript. The integration is experimental because Anthropic
-does not publish this Accessibility interface.
+When Claude exposes a composer microphone button, Louder Bridge holds that
+control through Accessibility. In Code views without the button, it uses
+macOS Dictation. It does not use fixed screen coordinates, read the composer,
+receive microphone audio, or inspect the transcript. Both routes are
+experimental because Anthropic does not publish a supported Desktop voice
+interface.
 
-Claude's voice service requires a Claude.ai account and may be disabled by an
-organization's policy. Anthropic says transcription does not consume Claude
-messages or tokens. See [Voice dictation in Claude
-Code](https://code.claude.com/docs/en/voice-dictation) for its account, data,
-language, and microphone requirements.
+The visible composer route depends on Claude voice being available for the
+account and organization. Anthropic documents its account, data, and language
+requirements in [Voice dictation in Claude
+Code](https://code.claude.com/docs/en/voice-dictation). The fallback depends on
+[macOS Dictation](https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac)
+instead. Check the Mac's Dictation language and processing settings when that
+route is active.
 
 ### The local port is already in use
 

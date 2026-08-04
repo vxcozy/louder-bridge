@@ -1,22 +1,35 @@
 import { lightingForSlots } from "./palette.mjs";
-import { createDeviceProvider } from "./provider.mjs";
+import {
+  inspectNativeMicroRuntime,
+  NativeMicroTransport,
+  threadLightingMessage,
+} from "./native-transport.mjs";
 
 export class WorkLouderDevice {
   constructor({
-    provider = createDeviceProvider(),
+    transportFactory = () => new NativeMicroTransport(),
+    runtime = inspectNativeMicroRuntime(),
     logger = console,
     onAgentKey = () => {},
     onVoiceButton = () => {},
+    onSubmitButton = () => {},
+    onDeviceDisconnect = () => {},
+    setReconnectInterval = setInterval,
+    clearReconnectInterval = clearInterval,
   } = {}) {
-    this.provider = provider;
+    this.transportFactory = transportFactory;
+    this.runtime = runtime;
     this.logger = logger;
     this.onAgentKey = onAgentKey;
     this.onVoiceButton = onVoiceButton;
-    this.comm = null;
-    this.api = null;
-    this.unsubscribeHid = null;
-    this.unsubscribeConnection = null;
+    this.onSubmitButton = onSubmitButton;
+    this.onDeviceDisconnect = onDeviceDisconnect;
+    this.setReconnectInterval = setReconnectInterval;
+    this.clearReconnectInterval = clearReconnectInterval;
+    this.transport = null;
     this.reconnectTimer = null;
+    this.pendingCleanupTransport = null;
+    this.disconnectPromise = null;
     this.connectPromise = null;
     this.started = false;
     this.state = "stopped";
@@ -25,32 +38,28 @@ export class WorkLouderDevice {
     this.deviceMissingLogged = false;
     this.lastEventAt = null;
     this.lastEvent = null;
+    this.agentPressed = new Set();
     this.voicePressed = false;
+    this.submitPressed = false;
   }
 
   status() {
     return {
       state: this.state,
       error: this.lastConnectionError,
-      runtime: this.provider.metadata(),
+      runtime: this.transport?.metadata() ?? this.runtime,
       lastEventAt: this.lastEventAt,
       lastEvent: this.lastEvent,
     };
   }
 
-  loadLibrary() {
-    return this.provider.load();
-  }
-
   async start() {
     if (this.started) return;
-    const kit = await this.loadLibrary();
-    this.kit = kit;
     this.started = true;
     this.state = "waiting";
     await this.connect().catch((error) => this.reportConnectionError(error));
-    this.reconnectTimer = setInterval(() => {
-      if (this.started && !this.api) {
+    this.reconnectTimer = this.setReconnectInterval(() => {
+      if (this.started && !this.transport) {
         this.connect().catch((error) => this.reportConnectionError(error));
       }
     }, 3000);
@@ -58,18 +67,33 @@ export class WorkLouderDevice {
 
   reportConnectionError(error) {
     const message = error?.message ?? String(error);
-    this.state = "error";
+    this.state = message === "Codex Micro was not found." ? "waiting" : "error";
     if (message === this.lastConnectionError) return;
     this.lastConnectionError = message;
+    if (this.state === "waiting") {
+      if (!this.deviceMissingLogged) {
+        this.logger.info("Codex Micro not detected. Waiting for a connection...");
+        this.deviceMissingLogged = true;
+      }
+      return;
+    }
     this.logger.error(
       `Could not open Codex Micro: ${message}. Retrying automatically...`,
     );
   }
 
   async connect() {
-    if (!this.started || this.api) return Boolean(this.api);
+    if (!this.started || this.transport) return Boolean(this.transport);
     if (this.connectPromise) return this.connectPromise;
-    this.connectPromise = this.openConnection();
+    this.connectPromise = (async () => {
+      await this.disconnectPromise;
+      if (this.pendingCleanupTransport) {
+        const transport = this.pendingCleanupTransport;
+        await this.trackDisconnectCleanup(transport, transport.close());
+      }
+      if (!this.started || this.transport) return Boolean(this.transport);
+      return this.openConnection();
+    })();
     try {
       return await this.connectPromise;
     } finally {
@@ -79,132 +103,178 @@ export class WorkLouderDevice {
 
   async openConnection() {
     this.state = "connecting";
-    const discovery = new this.kit.WLDeviceDiscovery();
-    const codexMicroType =
-      this.kit.DeviceType.CodexMicro ?? this.kit.DeviceType.Project2077;
-    if (!codexMicroType) {
-      throw new Error("This ChatGPT build does not include Codex Micro support.");
-    }
-    const devices = discovery.findWLDevices([codexMicroType]);
-    if (!devices.length) {
-      if (!this.deviceMissingLogged) {
-        this.logger.info("Codex Micro not detected. Waiting for a connection...");
-        this.deviceMissingLogged = true;
-      }
-      this.state = "waiting";
-      return false;
-    }
-    this.deviceMissingLogged = false;
-
-    const comm = new this.kit.WLDeviceCommImpl();
-    const api = new this.kit.RPCApiOAI(comm);
+    const transport = this.transportFactory();
     let connectionEnded = false;
-    const unsubscribeConnection = comm.onConnectionEvent((event) => {
-      if (
-        event.type === this.kit.ConnectionEventType.DISCONNECTED ||
-        event.type === this.kit.ConnectionEventType.ERROR
-      ) {
-        connectionEnded = true;
-        unsubscribeConnection?.();
-        if (this.comm !== comm) {
-          comm.disconnect().catch((error) => this.reportConnectionError(error));
-          return;
-        }
-        this.logger.info(
-          "Codex Micro disconnected. Waiting for a connection...",
-        );
-        this.lastEventAt = new Date().toISOString();
-        this.disconnect(comm).catch((error) =>
-          this.reportConnectionError(error),
-        );
-      }
-    });
     try {
-      await comm.connect(devices[0]);
+      await transport.connect({
+        onEvent: (event) => this.handleHidEvent(event),
+        onDisconnect: (error) => {
+          connectionEnded = true;
+          if (this.transport !== transport) return;
+          this.logger.info(
+            "Codex Micro disconnected. Waiting for a connection...",
+          );
+          this.lastEventAt = new Date().toISOString();
+          this.lastEvent = {
+            type: "connection",
+            action: "disconnected",
+            at: this.lastEventAt,
+          };
+          const cleanup = this.trackDisconnectCleanup(
+            transport,
+            this.disconnect(transport),
+          );
+          cleanup
+            .then(() => {
+              if (error) this.reportConnectionError(error);
+            })
+            .catch((cleanupError) =>
+              this.reportConnectionError(cleanupError),
+            );
+        },
+      });
     } catch (error) {
-      unsubscribeConnection?.();
-      await comm.disconnect().catch(() => {});
+      await transport.close().catch(() => {});
       throw error;
     }
     if (!this.started || connectionEnded) {
-      unsubscribeConnection?.();
-      await comm.disconnect().catch(() => {});
+      await transport.close().catch(() => {});
       if (this.started) this.state = "waiting";
       return false;
     }
-    this.comm = comm;
-    this.api = api;
-    this.unsubscribeConnection = unsubscribeConnection;
+
+    this.transport = transport;
+    this.runtime = transport.metadata();
     this.state = "connected";
     this.lastConnectionError = null;
+    this.deviceMissingLogged = false;
     this.lastEventAt = new Date().toISOString();
     this.lastEvent = {
       type: "connection",
       action: "connected",
       at: this.lastEventAt,
     };
-    this.unsubscribeHid = api.onHidReceived((event) => {
-      const match = /^AG0([0-5])$/.exec(event.key);
-      if (event.act === 1 && match) {
-        this.lastEventAt = new Date().toISOString();
-        this.lastEvent = {
-          type: "agent-key",
-          action: "press",
-          at: this.lastEventAt,
-        };
-        Promise.resolve()
-          .then(() => this.onAgentKey(Number(match[1])))
-          .catch((error) => {
-            this.logger.error(
-              `Agent Key action failed: ${error?.message ?? String(error)}`,
-            );
-          });
-        return;
-      }
-      if (
-        event.key === "ACT10" &&
-        (event.act === 0 || event.act === 1)
-      ) {
-        const action = event.act === 1 ? "press" : "release";
-        if (
-          (action === "press" && this.voicePressed) ||
-          (action === "release" && !this.voicePressed)
-        ) {
-          return;
-        }
-        this.voicePressed = action === "press";
-        this.lastEventAt = new Date().toISOString();
-        this.lastEvent = {
-          type: "voice",
-          action,
-          at: this.lastEventAt,
-        };
-        Promise.resolve()
-          .then(() => this.onVoiceButton(action))
-          .catch((error) => {
-            this.logger.error(
-              `Voice input action failed: ${error?.message ?? String(error)}`,
-            );
-          });
-      }
-    });
     this.logger.info("Codex Micro connected.");
     if (this.lastSlots.length) await this.render(this.lastSlots);
     return true;
   }
 
-  async render(slots) {
-    this.lastSlots = slots;
-    if (!this.api) return false;
-    return this.api.sendThreadsLighting(lightingForSlots(slots));
+  handleHidEvent(event) {
+    const match = /^AG0([0-5])$/.exec(event.key);
+    if (match && (event.act === 0 || event.act === 1)) {
+      const slot = Number(match[1]);
+      const pressed = event.act === 1;
+      if (pressed === this.agentPressed.has(slot)) return;
+      if (pressed) this.agentPressed.add(slot);
+      else this.agentPressed.delete(slot);
+      if (!pressed) return;
+      this.lastEventAt = new Date().toISOString();
+      this.lastEvent = {
+        type: "agent-key",
+        action: "press",
+        at: this.lastEventAt,
+      };
+      Promise.resolve()
+        .then(() => this.onAgentKey(slot))
+        .catch((error) => {
+          this.logger.error(
+            `Agent Key action failed: ${error?.message ?? String(error)}`,
+          );
+        });
+      return;
+    }
+    if (
+      event.key === "ACT10" &&
+      (event.act === 0 || event.act === 1)
+    ) {
+      const action = event.act === 1 ? "press" : "release";
+      if (
+        (action === "press" && this.voicePressed) ||
+        (action === "release" && !this.voicePressed)
+      ) {
+        return;
+      }
+      this.voicePressed = action === "press";
+      this.lastEventAt = new Date().toISOString();
+      this.lastEvent = {
+        type: "voice",
+        action,
+        at: this.lastEventAt,
+      };
+      Promise.resolve()
+        .then(() => this.onVoiceButton(action))
+        .catch((error) => {
+          this.logger.error(
+            `Voice input action failed: ${error?.message ?? String(error)}`,
+          );
+        });
+      return;
+    }
+    if (event.key === "ACT12" && (event.act === 0 || event.act === 1)) {
+      const pressed = event.act === 1;
+      if (pressed === this.submitPressed) return;
+      this.submitPressed = pressed;
+      if (!pressed) return;
+      this.lastEventAt = new Date().toISOString();
+      this.lastEvent = {
+        type: "submit",
+        action: "press",
+        at: this.lastEventAt,
+      };
+      Promise.resolve()
+        .then(() => this.onSubmitButton())
+        .catch((error) => {
+          this.logger.error(
+            `Send key action failed: ${error?.message ?? String(error)}`,
+          );
+        });
+    }
   }
 
-  async disconnect(expectedComm = this.comm) {
-    if (expectedComm && this.comm !== expectedComm) return false;
-    this.unsubscribeHid?.();
-    this.unsubscribeHid = null;
-    this.unsubscribeConnection?.();
-    this.unsubscribeConnection = null;
+  async render(slots) {
+    this.lastSlots = slots;
+    if (!this.transport) return false;
+    await this.transport.send(
+      threadLightingMessage(lightingForSlots(slots)),
+    );
+    return true;
+  }
+
+  trackDisconnectCleanup(transport, operation) {
+    this.pendingCleanupTransport = transport;
+    let cleanup;
+    cleanup = Promise.resolve(operation)
+      .then((result) => {
+        if (this.pendingCleanupTransport === transport) {
+          this.pendingCleanupTransport = null;
+        }
+        return result;
+      })
+      .finally(() => {
+        if (this.disconnectPromise === cleanup) {
+          this.disconnectPromise = null;
+        }
+      });
+    this.disconnectPromise = cleanup;
+    return cleanup;
+  }
+
+  async disconnect(
+    expectedTransport = this.transport,
+    { close = true } = {},
+  ) {
+    if (
+      expectedTransport &&
+      this.transport &&
+      this.transport !== expectedTransport
+    ) {
+      return false;
+    }
+    const wasConnected =
+      Boolean(expectedTransport) && this.transport === expectedTransport;
+    if (wasConnected) this.transport = null;
+    this.agentPressed.clear();
+    this.submitPressed = false;
     if (this.voicePressed) {
       this.voicePressed = false;
       await Promise.resolve(this.onVoiceButton("release")).catch((error) => {
@@ -213,25 +283,36 @@ export class WorkLouderDevice {
         );
       });
     }
-    const comm = this.comm;
-    this.comm = null;
-    this.api = null;
-    try {
-      await comm?.disconnect();
-    } finally {
-      if (this.started) this.state = "waiting";
+    if (wasConnected) {
+      await Promise.resolve(this.onDeviceDisconnect()).catch((error) => {
+        this.logger.error(
+          `Could not stop voice input after Codex Micro disconnected: ${error?.message ?? String(error)}`,
+        );
+      });
     }
+    if (close) await expectedTransport?.close();
+    if (this.started) this.state = "waiting";
     return true;
   }
 
   async stop() {
     this.started = false;
     this.state = "stopping";
-    if (this.reconnectTimer) clearInterval(this.reconnectTimer);
+    if (this.reconnectTimer) {
+      this.clearReconnectInterval(this.reconnectTimer);
+    }
     this.reconnectTimer = null;
     await this.connectPromise?.catch(() => {});
+    const failures = [];
+    await this.disconnectPromise?.catch((error) => failures.push(error));
+    if (this.pendingCleanupTransport) {
+      const transport = this.pendingCleanupTransport;
+      await this.trackDisconnectCleanup(transport, transport.close()).catch(
+        (error) => failures.push(error),
+      );
+    }
     try {
-      if (this.api) {
+      if (this.transport) {
         await this.render(
           Array.from({ length: 6 }, (_, slot) => ({
             slot,
@@ -241,20 +322,24 @@ export class WorkLouderDevice {
         );
       }
     } catch (error) {
+      failures.push(error);
       this.logger.error(`Could not clear Codex Micro lighting: ${error.message}`);
     } finally {
       await this.disconnect().catch((error) => {
+        failures.push(error);
         this.logger.error(`Could not disconnect Codex Micro: ${error.message}`);
       });
-      try {
-        this.provider.close();
-      } finally {
-        this.kit = null;
-        this.state = "stopped";
-        this.lastConnectionError = null;
-        this.deviceMissingLogged = false;
-        this.voicePressed = false;
-      }
+      this.state = "stopped";
+      this.lastConnectionError = null;
+      this.deviceMissingLogged = false;
+      this.agentPressed.clear();
+      this.voicePressed = false;
+    }
+    if (failures.length) {
+      throw new AggregateError(
+        failures,
+        "Codex Micro did not shut down cleanly.",
+      );
     }
   }
 }
@@ -264,10 +349,14 @@ export class MockDevice {
     logger = console,
     onAgentKey = () => {},
     onVoiceButton = () => {},
+    onSubmitButton = () => {},
+    onDeviceDisconnect = () => {},
   } = {}) {
     this.logger = logger;
     this.onAgentKey = onAgentKey;
     this.onVoiceButton = onVoiceButton;
+    this.onSubmitButton = onSubmitButton;
+    this.onDeviceDisconnect = onDeviceDisconnect;
     this.started = false;
   }
   async start() {
@@ -284,6 +373,7 @@ export class MockDevice {
     return true;
   }
   async stop() {
+    if (this.started) await this.onDeviceDisconnect();
     this.started = false;
   }
 }

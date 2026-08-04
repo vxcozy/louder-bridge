@@ -10,7 +10,7 @@ const root = path.resolve(
 );
 const script = path.join(root, "scripts", "release-check.mjs");
 
-function run(refName) {
+function run(refName, { branchRef = "HEAD" } = {}) {
   return spawnSync(process.execPath, [script], {
     cwd: root,
     encoding: "utf8",
@@ -18,6 +18,9 @@ function run(refName) {
       ...process.env,
       GITHUB_REF_TYPE: "tag",
       GITHUB_REF_NAME: refName,
+      ...(branchRef === null
+        ? { LOUDER_RELEASE_BRANCH_REF: "" }
+        : { LOUDER_RELEASE_BRANCH_REF: branchRef }),
     },
   });
 }
@@ -31,5 +34,21 @@ test("requires the release tag to match the package version", () => {
   assert.match(
     mismatched.stderr,
     /Release tag v0\.1\.1 does not match package version 0\.1\.0/,
+  );
+});
+
+test("requires the release tag commit to belong to the protected branch", () => {
+  const outsideBranch = run("v0.1.0", { branchRef: "HEAD^" });
+  assert.equal(outsideBranch.status, 1);
+  assert.match(
+    outsideBranch.stderr,
+    /release tag commit is not part of HEAD\^/,
+  );
+
+  const missingBranch = run("v0.1.0", { branchRef: null });
+  assert.equal(missingBranch.status, 1);
+  assert.match(
+    missingBranch.stderr,
+    /protected release branch reference is unavailable/,
   );
 });
