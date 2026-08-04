@@ -94,6 +94,7 @@ export async function completePermissionOnboarding(
   {
     signal,
     isReady,
+    permissionState,
     openApplication = openOnboardingApplication,
     attempts = ONBOARDING_LAUNCH_ATTEMPTS,
   } = {},
@@ -104,9 +105,22 @@ export async function completePermissionOnboarding(
   if (!Number.isInteger(attempts) || attempts < 1) {
     throw new TypeError("Permission setup attempts must be a positive integer.");
   }
+  if (permissionState !== undefined && typeof permissionState !== "function") {
+    throw new TypeError("A permission state reader must be a function.");
+  }
+  let previousPermissionState = permissionState?.();
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     await openApplication(app, { signal, waitForExit: true });
     if (isReady()) return;
+    if (permissionState) {
+      const nextPermissionState = permissionState();
+      if (nextPermissionState === previousPermissionState) {
+        throw new Error(
+          "Louder Bridge closed without completing permission setup.",
+        );
+      }
+      previousPermissionState = nextPermissionState;
+    }
   }
   throw new Error("Louder Bridge closed before the background agent was ready.");
 }

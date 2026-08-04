@@ -131,19 +131,42 @@ test("reports a real Node command timeout", async () => {
 
 test("reopens after permission-driven app restarts", async () => {
   const launches = [];
-  const readiness = [false, false, false, false, true];
+  const readiness = [false, true];
+  const permissionStates = [
+    "denied:denied",
+    "granted:denied",
+  ];
 
   await completePermissionOnboarding("/Applications/Louder Bridge.app", {
     signal: AbortSignal.timeout(1000),
     isReady: () => readiness.shift(),
+    permissionState: () => permissionStates.shift(),
     async openApplication(app, options) {
       launches.push({ app, options });
     },
   });
 
-  assert.equal(launches.length, 5);
+  assert.equal(launches.length, 2);
   assert.equal(launches[0].app, "/Applications/Louder Bridge.app");
   assert.equal(launches[0].options.waitForExit, true);
+});
+
+test("does not reopen after a permission timeout", async () => {
+  let launches = 0;
+  const permissionStates = ["denied:denied", "denied:denied"];
+
+  await assert.rejects(
+    () =>
+      completePermissionOnboarding("/Applications/Louder Bridge.app", {
+        isReady: () => false,
+        permissionState: () => permissionStates.shift(),
+        async openApplication() {
+          launches += 1;
+        },
+      }),
+    /closed without completing permission setup/,
+  );
+  assert.equal(launches, 1);
 });
 
 test("bounds permission-driven app restarts", async () => {

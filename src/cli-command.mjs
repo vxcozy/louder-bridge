@@ -270,6 +270,12 @@ if (command === "help" || command === "--help" || command === "-h") {
         await completePermissionOnboarding(application.app, {
           signal,
           isReady: waitForLaunchAgent,
+          permissionState() {
+            const status = installedApplicationStatus({
+              launcher: application.launcher,
+            });
+            return `${status.inputMonitoring}:${status.accessibility}`;
+          },
         });
         await waitForBridgeReady({
           authToken: authentication.token,

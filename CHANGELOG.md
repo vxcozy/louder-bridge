@@ -106,8 +106,10 @@ have not shipped appear under "Unreleased."
   permission, and opens the matching System Settings pane.
 - Source setup now follows the onboarding app directly instead of leaving an
   `open -W` helper alive. If macOS quits the app after a permission change,
-  setup reopens it so onboarding can continue. The wait and the five-launch
-  limit are both bounded, allowing the transaction to roll back on failure.
+  setup reopens it so onboarding can continue. Setup checks for a new Input
+  Monitoring or Accessibility state before trying again. A timeout with no
+  change rolls back instead of starting another wait, and setup stops after
+  five app launches.
 - Source builds now derive the launcher's Mach-O UUID from its compiled
   contents, so rebuilding unchanged code keeps the same local signing identity
   and macOS permissions.

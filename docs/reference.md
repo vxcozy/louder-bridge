@@ -124,11 +124,13 @@ either wait expires, the app opens the matching System Settings pane and exits
 before activation. Source setup then rolls back its transaction.
 Source setup gives macOS's app-opening command five seconds, waits briefly for
 the onboarding process to appear, then follows it once per second. If macOS
-quits Louder Bridge after a permission change, setup can launch it up to five
-times so onboarding continues without a manual restart. Each app wait has an
-eleven-minute deadline. Source builds derive the launcher's Mach-O UUID from
-its compiled contents, so an unchanged rebuild keeps the same local permission
-identity.
+quits Louder Bridge after a permission change, setup compares the new Input
+Monitoring and Accessibility state with the state from the previous launch. It
+can reopen the app when either state changes and stops after five launches. If
+neither state changed, setup rolls back instead of starting another wait. Each
+app wait has an eleven-minute deadline. Source builds derive the launcher's
+Mach-O UUID from its compiled contents, so an unchanged rebuild keeps the same
+local permission identity.
 
 Before setup replaces or removes the app, it checks the bundle identifier and
 executable name. It also records the bundle's filesystem identity for rollback

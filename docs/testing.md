@@ -17,7 +17,8 @@ matches the [supported baseline](compatibility.md).
    manual restart.
 4. In a clean test account, leave Input Monitoring off for five minutes.
    Confirm the dialog identifies the missing permission, opens the matching
-   setting, and exits without installing hooks or a login agent. Enable the
+   setting, and exits without installing hooks or a login agent. Confirm source
+   setup does not open the app a second time and rolls back. Enable the
    permission, reopen the app, and confirm setup can finish.
 5. After both onboarding runs, confirm source setup finishes within fifteen
    seconds of Louder Bridge closing. In Activity Monitor, check that no
