@@ -19,6 +19,27 @@ also been tested on hardware.
 Louder Bridge embeds the Node.js executable used during setup, so Node does not
 need to remain on the user's shell path after installation.
 
+## Latest release qualification
+
+The v0.1.2 archive downloaded from GitHub passed a physical test on August 4,
+2026:
+
+| Component | Version or result |
+|---|---|
+| Mac architecture | Apple Silicon (`arm64`) |
+| macOS | 26.5.2 (25F84) |
+| Claude Desktop | 1.24012.9 |
+| Louder Bridge | 0.1.2, revision `5b579d203e325cd75be5de214879b89dc93db671` |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | Bluetooth |
+| Voice and send | MIC hold and release inserted spoken text; the adjacent key sent it |
+| Lighting | Six-key standby, lifecycle colors, exterior effects, and pulsing passed |
+| App handoff | The bridge released the Micro for Codex after Claude closed |
+
+The same core MIC and send controls passed over USB-C on the same hardware.
+This qualification used the exact published package.
+
 ## Earlier end-to-end baseline
 
 The following combination passed the end-to-end acceptance test on July 31,
@@ -72,11 +93,11 @@ send key in Claude Code over USB-C. Wired restart, approval, and power-cycle
 cases remain open.
 
 Codex was closed during the passing run so its built-in Micro integration did
-not receive the same controls. These focused tests do not qualify the release
-candidate. The visible Cowork composer route, double-tap latching, approval
-prompts, wired restart and power-cycle cases, lighting matrix, recovery, and
-packaged-release test remain open. See the
-[hardware acceptance checklist](testing.md).
+not receive the same controls. These development-build checks preceded the
+v0.1.2 package qualification above. The visible Cowork composer route,
+double-tap latching, approval prompts, wired restart and power-cycle cases, and
+the rest of the recovery checklist remain open. See the [hardware acceptance
+checklist](testing.md).
 
 ## Compatibility policy
 
@@ -84,6 +105,15 @@ The independently documented device protocol, Claude resume URL, and Claude
 Accessibility surface for dictation are unsupported integration points. A
 firmware or desktop update can break them without notice. Stable v1 is blocked
 until supported replacements exist.
+
+The current vendor documentation does not cover the adapters the bridge needs.
+[Anthropic's desktop link guide](https://support.claude.com/en/articles/14729294-open-claude-desktop-with-a-link)
+documents starting a Code session, but not reopening an existing local Code
+session by ID. Its [Claude Code voice guide](https://support.claude.com/en/articles/14554000-claude-code-power-user-tips)
+tells users to press the desktop voice button and does not provide an external
+control interface. [Work Louder's Codex Micro page](https://worklouder.cc/codex-micro)
+lists Codex and Work Louder Input as its software integrations. During the
+v0.1.2 review, that page had no link to a device SDK or protocol.
 
 Preview releases run the Node matrix and record one physical baseline. A new
 Codex Micro firmware or Claude version is listed as compatible only after
