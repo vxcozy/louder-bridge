@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for helping make Louder Bridge more reliable. Bug reports are especially
-useful when they include the exact macOS, Claude Desktop, Node.js, Codex Micro
-firmware, and connection type.
+useful when they include the exact macOS, active desktop app, Node.js, Codex
+Micro firmware, and connection type.
 
 ## Before opening a change
 
@@ -38,7 +38,8 @@ change.
 Hardware changes also need the checklist in
 [docs/testing.md](docs/testing.md). Automated mocks are useful, but they do not
 replace a physical Codex Micro test. Changes to MIC handling must be tested in
-an active Claude Code composer over both USB-C and Bluetooth.
+every affected Claude or Hermes composer. Record whether the Micro used USB-C
+or Bluetooth.
 
 ## Submit a pull request
 

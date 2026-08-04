@@ -316,6 +316,7 @@ test("excludes native test interfaces from production launchers", (context) => {
     ["--test-micro-frame", "usb", '{}'],
     ["--test-micro-command", '{}'],
     ["--test-composer-gesture", "hold"],
+    ["--test-hermes-accessibility-plan"],
     ["--test-permission-wait", "grant"],
     ["--test-input-monitoring-request", "grant"],
   ]) {
@@ -454,6 +455,32 @@ test("uses complete clicks for toggle dictation controls", (context) => {
   assert.equal(hold.stdout.trim(), "mouse-down mouse-up");
   assert.equal(toggle.status, 0);
   assert.equal(toggle.stdout.trim(), "click click");
+});
+
+test("enables and retries Hermes's Electron accessibility tree", (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("The native Hermes adapter requires Apple Silicon.");
+    return;
+  }
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "louder-native-hermes-accessibility-"),
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true }));
+  const output = path.join(directory, "LouderBridge");
+  const sourceRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+  compileNativeLauncher({ sourceRoot, output, testBuild: true });
+
+  const result = spawnSync(
+    output,
+    ["--test-hermes-accessibility-plan"],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), "AXManualAccessibility 10 100000");
 });
 
 test("writes permission probes only to private single-link files", (context) => {

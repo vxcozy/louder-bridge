@@ -32,9 +32,14 @@ export function isCodexDesktopRunning(run = execFileAsync) {
   return isNamedProcessRunning(["ChatGPT", "Codex"], run);
 }
 
+export function isHermesDesktopRunning(run = execFileAsync) {
+  return isNamedProcessRunning(["Hermes"], run);
+}
+
 export async function startDesktopService({
   checkClaude = isClaudeDesktopRunning,
   checkCodex = isCodexDesktopRunning,
+  checkHermes = isHermesDesktopRunning,
   createBridge = startBridge,
   pollInterval = 1000,
   logger = console,
@@ -52,10 +57,12 @@ export async function startDesktopService({
   });
   bridge.setRuntimeStatus?.({
     claudeDesktop: "closed",
+    hermesDesktop: "closed",
     codexDesktop: "unknown",
   });
-  let claudeWasRunning = false;
+  let previousSurface = null;
   let contentionWasActive = false;
+  let surfaceContentionWasActive = false;
   let contentionNoticeShown = false;
   let deviceRequested = false;
   let deviceReleasePending = false;
@@ -104,14 +111,22 @@ export async function startDesktopService({
     }
     previousPermission = permission;
     previousAccessibility = accessibility;
-    const [claudeResult, codexResult] = await Promise.allSettled([
+    const [claudeResult, codexResult, hermesResult] = await Promise.allSettled([
       checkClaude(),
       checkCodex(),
+      checkHermes(),
     ]);
     const claudeIsRunning =
       claudeResult.status === "fulfilled" ? claudeResult.value : null;
     const codexIsRunning =
       codexResult.status === "fulfilled" ? codexResult.value : null;
+    const hermesIsRunning =
+      hermesResult.status === "fulfilled" ? hermesResult.value : null;
+    const supportedSurfaces = [
+      claudeIsRunning ? "claude" : null,
+      hermesIsRunning ? "hermes" : null,
+    ].filter(Boolean);
+    const surface = supportedSurfaces.length === 1 ? supportedSurfaces[0] : null;
     bridge.setRuntimeStatus?.({
       claudeDesktop:
         claudeIsRunning === null
@@ -121,8 +136,12 @@ export async function startDesktopService({
         codexIsRunning === null
           ? "unknown"
           : (codexIsRunning ? "open" : "closed"),
+      hermesDesktop:
+        hermesIsRunning === null
+          ? "unknown"
+          : (hermesIsRunning ? "open" : "closed"),
     });
-    const processFailures = [claudeResult, codexResult]
+    const processFailures = [claudeResult, codexResult, hermesResult]
       .filter((result) => result.status === "rejected")
       .map((result) => result.reason);
     if (processFailures.length) {
@@ -143,31 +162,39 @@ export async function startDesktopService({
       if (processFailures.length === 1) throw processFailures[0];
       throw new AggregateError(
         processFailures,
-        "Louder Bridge could not check whether Claude or Codex is open.",
+        "Louder Bridge could not check whether a supported app or Codex is open.",
       );
     }
-    const contentionIsActive = claudeIsRunning && codexIsRunning;
+    const contentionIsActive = Boolean(surface && codexIsRunning);
     if (contentionIsActive && !contentionWasActive) {
       logger.info(
-        "Codex is also open. Waiting to give the Micro to Claude.",
+        `Codex is also open. Waiting to give the Micro to ${surface === "hermes" ? "Hermes" : "Claude"}.`,
       );
     }
     if (!contentionIsActive) contentionNoticeShown = false;
     contentionWasActive = contentionIsActive;
+    const surfaceContentionIsActive = supportedSurfaces.length > 1;
+    if (surfaceContentionIsActive && !surfaceContentionWasActive) {
+      logger.info(
+        "Claude and Hermes are both open. Waiting until only one supported app is open.",
+      );
+    }
+    surfaceContentionWasActive = surfaceContentionIsActive;
     if (
-      !claudeIsRunning ||
+      !surface ||
       permission !== "granted" ||
       accessibility !== "granted"
     ) {
       if (deviceRequested || deviceReleasePending) {
         logger.info(
-          claudeIsRunning
+          surface
             ? "A required macOS permission is unavailable. Releasing Codex Micro."
-            : "Claude Desktop closed. Releasing Codex Micro.",
+            : "No supported app owns the Micro. Releasing Codex Micro.",
         );
         await releaseDevice();
       }
-      claudeWasRunning = claudeIsRunning;
+      await bridge.setSurface?.(null);
+      previousSurface = surface;
       return;
     }
     if (contentionIsActive) {
@@ -180,25 +207,32 @@ export async function startDesktopService({
           logger.error("Could not show the Codex conflict notice.");
         };
         try {
-          if (notifyContention({ onError: reportNoticeFailure }) === false) {
+          if (notifyContention({
+            surface: surface === "hermes" ? "Hermes Desktop" : "Claude Desktop",
+            onError: reportNoticeFailure,
+          }) === false) {
             reportNoticeFailure();
           }
         } catch {
           reportNoticeFailure();
         }
       }
-      claudeWasRunning = true;
+      await bridge.setSurface?.(null);
+      previousSurface = surface;
       return;
     }
+    await bridge.setSurface?.(surface);
     if (!deviceRequested) {
-      if (!claudeWasRunning) {
-        logger.info("Claude Desktop opened. Connecting Codex Micro...");
+      if (previousSurface !== surface) {
+        logger.info(
+          `${surface === "hermes" ? "Hermes" : "Claude Desktop"} opened. Connecting Codex Micro...`,
+        );
       }
       await bridge.connectDevice();
       deviceRequested = true;
       deviceReleasePending = false;
-      claudeWasRunning = true;
     }
+    previousSurface = surface;
   }
 
   function queueSync() {

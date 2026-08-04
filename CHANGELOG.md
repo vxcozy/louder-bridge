@@ -5,6 +5,27 @@ have not shipped appear under "Unreleased."
 
 ## Unreleased
 
+### Added
+
+- Hermes Desktop support for lifecycle lighting, Agent Key session navigation,
+  MIC push-to-talk, and the adjacent send key.
+- A managed Hermes plugin that reports lifecycle events without prompt text,
+  transcripts, project names, or session identifiers in normal logs.
+- A Hermes tutorial and troubleshooting notes.
+
+### Changed
+
+- Louder Bridge now gives the Micro to exactly one open supported app. It waits
+  when Claude Desktop and Hermes Desktop are open together.
+- Claude and Hermes dictation now use the same native helper for startup,
+  shutdown, and error handling.
+
+### Fixed
+
+- Hermes dictation now enables Electron's macOS accessibility tree before it
+  looks for the composer control. A short retry covers the first MIC press
+  after Hermes starts.
+
 ## 0.1.2 - 2026-08-04
 
 ### Fixed

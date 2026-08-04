@@ -30,8 +30,8 @@ matches the [supported baseline](compatibility.md).
 7. Run `npm run doctor`, `npm test`, and `npm run status`.
 8. Confirm the background agent and hook server are ready.
 
-Record the macOS, Node.js, Codex Micro firmware, connection type, device
-driver, Claude Desktop, and Louder Bridge versions in the release notes.
+Record macOS, Node.js, Codex Micro firmware, connection type, device driver,
+the active desktop app, and Louder Bridge versions in the release notes.
 
 ## Check automatic ownership
 
@@ -123,6 +123,52 @@ Record the voice route reported by `npm run status`. For `Claude composer`,
 also record the Claude account type and whether an organization policy applies.
 For `macOS Dictation`, record the selected Dictation language and processing
 setting.
+
+## Check Hermes Desktop
+
+1. Quit Codex and Claude Desktop, then open Hermes Desktop.
+2. Start a local Hermes session and send a prompt. Confirm its Agent Key and
+   exterior lighting show running, needs-input, complete, and error states when
+   those events occur.
+3. Create a second recent session. Press each assigned Agent Key and confirm
+   Hermes opens the matching session.
+4. Restart Hermes. On the first MIC press, hold the key, speak a distinctive
+   sentence, and release it. Confirm the transcript appears in the focused
+   composer without being sent.
+5. Repeat MIC hold and release three times. Each press must start one recording
+   and each release must stop it.
+6. Press the key to the right of MIC. Confirm Hermes sends the draft once.
+7. Quit Hermes and open Codex. Confirm Louder Bridge releases the Micro before
+   Codex takes ownership.
+
+Hermes lifecycle events use the managed plugin. MIC, send, and session
+navigation use separate desktop controls, so test all three paths.
+
+## Latest Hermes candidate result
+
+A locally built v0.2.0 candidate archive passed the focused Hermes test on
+August 4, 2026:
+
+| Component | Version or result |
+|---|---|
+| macOS | 26.5.2 (25F84) |
+| Hermes Desktop | 0.17.0 |
+| Hermes Agent | 0.19.0 (2026.7.20), upstream `a4973c3f` |
+| Louder Bridge | 0.2.0 candidate archive |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | Bluetooth Low Energy |
+| MIC hold and release | Passed in the Hermes composer |
+| Transcript insertion | Passed and did not submit automatically |
+| Send key | Passed; one Return event reached Hermes |
+| Agent Keys | Session navigation passed |
+| Lifecycle response | Lighting, exterior effects, and sound feedback passed |
+| Installation | Fresh app and background-agent upgrade passed after permission approval |
+| App handoff | Codex released the Micro to Hermes and regained it afterward |
+
+The tester confirmed the transcript in Hermes and reported no missed controls
+or rough transitions. Bridge diagnostics recorded dictation, send, and
+lifecycle events without audio or transcript content.
 
 ## Latest release result
 

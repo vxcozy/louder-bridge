@@ -113,6 +113,7 @@ test("the hook sends only allowlisted lifecycle fields", { timeout: 2000 }, asyn
   });
   assert.equal(request.authorization, `Bearer ${token}`);
   assert.deepEqual(request.body, {
+    surface: "claude",
     session_id: "session-a",
     hook_event_name: "UserPromptSubmit",
     notification_type: "permission_prompt",

@@ -10,31 +10,30 @@ applications.
 
 The six Agent Keys are different. Their live colors depend on agent state, and
 pressing one is meant to navigate to the agent it represents. Keyboard
-remapping cannot tell whether Claude is working, waiting for approval,
+remapping cannot tell whether an agent is working, waiting for approval,
 finished, or stopped by an error. Louder Bridge reads that session state and
 sends it to the Micro.
 
 MIC is also application-aware. A press must begin listening in the active
-Claude Code composer, and a release must stop it without sending the prompt or
+composer, and a release must stop it without sending the prompt or
 moving to another session.
 
 ## Data flow
 
 ```text
-Claude Code Desktop
-  ├─ lifecycle command hooks
+Claude Desktop or Hermes Desktop
+  ├─ Claude command hooks or Hermes plugin hooks
   │    └─ POST 127.0.0.1:47831/hook
   │         └─ six-slot session store
   │              ├─ status → Work Louder lighting RPC
-  │              └─ Agent Key → Claude resume link
-  └─ Accessibility dictation control
+  │              └─ Agent Key → active navigation adapter
+  └─ Accessibility composer control
        └─ MIC press/release ← background service ← Micro HID events
 ```
 
-Claude Code runs a small command hook for each session start, prompt
-submission, attention request, completed turn, failure, and session end. The
-hook removes prompt and tool content, then sends the event to the bridge over
-loopback HTTP.
+Claude Code runs small command hooks for session events. Hermes loads a managed
+plugin that observes its lifecycle hooks. Both adapters build a minimal payload
+and send it to the bridge over loopback HTTP.
 
 The bridge updates its session store and sends color data for all six slots.
 The device reports Agent Key presses back to the bridge. A press selects the
@@ -55,9 +54,10 @@ own Node.js runtime, so the agent does not depend on a source checkout or the
 user's shell configuration. The agent starts at login and keeps the local hook
 server available.
 
-The service checks whether Claude Desktop is running. It connects to the Micro
-when Claude opens and disconnects when Claude quits. This keeps startup
-automatic without holding the device while the user works in Codex.
+The service checks whether Claude Desktop or Hermes Desktop is running. It
+connects when exactly one supported app is open and disconnects when neither is
+open. If both are open, it waits. This prevents a Micro control from reaching
+two agent apps.
 
 macOS can cache a privacy decision in the process that requested it. A child
 process may also inherit the parent's privacy identity, which makes a direct
@@ -66,14 +66,14 @@ probe through LaunchServices. The probe writes only the two permission states
 to a private temporary file, then exits. The onboarding process deletes that
 file and starts the background agent as soon as both permissions are granted.
 
-## Why use Claude Code hooks
+## Why use lifecycle hooks
 
-Claude Code hooks report lifecycle events directly: session start, prompt
-submission, permission requests, notifications, completion, failure, and
+Claude Code command hooks and Hermes plugin hooks report lifecycle events
+directly: session start, prompt submission, approval, completion, failure, and
 session end.
 
-Unlike interface scraping, hooks do not depend on Claude's rendering or layout.
-They also avoid watching Claude's private files.
+Unlike interface scraping, hooks do not depend on either app's rendering or
+layout. They also avoid watching private session files.
 
 If the bridge is not running, the hook's request times out after 400
 milliseconds and exits successfully. A disconnected Micro does not interrupt
@@ -151,6 +151,17 @@ document it as a public interface. The navigation adapter keeps that private
 route out of device and session logic. The release check also blocks stable v1
 until a supported navigator replaces it.
 
+## Hermes session navigation
+
+Hermes Desktop provides shortcuts for its nine most recent sessions. The
+bridge asks the Hermes CLI for the current order, finds the session assigned to
+the pressed Agent Key, brings Hermes forward, and sends the matching `Ctrl+1`
+through `Ctrl+9` shortcut.
+
+The adapter depends on the default shortcut bindings. If the session has fallen
+outside the first nine or the shortcut has been remapped, navigation fails
+without changing the selected Micro slot.
+
 ## Claude voice input
 
 Codex treats MIC as push-to-talk, so Louder Bridge preserves that interaction
@@ -182,12 +193,23 @@ Neither route is a supported Anthropic Desktop integration. The adapter is
 experimental, and the release check blocks stable v1 until Anthropic provides
 a supported interface.
 
+## Hermes voice input
+
+Hermes Desktop exposes a Voice dictation button in its composer. MIC presses
+operate that button through macOS Accessibility. The native helper reports
+ready only after Hermes starts recording, then stops dictation when MIC is
+released. The adjacent Micro key sends Return to the frontmost Hermes window.
+
+Hermes owns microphone access and transcription. The bridge does not receive
+audio or read the resulting draft.
+
 ## Privacy boundary
 
 The hook receives more data than the lighting system needs, so it builds a new
 allowlisted payload before making the local request.
 
-The allowlist contains only the session ID, event name, and notification type.
+The allowlist contains only the surface, session ID, event name, and optional
+notification type.
 It excludes the working directory, model name, stop reason, prompt text,
 responses, transcripts, and tool data. The server keeps session IDs in memory
 for Agent Key navigation but omits them from diagnostics. The voice path does
@@ -208,18 +230,18 @@ Louder Bridge connect at the same time, but the apps do not coordinate input
 events or lighting writes. A MIC or send press can reach both apps, and the
 last lighting write wins.
 
-When the bridge finds a connected Micro while both desktop apps are open, it
-shows one conflict notice and releases the device. It stays disconnected until
-Codex quits, then reconnects to the Micro without restarting Claude.
+When the bridge finds a connected Micro while Codex and a supported app are
+open, it shows one conflict notice and releases the device. It reconnects after
+Codex quits without restarting the agent app.
 
 For predictable controls and lighting, keep one desktop app open at a time:
 
-- Open Claude Desktop while working in Claude.
-- Quit Codex while using the Micro with Claude.
-- Quit Claude Desktop before returning to Codex.
+- Open only Claude Desktop or Hermes Desktop while using the bridge.
+- Quit Codex while using the Micro with either app.
+- Quit both supported apps before returning to Codex.
 
-The background agent clears its Agent Key lighting and disconnects when Claude
-quits. The next Codex update can then restore Codex's state.
+The background agent clears its lighting and disconnects when no supported app
+is open. The next Codex update can then restore Codex's state.
 
 ## Related projects and documentation
 
@@ -228,4 +250,5 @@ quits. The next Codex update can then restore Codex's state.
 - [Claude Code Desktop](https://code.claude.com/docs/en/desktop)
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks)
 - [Claude Code voice dictation](https://code.claude.com/docs/en/voice-dictation)
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent)
 - [Dictate messages and documents on Mac](https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac)
