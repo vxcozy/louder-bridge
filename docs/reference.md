@@ -8,9 +8,9 @@
 | Node.js for source setup | 22 or newer |
 | Hardware | Work Louder Codex Micro |
 | Hardware connection | USB-C or Bluetooth |
-| Agent surfaces | Local Claude Code sessions in Claude Desktop; local sessions in Hermes Desktop |
+| Agent surfaces | Claude Desktop, Hermes Desktop, or local Claude, Codex, and Hermes sessions in Ghostty 1.3 or newer |
 | Voice service | Claude voice, Hermes Voice dictation, or macOS Dictation |
-| Permissions | Input Monitoring and Accessibility for Louder Bridge; Microphone for the app handling dictation |
+| Permissions | Input Monitoring and Accessibility for Louder Bridge; Ghostty Automation for terminal control; Microphone for the app handling dictation |
 | Device driver | Bundled native IOKit driver; vendor-supported interface required for v1 |
 | Protocol reference | FreeMicro revision `64258eb6cc3312a43f9f9f86d87e55e0b609ccc5` (MIT) |
 
@@ -65,6 +65,7 @@ Supported simulated states are `idle`, `running`, `needs_input`, `complete`,
 | `LOUDER_BRIDGE_HOST` | `127.0.0.1` | Loopback event-server address |
 | `LOUDER_BRIDGE_PORT` | `47831` | Local event-server port |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Override the Claude configuration directory |
+| `LOUDER_AGENT_SURFACE` | `claude` | Internal hook tag; setup sets this to `codex` for Codex CLI hooks |
 
 Setup records the selected host and port in the launch agent and hook commands.
 Only `127.0.0.1`, `::1`, and `localhost` are accepted as host values.
@@ -112,6 +113,16 @@ override settings.
 Hermes loads newly enabled plugins at startup. Restart Hermes Desktop after the
 first installation or an upgrade.
 
+## Codex CLI hooks
+
+Setup adds Louder Bridge command hooks to `~/.codex/hooks.json` for the Codex
+CLI lifecycle events listed below. It preserves unrelated hooks and removes
+only commands tagged as Louder Bridge during uninstall.
+
+Codex performs its own hook trust check. The first Codex session after setup
+may ask you to approve the command. Louder Bridge does not write Codex's trust
+record or use the hook-trust bypass flag.
+
 ## Background agent
 
 Setup creates a per-user launch agent with these properties:
@@ -120,7 +131,7 @@ Setup creates a per-user launch agent with these properties:
 |---|---|
 | Label | `app.louder-bridge.agent` |
 | Start policy | After permission approval, then at login with automatic restart |
-| Device policy | Connect while exactly one of Claude Desktop or Hermes Desktop is open |
+| Device policy | Connect while exactly one supported desktop app is open, or while Ghostty hosts a supported terminal agent |
 | Hook server | Always available on the configured loopback address |
 | Standard log | `~/Library/Logs/LouderBridge/bridge.log` |
 | Error log | `~/Library/Logs/LouderBridge/bridge-error.log` |
@@ -253,6 +264,22 @@ The plugin queues requests in a daemon thread, uses a 400-millisecond network
 timeout, and ignores delivery failures. Hermes keeps working when Louder Bridge
 or the Micro is unavailable.
 
+## Codex CLI hook events
+
+Setup registers command hooks for:
+
+| Hook event | Resulting state |
+|---|---|
+| `SessionStart` | `idle` |
+| `UserPromptSubmit` | `running` |
+| `PermissionRequest` | `needs_input` |
+| `Stop` | `complete` |
+| `SessionEnd` | `off` |
+
+The hook discards prompts, tool inputs, assistant responses, working
+directories, and other fields before it contacts the bridge. Codex keeps
+working when Louder Bridge is unavailable.
+
 ## Loopback HTTP interface
 
 The event server listens only on the configured loopback address.
@@ -269,10 +296,12 @@ Returns bridge status and the six current slot states:
     "claudeDesktop": "open",
     "hermesDesktop": "closed",
     "codexDesktop": "closed",
+    "ghostty": "closed",
+    "terminalAgent": "closed",
     "activeSurface": "claude",
     "inputMonitoring": "granted",
     "accessibility": "granted",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "buildRevision": "0123456789abcdef0123456789abcdef01234567",
     "nodeVersion": "v24.8.0",
     "navigator": {
@@ -341,15 +370,16 @@ requests.
 
 ### `POST /hook`
 
-Accepts a Claude or Hermes hook event as JSON. Request bodies are limited to
-64 KiB.
+Accepts a Claude, Codex, or Hermes hook event as JSON. Request bodies are
+limited to 64 KiB.
 
 Recognized fields are:
 
 - `session_id`
 - `hook_event_name`
 - `notification_type`
-- `surface` (`claude` or `hermes`)
+- `surface` (`claude`, `codex`, or `hermes`)
+- `host` (`ghostty` for a supported terminal session)
 
 The hook does not forward working directories, prompts, responses, model
 names, tool data, or transcripts. The health response omits session IDs. The
@@ -395,11 +425,15 @@ entries and older log files.
 | `src/hermes/voice.mjs` | Hermes Voice dictation adapter |
 | `src/hermes/submit.mjs` | Hermes composer and approval submit adapter |
 | `src/setup/hermes-plugin.mjs` | Hermes plugin installation and rollback |
+| `src/ghostty/navigator.mjs` | Stable terminal association and navigation |
+| `src/ghostty/voice.mjs` | macOS Dictation adapter for the focused terminal |
+| `src/ghostty/submit.mjs` | Ghostty Return command adapter |
 | `src/macos/input-monitoring.mjs` | Native permission status checks |
 | `src/macos/native-executable.mjs` | Mach-O validation shared by native helpers |
-| `native/launcher.m` | App launcher, permission onboarding, dictation, submit, and Hermes navigation controls |
+| `native/launcher.m` | App launcher, permission onboarding, dictation, submit, and desktop navigation controls |
 | `native/micro_device.m` | IOKit device discovery, framing, and input reports |
 | `src/setup/claude-hooks.mjs` | Settings merge and removal |
+| `src/setup/codex-hooks.mjs` | Codex CLI hook installation and removal |
 | `src/setup/launch-agent.mjs` | macOS launch agent installation |
 | `src/setup/application-bundle.mjs` | Self-contained app installation and rollback |
 | `src/setup/permission-onboarding.mjs` | Permission gate and first-launch handoff |
@@ -412,6 +446,8 @@ entries and older log files.
 
 - Cloud and SSH sessions are not tracked because their hooks execute away from
   the local bridge.
+- Ghostty is the only terminal host in this release. Terminal navigation uses
+  Ghostty's AppleScript API, which Ghostty 1.3 labels as a preview.
 - macOS on Apple Silicon is the tested target.
 - GitHub prereleases use an ad-hoc signature, so macOS may ask for Input
   Monitoring or Accessibility again after an upgrade.
@@ -419,8 +455,8 @@ entries and older log files.
   implementation. Stable v1 requires a vendor-supported Work Louder interface.
 - The native driver cannot claim exclusive ownership of the Micro. If Codex and
   a supported app are open together, Louder Bridge warns once and releases its
-  device connection until Codex quits. It also waits when Claude and Hermes are
-  both open.
+  device connection until Codex quits. It also waits whenever more than one
+  supported surface is open.
 - Claude's resume URL is not part of Anthropic's public interface. Stable v1
   requires a supported navigation route.
 - Claude's Accessibility surface for dictation is not a published Anthropic
@@ -430,6 +466,11 @@ entries and older log files.
   shortcuts and is limited to the nine most recent sessions.
 - Hermes lifecycle lighting, Agent Key navigation, MIC hold and release,
   transcript insertion, and send passed a focused Bluetooth hardware test.
+- Ghostty 1.3.1 passed a physical Micro test in Claude Code. The assigned Agent
+  Key and exterior lighting turned blue while Claude worked, MIC dictation
+  inserted speech, and send submitted the prompt. Stable terminal discovery
+  and exact focus passed a separate native check. Agent Key navigation between
+  terminals still needs a physical test.
 - Claude MIC hold and release, transcript insertion, and send passed focused
   physical tests over Bluetooth and USB-C. Bluetooth lifecycle response also passed.
   The full USB-C and Bluetooth acceptance matrix has not passed yet.

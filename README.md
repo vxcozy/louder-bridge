@@ -1,7 +1,7 @@
 # Louder Bridge
 
-Use a Work Louder **Codex Micro** with local sessions in Claude Desktop and
-Hermes Desktop on macOS.
+Use a Work Louder **Codex Micro** with Claude Desktop, Hermes Desktop, and
+Claude, Codex, or Hermes sessions running in Ghostty on macOS.
 
 Each session keeps the same Agent Key while the bridge is running. The key
 shows whether the agent is working, finished, waiting for input, or stopped by
@@ -15,13 +15,14 @@ Hold the Micro's MIC control to dictate into the active composer.
 Release it to stop, or double-tap MIC to keep recording without holding it.
 Press MIC again to stop a latched recording. Louder Bridge uses Claude's own
 composer control when one is available and macOS Dictation in Code views that
-do not expose one. In Hermes, it uses the Voice dictation control. Press the
-key to the right of MIC to send the composer or accept the focused approval.
+do not expose one. In Hermes, it uses the Voice dictation control. In Ghostty,
+it uses macOS Dictation in the focused terminal. Press the key to the right of
+MIC to send the composer or accept the focused approval.
 
-Louder Bridge reads Claude Code hooks or a small Hermes plugin and sends the
-resulting state to the Micro. The bridge itself runs on your Mac. It does not
-collect audio, transcripts, or conversation content. Claude, Hermes, or macOS
-handles dictation, depending on the active app and composer.
+Louder Bridge reads Claude and Codex command hooks or a small Hermes plugin,
+then sends the resulting state to the Micro. The bridge runs on your Mac. It
+does not collect audio, transcripts, or conversation content. Claude, Hermes,
+or macOS handles dictation, depending on where the session is running.
 
 ## Install
 
@@ -33,7 +34,8 @@ Download the macOS archive from this repository's Releases page:
    **Open Anyway** for Louder Bridge.
 4. Approve Input Monitoring and Accessibility when macOS asks.
 5. Approve microphone access if macOS asks when you first use dictation.
-6. Open Claude Desktop or Hermes Desktop and turn on the Micro.
+6. Open Claude Desktop, Hermes Desktop, or a supported agent in Ghostty and
+   turn on the Micro.
 
 Louder Bridge checks its location before requesting permissions. If you open it
 from Downloads, it asks you to move the app and exits without changing Claude.
@@ -41,9 +43,9 @@ Permission setup waits up to five minutes for each approval. If a permission
 stays off, the app tells you which setting needs attention and exits. Enable
 that permission, then open Louder Bridge again.
 
-Louder Bridge starts at login and connects when either supported app is open.
-Keep only one of them open while using the Micro. Node.js and a source checkout
-are not required after installation.
+Louder Bridge starts at login and connects when one supported surface is open.
+Keep only one open while using the Micro. Node.js and a source checkout are not
+required after installation.
 
 ## Install from source
 
@@ -61,8 +63,8 @@ npm run setup
 Setup creates a self-contained app in your per-user Applications directory,
 installs the app integrations and background agent, and stores a private local
 authentication token. If Hermes is installed, setup also enables the managed
-Louder Bridge plugin. After that, open Claude Desktop or Hermes Desktop and
-turn on the Micro.
+Louder Bridge plugin. After that, open Claude Desktop, Hermes Desktop, or a
+supported agent in Ghostty and turn on the Micro.
 
 ## Documentation
 
@@ -72,6 +74,7 @@ The documentation follows the [Diátaxis](https://diataxis.fr/) framework:
 |---|---|
 | Get the Micro working with Claude for the first time | [Tutorial](docs/tutorial.md) |
 | Get the Micro working with Hermes for the first time | [Hermes tutorial](docs/hermes-tutorial.md) |
+| Use the Micro with a terminal agent in Ghostty | [Ghostty tutorial](docs/ghostty-tutorial.md) |
 | Fix a problem or complete a specific task | [How-to guides](docs/how-to.md) |
 | Look up commands, settings, states, or limits | [Reference](docs/reference.md) |
 | Understand the architecture and design choices | [Explanation](docs/explanation.md) |
@@ -82,17 +85,18 @@ The documentation follows the [Diátaxis](https://diataxis.fr/) framework:
 
 The tested target is macOS 15 or newer on Apple Silicon and a Codex Micro
 connected over USB-C or Bluetooth. Louder Bridge supports local Code sessions
-in Claude Desktop and local sessions in Hermes Desktop. Source setup needs
-Node.js 22 or newer.
+in Claude Desktop, local sessions in Hermes Desktop, and local Claude, Codex,
+or Hermes sessions hosted by Ghostty 1.3 or newer. Source setup needs Node.js
+22 or newer.
 
-The bridge tracks local Claude Code sessions. It cannot track cloud or SSH
-sessions because their hooks run on another machine.
+The bridge tracks local sessions whose lifecycle hooks run on the same Mac. It
+cannot track cloud or SSH sessions because their hooks run elsewhere.
 
 ChatGPT is not required. Louder Bridge talks to the Micro through a bundled
 native macOS driver. If Codex and a supported app are open together, Louder
 Bridge shows a warning and releases its device connection. It reconnects after
-Codex quits. The bridge also waits if Claude and Hermes are both open because
-only one app can own the Micro at a time.
+Codex quits. The bridge also waits when more than one supported surface is open
+because only one can own the Micro at a time.
 
 ## Project status
 
@@ -104,6 +108,12 @@ navigation, lifecycle lighting, exterior effects, and sound feedback all worked
 on hardware. Claude's core MIC and send controls have passed over Bluetooth and
 USB-C.
 
+Ghostty 1.3.1 has passed a physical Micro test in Claude Code. The assigned
+Agent Key and exterior lighting turned blue while Claude worked, MIC dictation
+inserted speech, and send submitted the prompt. Stable terminal discovery and
+exact focus also passed a live native check. Agent Key navigation still needs a
+physical test across multiple terminals.
+
 The visible Cowork composer route, double-tap latching, approval prompts, wired
 restart and power-cycle cases, and the remaining recovery checks still need
 release-candidate testing.
@@ -111,9 +121,10 @@ release-candidate testing.
 The preview still relies on unsupported integration points: the
 independently documented Codex Micro protocol, Claude's local resume URL, and
 desktop Accessibility controls. Hermes voice and send use Accessibility, while
-session navigation relies on its default recent-session shortcuts. Each route
-sits behind a small adapter, and releases remain prereleases while these
-interfaces are experimental.
+session navigation relies on its default recent-session shortcuts. Ghostty
+control uses its official AppleScript API, which Ghostty currently labels as a
+preview. Each route sits behind a small adapter, and releases remain
+prereleases while these interfaces are experimental.
 
 Run the tests and local compatibility check with:
 

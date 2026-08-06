@@ -163,6 +163,33 @@ load.
 Agent Key navigation uses Hermes's default `Ctrl+1` through `Ctrl+9` recent
 session shortcuts. Restore those bindings if session navigation fails.
 
+### Ghostty controls do not respond
+
+First check that Ghostty and a terminal agent are both visible in status:
+
+```bash
+npm run status
+```
+
+`Ghostty` and `Terminal agent` should both report `open`, and `Active app`
+should report `Ghostty terminal`.
+
+If lifecycle lighting is missing in Codex CLI, restart Codex and approve the
+Louder Bridge hook when prompted. Setup installs the hook but leaves Codex's
+trust decision to you.
+
+If Agent Keys do not work, open **System Settings → Privacy & Security →
+Automation** and allow Louder Bridge to control Ghostty. Focus a session and
+submit one prompt before trying its Agent Key again. The bridge associates
+terminals only on session start and prompt submission.
+
+If send does not work, bring Ghostty forward and confirm Louder Bridge is
+enabled under Accessibility.
+
+MIC uses macOS Dictation. Enable Dictation in Keyboard settings, focus the
+agent prompt, and hold MIC until the Dictation indicator appears. Louder Bridge
+must also remain enabled under Accessibility.
+
 ### The local port is already in use
 
 Choose another loopback port and reinstall:
@@ -241,14 +268,15 @@ a supported app are open.
 
 To return full lighting ownership to Codex:
 
-1. Quit Claude Desktop and Hermes Desktop.
+1. Quit Claude Desktop and Hermes Desktop, and stop any terminal agents in
+   Ghostty.
 2. Bring ChatGPT or Codex to the foreground.
 3. Trigger a Codex session update if the lighting does not refresh
    immediately.
 
 The background agent releases the Micro when neither supported app is open.
 
-## Remove Louder Bridge from Claude Code
+## Remove Louder Bridge
 
 For a release installed in the system Applications folder, run:
 
@@ -263,7 +291,7 @@ npm run uninstall
 ```
 
 The command stops the bridge and preserves unrelated settings and hooks in
-`~/.claude/settings.json`. It removes only the managed Hermes plugin and its
-configuration entries. It also removes the installed app and private
-authentication token. Logs remain in `~/Library/Logs/LouderBridge`; you can
-delete them separately.
+`~/.claude/settings.json` and `~/.codex/hooks.json`. It removes only the managed
+Hermes plugin and its configuration entries. It also removes the installed app
+and private authentication token. Logs remain in
+`~/Library/Logs/LouderBridge`; you can delete them separately.

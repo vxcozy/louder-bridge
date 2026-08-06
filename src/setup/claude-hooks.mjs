@@ -108,11 +108,15 @@ export function bridgeHookCommand({
     path.dirname(fileURLToPath(import.meta.url)),
     "../hook.mjs",
   ),
+  agentSurface,
 } = {}) {
   return [
     shellQuote("/usr/bin/env"),
     shellQuote(`LOUDER_BRIDGE_HOST=${BRIDGE_HOST}`),
     shellQuote(`LOUDER_BRIDGE_PORT=${BRIDGE_PORT}`),
+    ...(agentSurface
+      ? [shellQuote(`LOUDER_AGENT_SURFACE=${agentSurface}`)]
+      : []),
     shellQuote(nodePath),
     shellQuote(hookPath),
     HOOK_TAG,
@@ -131,10 +135,14 @@ function isBridgeHook(hook) {
   return invokesHookScript && hasBridgeTag;
 }
 
-export function addBridgeHooks(settings, command = bridgeHookCommand()) {
+export function addBridgeHooks(
+  settings,
+  command = bridgeHookCommand(),
+  events = HOOK_EVENTS,
+) {
   const output = structuredClone(settings ?? {});
   output.hooks ??= {};
-  for (const event of HOOK_EVENTS) {
+  for (const event of events) {
     const groups = Array.isArray(output.hooks[event]) ? output.hooks[event] : [];
     const cleaned = groups
       .map((group) => ({
@@ -370,6 +378,7 @@ export function beginClaudeSettingsUpdate({
   beforeWrite = () => {},
   afterWrite = () => {},
   expectedUserId = currentUserId(),
+  events = HOOK_EVENTS,
 } = {}) {
   for (let attempt = 1; attempt <= SETTINGS_WRITE_ATTEMPTS; attempt += 1) {
     let target = resolveSettingsTarget(settingsFile);
@@ -402,7 +411,7 @@ export function beginClaudeSettingsUpdate({
     }
     const updated = remove
       ? removeBridgeHooks(snapshot.settings)
-      : addBridgeHooks(snapshot.settings, command);
+      : addBridgeHooks(snapshot.settings, command, events);
     beforeWrite({ attempt, target, updated });
     try {
       const installedIdentity = writeSettings(

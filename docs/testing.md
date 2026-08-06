@@ -144,6 +144,34 @@ setting.
 Hermes lifecycle events use the managed plugin. MIC, send, and session
 navigation use separate desktop controls, so test all three paths.
 
+## Check Ghostty terminal agents
+
+1. Quit Claude Desktop, Hermes Desktop, and Codex Desktop. Leave Ghostty open
+   without an agent and confirm the Micro remains inactive.
+2. Start Claude Code, Codex CLI, or Hermes in Ghostty. Confirm the status output
+   reports Ghostty and a terminal agent as open, then confirm the Micro connects.
+3. If Codex asks whether to trust the hook, approve it. Confirm a session start,
+   prompt, approval, completion, and end produce the expected lighting states.
+4. Open two tabs or splits and run one session in each. Submit a prompt in each
+   terminal, then use their Agent Keys to move between them. Confirm each key
+   focuses the correct tab or split.
+5. Allow Louder Bridge to control Ghostty if macOS displays an Automation
+   prompt. Confirm denying permission produces a clear navigation error without
+   stopping the background agent.
+6. Focus an agent prompt, hold MIC, speak a distinctive sentence, and release
+   MIC. Confirm macOS Dictation stops and inserts the transcript without
+   sending it.
+7. Press the key to the right of MIC. Confirm Ghostty sends the draft once.
+8. Stop the last terminal agent while leaving Ghostty open. Confirm Louder
+   Bridge releases the Micro.
+9. Repeat the focused test once with each installed agent: Claude, Codex, and
+   Hermes.
+
+Record the Ghostty version, agent version, connection type, voice route, and
+whether macOS requested Automation permission. Do not mark terminal support as
+physically verified from AppleScript checks alone; the lifecycle and Micro
+paths must pass together.
+
 ## Latest Hermes candidate result
 
 A locally built v0.2.0 candidate archive passed the focused Hermes test on

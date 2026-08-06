@@ -1,5 +1,5 @@
 import http from "node:http";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   assertLocalAddress,
   BRIDGE_HOST,
@@ -11,12 +11,16 @@ import { createClaudeVoice } from "./claude/voice.mjs";
 import { createHermesNavigator } from "./hermes/navigator.mjs";
 import { createHermesSubmit } from "./hermes/submit.mjs";
 import { createHermesVoice } from "./hermes/voice.mjs";
+import { createGhosttyNavigator } from "./ghostty/navigator.mjs";
+import { createGhosttySubmit } from "./ghostty/submit.mjs";
+import { createGhosttyVoice } from "./ghostty/voice.mjs";
 import { createPushToTalk } from "./device/push-to-talk.mjs";
 import { WorkLouderDevice, MockDevice } from "./device/worklouder.mjs";
 import { applicationMetadata } from "./runtime/metadata.mjs";
 import { SessionStore } from "./state/session-store.mjs";
 
 const MAX_BODY_BYTES = 64 * 1024;
+const TERMINAL_AGENTS = new Set(["claude", "codex", "hermes"]);
 const DEFAULT_HTTP_LIMITS = {
   requestTimeoutMs: 5000,
   headersTimeoutMs: 5000,
@@ -41,6 +45,15 @@ function isAuthorized(request, authToken) {
   return (
     supplied.length === expected.length && timingSafeEqual(supplied, expected)
   );
+}
+
+function terminalSessionKey(agent, sessionId) {
+  const digest = createHash("sha256")
+    .update(agent)
+    .update("\0")
+    .update(sessionId)
+    .digest("base64url");
+  return `${agent}:${digest}`;
 }
 
 class HttpError extends Error {
@@ -125,6 +138,12 @@ export async function startBridge({
       navigator: createHermesNavigator(),
       submit: createHermesSubmit(),
       voice: createHermesVoice(),
+    },
+    ghostty: {
+      label: "Ghostty",
+      navigator: createGhosttyNavigator(),
+      submit: createGhosttySubmit(),
+      voice: createGhosttyVoice(),
     },
   };
   if (!adapters[initialSurface]) {
@@ -500,12 +519,37 @@ export async function startBridge({
     }
     try {
       const event = await readJson(request);
-      const surface = event.surface ?? "claude";
+      const agentSurface = event.surface ?? "claude";
+      const isGhosttyHook = event.host === "ghostty";
+      const surface = isGhosttyHook ? "ghostty" : agentSurface;
+      if (isGhosttyHook && !TERMINAL_AGENTS.has(agentSurface)) {
+        throw new HttpError(400, "Unknown terminal agent surface.");
+      }
       if (!adapters[surface]) {
         throw new HttpError(400, "Unknown hook surface.");
       }
+      const terminalSessionIsValid =
+        typeof event.session_id === "string" &&
+        event.session_id.length >= 1 &&
+        event.session_id.length <= 256;
+      const sessionId = isGhosttyHook && terminalSessionIsValid
+        ? terminalSessionKey(agentSurface, event.session_id)
+        : event.session_id;
+      const routedEvent = { ...event, session_id: sessionId };
+      if (
+        isGhosttyHook &&
+        terminalSessionIsValid &&
+        ["SessionStart", "UserPromptSubmit"].includes(event.hook_event_name)
+      ) {
+        Promise.resolve(adapters.ghostty.navigator.observe?.(sessionId)).catch(
+          () => {},
+        );
+      }
       lastHookAt = now().toISOString();
-      const changed = storeFor(surface).apply(event);
+      const changed = storeFor(surface).apply(routedEvent);
+      if (isGhosttyHook && event.hook_event_name === "SessionEnd") {
+        adapters.ghostty.navigator.forget?.(sessionId);
+      }
       if (changed && surface === activeSurface) {
         ambientSlots.set(surface, changed.slot);
         await renderDevice(deviceSlotStates(), `${adapters[surface].label} hook`);

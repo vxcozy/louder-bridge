@@ -219,6 +219,32 @@ print(json.dumps(events))
   assert.equal(stdout.includes("private"), false);
 });
 
+test("Hermes marks lifecycle events emitted from Ghostty", async () => {
+  const plugin = path.resolve("src/hermes/plugin/__init__.py");
+  const script = String.raw`
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("louder_bridge", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module._emit("SessionStart", "one")
+print(json.dumps(module._EVENTS.get_nowait()))
+`;
+  const { stdout } = await execFileAsync("python3", ["-c", script, plugin], {
+    env: {
+      ...process.env,
+      TERM_PROGRAM: "ghostty",
+      PYTHONDONTWRITEBYTECODE: "1",
+    },
+  });
+
+  assert.deepEqual(JSON.parse(stdout), {
+    surface: "hermes",
+    host: "ghostty",
+    session_id: "one",
+    hook_event_name: "SessionStart",
+  });
+});
+
 test("the Hermes plugin sends an authenticated loopback hook", { timeout: 2000 }, async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));

@@ -457,6 +457,24 @@ test("uses complete clicks for toggle dictation controls", (context) => {
   assert.equal(toggle.stdout.trim(), "click click");
 });
 
+test("sends a complete Return gesture through Ghostty", () => {
+  const source = fs.readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "native",
+      "launcher.m",
+    ),
+    "utf8",
+  );
+  const ghosttySubmit = source.slice(
+    source.indexOf("static int submit_in_ghostty"),
+    source.indexOf("static int submit_in_claude"),
+  );
+  assert.match(ghosttySubmit, /post_key_event\(36, true, false\)/);
+  assert.match(ghosttySubmit, /post_key_event\(36, false, false\)/);
+});
+
 test("enables and retries Hermes's Electron accessibility tree", (context) => {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
     context.skip("The native Hermes adapter requires Apple Silicon.");
