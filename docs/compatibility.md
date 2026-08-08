@@ -48,9 +48,10 @@ downloaded checksum and archive check. The hardware run used the local
 candidate, not the published ZIP.
 
 An unreleased locally signed build, revision `809cde7`, passed a focused
-Hermes-in-Ghostty MIC test on August 8, 2026. Pressing MIC started Hermes voice
+Hermes-in-Ghostty test on August 8, 2026. Pressing MIC started Hermes voice
 input with `Control+B`, and releasing MIC stopped it with the same shortcut.
-Agent Key pane navigation still needs confirmation with this build.
+The Hermes Agent Key focused the correct pane, and the session lighting worked
+as expected.
 
 ## Latest Hermes candidate qualification
 

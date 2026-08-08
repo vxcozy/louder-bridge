@@ -195,10 +195,10 @@ A locally built v0.3.1 candidate passed a mixed-pane USB test on August 8,
 | Agent Keys | Switched to the correct pane |
 | Lifecycle response | Key and exterior lighting followed both sessions |
 
-Hermes-in-Ghostty MIC press and release passed a physical test with build
-`809cde7` on August 8, 2026. The bridge recorded a matching voice start and
-stop, and the tester confirmed that Hermes voice input worked. Agent Key pane
-navigation still needs confirmation with this build.
+Hermes-in-Ghostty controls passed a physical test with build `809cde7` on
+August 8, 2026. The bridge recorded a matching voice start and stop, Hermes
+voice input worked, the Agent Key focused the correct pane, and the session
+lighting behaved as expected.
 
 ## Latest Hermes candidate result
 
