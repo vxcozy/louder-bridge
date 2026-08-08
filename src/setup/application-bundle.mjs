@@ -152,7 +152,7 @@ export function applicationBundlePathsForCli(cliPath) {
   return applicationBundlePathsForApp(app);
 }
 
-export function applicationInfoPlist({ version = "0.3.0" } = {}) {
+export function applicationInfoPlist({ version = "0.3.1" } = {}) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -180,7 +180,7 @@ export function applicationInfoPlist({ version = "0.3.0" } = {}) {
     <key>NSAccessibilityUsageDescription</key>
     <string>Louder Bridge uses Accessibility to control dictation while you hold the Micro's MIC key.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Louder Bridge uses Ghostty automation to select terminals from the Codex Micro.</string>
+    <string>Louder Bridge uses Ghostty automation to focus the terminal selected on the Codex Micro.</string>
   </dict>
 </plist>
 `;

@@ -23,6 +23,7 @@ test("installs only supported Codex CLI lifecycle hooks", (context) => {
     command: codexBridgeHookCommand({
       nodePath: "/runtime/node",
       hookPath: "/app/hook.mjs",
+      launcherPath: "/app/LouderBridge",
     }),
     expectedUserId: null,
   });
@@ -37,6 +38,7 @@ test("installs only supported Codex CLI lifecycle hooks", (context) => {
   ]);
   const command = installed.hooks.SessionStart[0].hooks[0].command;
   assert.match(command, /LOUDER_AGENT_SURFACE=codex/);
+  assert.match(command, /LOUDER_BRIDGE_LAUNCHER=\/app\/LouderBridge/);
   assert.match(command, /\/app\/hook\.mjs/);
 
   rollbackCodexHooksUpdate(transaction);

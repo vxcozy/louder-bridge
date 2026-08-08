@@ -134,7 +134,7 @@ test("reports service and device health", async (context) => {
       inputMonitoring: "unknown",
       accessibility: "unknown",
       activeSurface: "claude",
-      version: "0.3.0",
+      version: "0.3.1",
       buildRevision: null,
       nodeVersion: process.version,
       navigator: {
@@ -847,14 +847,27 @@ test("routes terminal-agent hooks and every Micro control through Ghostty", asyn
   const basicVoice = (surface) => ({
     metadata: () => ({ id: `${surface}-voice`, support: "test" }),
     status: () => ({ id: `${surface}-voice`, support: "test", state: "idle" }),
-    async start() { actions.push([surface, "voice-start"]); },
+    async start(options) { actions.push([surface, "voice-start", options]); },
     async stop() { actions.push([surface, "voice-stop"]); },
   });
   const ghosttyNavigator = {
     metadata: () => ({ id: "ghostty-navigator", support: "test" }),
-    async observe(sessionId) { actions.push(["ghostty", "observe", sessionId]); },
+    async observe(sessionId, terminalId, agentSurface) {
+      actions.push([
+        "ghostty",
+        "observe",
+        sessionId,
+        terminalId,
+        agentSurface,
+      ]);
+    },
     async open(sessionId) { actions.push(["ghostty", "open", sessionId]); },
     forget(sessionId) { actions.push(["ghostty", "forget", sessionId]); },
+    async activeAgentSurface() { return null; },
+    agentSurfaceForSession(sessionId) {
+      assert.match(sessionId, /^codex:/);
+      return "codex";
+    },
   };
   const bridge = await startBridge({
     host: "127.0.0.1",
@@ -894,10 +907,18 @@ test("routes terminal-agent hooks and every Micro control through Ghostty", asyn
     host: "ghostty",
     session_id: "private-terminal-session",
     hook_event_name: "SessionStart",
+    terminal_id: "terminal-codex",
   })).status, 200);
   const internalId = actions[0][2];
   assert.match(internalId, /^codex:[A-Za-z0-9_-]{43}$/);
   assert.equal(internalId.includes("private-terminal-session"), false);
+  assert.deepEqual(actions[0], [
+    "ghostty",
+    "observe",
+    internalId,
+    "terminal-codex",
+    "codex",
+  ]);
 
   await controls.onAgentKey(0);
   await controls.onSubmitButton();
@@ -907,7 +928,7 @@ test("routes terminal-agent hooks and every Micro control through Ghostty", asyn
   assert.deepEqual(actions.slice(1), [
     ["ghostty", "open", internalId],
     ["ghostty", "submit"],
-    ["ghostty", "voice-start"],
+    ["ghostty", "voice-start", { agentSurface: "codex" }],
     ["ghostty", "voice-stop"],
   ]);
 

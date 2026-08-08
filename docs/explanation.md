@@ -175,6 +175,11 @@ This works across windows, tabs, and splits without reading terminal text,
 shell history, working directories, or process arguments. Session identifiers
 are hashed before they enter the shared terminal-session store.
 
+The focused terminal normally determines which agent owns MIC. When an Agent
+Key selects a session, the bridge also remembers that session's agent type as a
+fallback. This keeps voice routing correct when Ghostty cannot return the
+focused terminal quickly enough after a pane change.
+
 Ghostty describes the AppleScript API as a preview. The bridge keeps terminal
 navigation behind its own adapter in case that API changes.
 
@@ -221,13 +226,14 @@ audio or read the resulting draft.
 
 ## Ghostty voice input
 
-The Ghostty adapter starts the standard macOS Dictation command from the
-focused terminal's Edit menu. It stops dictation with Escape when MIC is
-released. The adjacent Micro key sends a native Return key press to the
-frontmost Ghostty terminal.
+Claude Code and Hermes use their own hold-Space push-to-talk control. While you
+hold MIC, the Ghostty adapter holds Space; releasing MIC releases it. Codex CLI
+uses macOS Dictation instead because its terminal voice control has different
+keyboard behavior. The adjacent Micro key sends Return to the frontmost
+Ghostty terminal.
 
-macOS handles the microphone and transcript. Louder Bridge sees the MIC press
-and release, but it does not receive audio or text.
+The terminal agent or macOS handles the microphone and transcript. Louder
+Bridge sees the MIC press and release, but it does not receive audio or text.
 
 ## Privacy boundary
 

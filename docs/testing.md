@@ -159,8 +159,9 @@ navigation use separate desktop controls, so test all three paths.
    prompt. Confirm denying permission produces a clear navigation error without
    stopping the background agent.
 6. Focus an agent prompt, hold MIC, speak a distinctive sentence, and release
-   MIC. Confirm macOS Dictation stops and inserts the transcript without
-   sending it.
+   MIC. For Claude Code and Hermes, confirm the agent's hold-Space voice input
+   inserts the transcript. For Codex CLI, confirm macOS Dictation inserts it.
+   Neither route should send the draft.
 7. Press the key to the right of MIC. Confirm Ghostty sends the draft once.
 8. Stop the last terminal agent while leaving Ghostty open. Confirm Louder
    Bridge releases the Micro.
@@ -171,6 +172,27 @@ Record the Ghostty version, agent version, connection type, voice route, and
 whether macOS requested Automation permission. Do not mark terminal support as
 physically verified from AppleScript checks alone; the lifecycle and Micro
 paths must pass together.
+
+## Latest Ghostty candidate result
+
+A locally built v0.3.1 candidate passed a mixed-pane USB test on August 8,
+2026:
+
+| Component | Version or result |
+|---|---|
+| macOS | 26.5.2 (25F84) |
+| Ghostty | 1.3.1 |
+| Claude Code | 2.1.226 |
+| Codex CLI | 0.147.0 |
+| Louder Bridge | 0.3.1 candidate |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | USB |
+| Claude Code MIC | Hold-Space push-to-talk passed |
+| Codex CLI MIC | macOS Dictation passed |
+| Send key | Passed in both panes |
+| Agent Keys | Switched to the correct pane |
+| Lifecycle response | Key and exterior lighting followed both sessions |
 
 ## Latest Hermes candidate result
 

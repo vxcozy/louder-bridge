@@ -108,12 +108,16 @@ export function bridgeHookCommand({
     path.dirname(fileURLToPath(import.meta.url)),
     "../hook.mjs",
   ),
+  launcherPath,
   agentSurface,
 } = {}) {
   return [
     shellQuote("/usr/bin/env"),
     shellQuote(`LOUDER_BRIDGE_HOST=${BRIDGE_HOST}`),
     shellQuote(`LOUDER_BRIDGE_PORT=${BRIDGE_PORT}`),
+    ...(launcherPath
+      ? [shellQuote(`LOUDER_BRIDGE_LAUNCHER=${launcherPath}`)]
+      : []),
     ...(agentSurface
       ? [shellQuote(`LOUDER_AGENT_SURFACE=${agentSurface}`)]
       : []),

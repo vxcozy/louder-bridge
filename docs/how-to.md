@@ -186,9 +186,10 @@ terminals only on session start and prompt submission.
 If send does not work, bring Ghostty forward and confirm Louder Bridge is
 enabled under Accessibility.
 
-MIC uses macOS Dictation. Enable Dictation in Keyboard settings, focus the
-agent prompt, and hold MIC until the Dictation indicator appears. Louder Bridge
-must also remain enabled under Accessibility.
+In Claude Code and Hermes, MIC holds the agent's Space-based push-to-talk
+control. In Codex CLI, MIC uses macOS Dictation. Focus the prompt and confirm
+the same action works from the Mac keyboard first. Louder Bridge must remain
+enabled under Accessibility.
 
 ### The local port is already in use
 

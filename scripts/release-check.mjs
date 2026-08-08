@@ -113,6 +113,9 @@ const publishReleaseScript = readIfPresent("scripts/publish-release.mjs");
 const nativeDeviceSource = readIfPresent("native/micro_device.m");
 const codeOwners = readIfPresent(".github/CODEOWNERS");
 const nodeEntitlements = readIfPresent("release/node.entitlements.plist");
+const launcherEntitlements = readIfPresent(
+  "release/launcher.entitlements.plist",
+);
 const actionPins = {
   "actions/checkout": "d23441a48e516b6c34aea4fa41551a30e30af803",
   "actions/setup-node": "249970729cb0ef3589644e2896645e5dc5ba9c38",
@@ -297,6 +300,15 @@ if (
 ) {
   failures.push(
     "Node entitlements must allow JIT without disabling library validation.",
+  );
+}
+if (
+  !launcherEntitlements.includes(
+    "com.apple.security.automation.apple-events",
+  )
+) {
+  failures.push(
+    "Launcher entitlements must allow Ghostty Automation permission requests.",
   );
 }
 if (!/^\d+\.\d+\.\d+$/.test(metadata.version ?? "")) {

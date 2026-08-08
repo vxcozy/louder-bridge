@@ -10,7 +10,7 @@ agent you normally use. The bridge runs in the background.
 - Ghostty 1.3 or newer
 - A Work Louder Codex Micro connected over USB-C or Bluetooth
 - Claude Code, Codex CLI, or Hermes Agent installed locally
-- macOS Dictation enabled
+- macOS Dictation enabled if you use Codex CLI
 
 ## 1. Install Louder Bridge
 
@@ -44,8 +44,8 @@ Codex CLI may ask whether you trust the new hook command. Approve the Louder
 Bridge hook. Do not use Codex's bypass option.
 
 Ghostty may also ask whether Louder Bridge can control it. Choose **Allow**.
-This permission lets Agent Keys focus terminals. Accessibility lets MIC control
-Dictation and lets the send key press Return.
+This permission lets Agent Keys focus terminals. Accessibility lets MIC operate
+the active voice route and lets the send key press Return.
 
 Louder Bridge ignores an idle Ghostty window. It connects the Micro only while
 Ghostty has at least one supported agent process attached to a real terminal.
@@ -79,14 +79,16 @@ background cannot move that association to another terminal.
 ## 5. Check MIC and send
 
 Click the agent's prompt so the text cursor is active. Hold MIC and speak a
-short sentence. Release MIC and confirm that macOS Dictation stops and inserts
-the sentence without sending it.
+short sentence. Release MIC and confirm that the sentence appears without being
+sent. Claude Code and Hermes use their hold-Space push-to-talk control. Codex
+CLI uses macOS Dictation.
 
 Press the key immediately to the right of MIC. It should send Return to the
 focused Ghostty terminal once.
 
-The bridge receives only button edges and lifecycle fields. macOS handles the
-microphone and transcript; Louder Bridge never receives either one.
+The bridge receives only button edges and lifecycle fields. The terminal agent
+or macOS handles the microphone and transcript; Louder Bridge never receives
+either one.
 
 ## 6. Check status
 
@@ -115,8 +117,9 @@ You can close the status terminal afterward. It is not needed for normal use.
   it asks. Setup does not bypass Codex's hook trust check.
 - If an Agent Key has no terminal association, focus that terminal and submit
   one prompt before pressing the key again.
-- If MIC does nothing, enable macOS Dictation, focus the prompt, and confirm
-  Louder Bridge still has Accessibility permission.
+- If MIC does nothing in Claude Code or Hermes, focus the prompt and check that
+  holding Space starts the agent's own voice input. In Codex CLI, enable macOS
+  Dictation. Louder Bridge also needs Accessibility permission for both routes.
 - If send fails, bring Ghostty forward and confirm Louder Bridge still has
   Accessibility permission.
 - If Agent Key navigation fails, open **System Settings → Privacy & Security →
