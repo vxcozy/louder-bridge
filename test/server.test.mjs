@@ -134,7 +134,7 @@ test("reports service and device health", async (context) => {
       inputMonitoring: "unknown",
       accessibility: "unknown",
       activeSurface: "claude",
-      version: "0.3.1",
+      version: "0.3.2",
       buildRevision: null,
       nodeVersion: process.version,
       navigator: {

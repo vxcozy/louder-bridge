@@ -70,6 +70,18 @@ function fakeHermes(initial = {}) {
   return { calls, config, run };
 }
 
+test("keeps the Hermes plugin version aligned with the package", () => {
+  const metadata = JSON.parse(fs.readFileSync("package.json", "utf8"));
+  const manifest = fs.readFileSync(
+    "src/hermes/plugin/plugin.yaml",
+    "utf8",
+  );
+  const version = manifest
+    .split("\n")
+    .find((line) => line.startsWith("version:"));
+  assert.equal(version, `version: "${metadata.version}"`);
+});
+
 test("installs, enables, and commits the managed Hermes plugin", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));

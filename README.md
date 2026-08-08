@@ -101,11 +101,10 @@ because only one can own the Micro at a time.
 
 ## Project status
 
-The current release is the v0.3.1 prerelease. Its GitHub archive passed the
-automated release checks, including checksum, SBOM, revision, signature, and
-archive validation. A local v0.3.1 candidate passed the mixed-pane Ghostty test
-described below. The published v0.1.2 archive remains the latest release package
-installed and tested directly from GitHub.
+Releases remain prereleases while the device and app integrations use
+experimental interfaces. GitHub builds each archive on Apple Silicon and
+checks its checksum, SBOM, revision, signature, and contents before creating a
+draft release for hardware testing.
 
 A locally built v0.2.0 candidate passed its Hermes Desktop test over Bluetooth
 after a fresh install and permission approval. MIC push-to-talk, transcript
@@ -117,6 +116,13 @@ Ghostty 1.3.1 has passed a physical USB test with Claude Code and Codex CLI in
 separate panes. Agent Keys switched between the correct panes, lifecycle and
 exterior lighting followed each session, both voice routes inserted speech,
 and send submitted each prompt once.
+
+Two locally signed development builds containing the v0.3.2 Hermes changes
+passed in Ghostty. MIC used Hermes's `Control+B` voice toggle, the Agent Key
+focused the correct pane, and the session lighting worked. Releasing MIC after
+moving to another pane returned to the original Hermes pane and stopped
+recording there. The GitHub-built v0.3.2 candidate still needs its hardware
+check before release.
 
 The visible Cowork composer route, double-tap latching, approval prompts, wired
 restart and power-cycle cases, and the remaining recovery checks still need
