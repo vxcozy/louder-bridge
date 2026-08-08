@@ -80,8 +80,9 @@ background cannot move that association to another terminal.
 
 Click the agent's prompt so the text cursor is active. Hold MIC and speak a
 short sentence. Release MIC and confirm that the sentence appears without being
-sent. Claude Code and Hermes use their hold-Space push-to-talk control. Codex
-CLI uses macOS Dictation.
+sent. Claude Code uses hold-Space push-to-talk. Hermes starts voice input with
+`Control+B` when you press MIC and sends `Control+B` again when you release it.
+Codex CLI uses macOS Dictation.
 
 Press the key immediately to the right of MIC. It should send Return to the
 focused Ghostty terminal once.
@@ -117,9 +118,10 @@ You can close the status terminal afterward. It is not needed for normal use.
   it asks. Setup does not bypass Codex's hook trust check.
 - If an Agent Key has no terminal association, focus that terminal and submit
   one prompt before pressing the key again.
-- If MIC does nothing in Claude Code or Hermes, focus the prompt and check that
-  holding Space starts the agent's own voice input. In Codex CLI, enable macOS
-  Dictation. Louder Bridge also needs Accessibility permission for both routes.
+- If MIC does nothing, focus the prompt and try the agent's shortcut on your
+  keyboard first: hold Space in Claude Code or press `Control+B` twice in
+  Hermes. In Codex CLI, enable macOS Dictation. Louder Bridge needs
+  Accessibility permission for all three routes.
 - If send fails, bring Ghostty forward and confirm Louder Bridge still has
   Accessibility permission.
 - If Agent Key navigation fails, open **System Settings → Privacy & Security →

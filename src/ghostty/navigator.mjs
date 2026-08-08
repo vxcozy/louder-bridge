@@ -12,6 +12,7 @@ export class GhosttyTerminalNavigator {
     this.launcher = launcher;
     this.run = run;
     this.terminals = new Map();
+    this.observations = new Map();
   }
 
   metadata() {
@@ -22,24 +23,59 @@ export class GhosttyTerminalNavigator {
   }
 
   async observe(sessionId, terminalId, agentSurface = null) {
+    const observation = Symbol();
+    this.observations.set(sessionId, observation);
+    let observedTerminalId = terminalId;
+    if (observedTerminalId === undefined) {
+      if (!this.launcher) {
+        this.finishObservation(sessionId, observation);
+        return false;
+      }
+      try {
+        const { stdout } = await this.run(
+          this.launcher,
+          ["--ghostty-front-terminal-id"],
+          { timeout: 3000, maxBuffer: 4096, windowsHide: true },
+        );
+        observedTerminalId = stdout.trim();
+      } catch {
+        this.finishObservation(sessionId, observation);
+        return false;
+      }
+    }
+    if (this.observations.get(sessionId) !== observation) return false;
     if (
-      typeof terminalId !== "string" ||
-      !TERMINAL_ID_PATTERN.test(terminalId)
-    ) return false;
+      typeof observedTerminalId !== "string" ||
+      !TERMINAL_ID_PATTERN.test(observedTerminalId)
+    ) {
+      this.finishObservation(sessionId, observation);
+      return false;
+    }
     for (const [knownSessionId, terminal] of this.terminals) {
       if (
         knownSessionId !== sessionId &&
-        terminal.terminalId === terminalId
+        terminal.terminalId === observedTerminalId
       ) {
         this.terminals.delete(knownSessionId);
       }
     }
-    this.terminals.set(sessionId, { terminalId, agentSurface });
+    this.terminals.set(sessionId, {
+      terminalId: observedTerminalId,
+      agentSurface,
+    });
+    this.finishObservation(sessionId, observation);
     return true;
   }
 
   forget(sessionId) {
+    this.observations.delete(sessionId);
     this.terminals.delete(sessionId);
+  }
+
+  finishObservation(sessionId, observation) {
+    if (this.observations.get(sessionId) === observation) {
+      this.observations.delete(sessionId);
+    }
   }
 
   async open(sessionId) {

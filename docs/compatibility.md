@@ -47,6 +47,16 @@ The GitHub-built v0.3.1 archive passed the automated release checks and a
 downloaded checksum and archive check. The hardware run used the local
 candidate, not the published ZIP.
 
+An unreleased locally signed build, revision `809cde7`, passed a focused
+Hermes-in-Ghostty test on August 8, 2026. Pressing MIC started Hermes voice
+input with `Control+B`, and releasing MIC stopped it with the same shortcut.
+The Hermes Agent Key focused the correct pane, and the session lighting worked
+as expected.
+
+Follow-up build `b00c76a` passed the focused pane-switch test. When focus moved
+to another pane while MIC was held, releasing MIC returned to the original
+Hermes pane and stopped recording there.
+
 ## Latest Hermes candidate qualification
 
 A locally built v0.2.0 candidate archive passed a focused Hermes Desktop test

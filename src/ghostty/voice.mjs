@@ -14,6 +14,12 @@ export class GhosttyAccessibilityVoice extends AccessibilityDictationVoice {
       adapterId: "ghostty-macos-dictation",
       ...options,
     });
+    this.hermesVoice = new AccessibilityDictationVoice({
+      command: "--ghostty-hermes-dictation-hold",
+      surface: "Hermes CLI",
+      adapterId: "ghostty-hermes-dictation",
+      ...options,
+    });
     this.activeVoice = null;
     this.agentSurface = null;
   }
@@ -40,7 +46,11 @@ export class GhosttyAccessibilityVoice extends AccessibilityDictationVoice {
 
   async start({ agentSurface = null } = {}) {
     if (this.activeVoice) return;
-    const voice = agentSurface === "codex" ? this.codexVoice : this;
+    const voice = agentSurface === "codex"
+      ? this.codexVoice
+      : agentSurface === "hermes"
+      ? this.hermesVoice
+      : this;
     this.activeVoice = voice;
     this.agentSurface = agentSurface;
     try {

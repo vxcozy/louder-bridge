@@ -565,6 +565,39 @@ test("starts macOS Dictation for Codex CLI in Ghostty", () => {
   assert.match(source, /--ghostty-system-dictation-hold/);
 });
 
+test("toggles Hermes CLI voice input with Control-B in Ghostty", () => {
+  const source = fs.readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "native",
+      "launcher.m",
+    ),
+    "utf8",
+  );
+  const dictation = source.slice(
+    source.indexOf("static int hold_ghostty_hermes_dictation"),
+    source.indexOf("static int hold_ghostty_system_dictation"),
+  );
+  const capture = dictation.indexOf(
+    "read_front_ghostty_terminal_id(terminal_id)",
+  );
+  const start = dictation.indexOf("post_control_key_click(11)");
+  const ready = dictation.indexOf("ready hermes-terminal-dictation");
+  const wait = dictation.indexOf("wait_for_stop_signal()");
+  const refocus = dictation.indexOf("focus_ghostty_terminal(terminal_id)");
+  const stop = dictation.indexOf("post_control_key_click(11)", start + 1);
+  assert.ok(capture >= 0);
+  assert.ok(start > capture);
+  assert.ok(ready > start);
+  assert.ok(wait > ready);
+  assert.ok(refocus > wait);
+  assert.ok(stop > refocus);
+  assert.match(source, /CGEventSetFlags\(down, kCGEventFlagMaskControl\)/);
+  assert.match(source, /CGEventSetFlags\(up, kCGEventFlagMaskControl\)/);
+  assert.match(source, /--ghostty-hermes-dictation-hold/);
+});
+
 test("enables and retries Hermes's Electron accessibility tree", (context) => {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
     context.skip("The native Hermes adapter requires Apple Silicon.");

@@ -27,6 +27,66 @@ test("associates sessions with stable Ghostty terminal IDs", async () => {
   );
 });
 
+test("discovers the focused terminal when a hook omits its ID", async () => {
+  const calls = [];
+  const navigator = new GhosttyTerminalNavigator({
+    launcher: "/launcher",
+    async run(command, args) {
+      calls.push([command, ...args]);
+      if (args[0] === "--ghostty-front-terminal-id") {
+        return { stdout: "terminal-hermes\n" };
+      }
+      return { stdout: "" };
+    },
+  });
+
+  assert.equal(
+    await navigator.observe("hermes-session", undefined, "hermes"),
+    true,
+  );
+  assert.equal(
+    navigator.agentSurfaceForSession("hermes-session"),
+    "hermes",
+  );
+  await navigator.open("hermes-session");
+  assert.deepEqual(calls, [
+    ["/launcher", "--ghostty-front-terminal-id"],
+    ["/launcher", "--ghostty-focus-terminal", "terminal-hermes"],
+  ]);
+});
+
+test("does not restore a session forgotten during terminal discovery", async () => {
+  let finishDiscovery;
+  const discovery = new Promise((resolve) => {
+    finishDiscovery = resolve;
+  });
+  const calls = [];
+  const navigator = new GhosttyTerminalNavigator({
+    launcher: "/launcher",
+    async run(command, args) {
+      calls.push([command, ...args]);
+      if (args[0] === "--ghostty-front-terminal-id") return discovery;
+      return { stdout: "" };
+    },
+  });
+
+  const observation = navigator.observe("ended-session", undefined, "hermes");
+  navigator.forget("ended-session");
+  await navigator.observe("live-session", "terminal-hermes", "hermes");
+  finishDiscovery({ stdout: "terminal-hermes\n" });
+
+  assert.equal(await observation, false);
+  await navigator.open("live-session");
+  await assert.rejects(
+    navigator.open("ended-session"),
+    /associate its terminal/,
+  );
+  assert.deepEqual(calls, [
+    ["/launcher", "--ghostty-front-terminal-id"],
+    ["/launcher", "--ghostty-focus-terminal", "terminal-hermes"],
+  ]);
+});
+
 test("does not retain invalid terminal IDs or expose observation failures", async () => {
   const invalid = new GhosttyTerminalNavigator({
     launcher: "/launcher",
@@ -147,6 +207,39 @@ test("uses macOS Dictation for Codex CLI in Ghostty", async () => {
   assert.equal(voice.status().state, "recording");
   assert.equal(voice.status().method, "macos-dictation");
   assert.equal(voice.status().agentSurface, "codex");
+  await voice.stop();
+  assert.equal(voice.status().state, "idle");
+  assert.equal(voice.status().agentSurface, null);
+});
+
+test("uses Hermes CLI's Control-B voice toggle in Ghostty", async () => {
+  let child;
+  const voice = new GhosttyAccessibilityVoice({
+    launcher: "/launcher",
+    spawnProcess(command, args) {
+      child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdin = {
+        destroyed: false,
+        writableEnded: false,
+        end() {
+          this.writableEnded = true;
+          queueMicrotask(() => child.emit("exit", 0, null));
+        },
+      };
+      child.kill = () => {};
+      queueMicrotask(() =>
+        child.stdout.emit("data", "ready hermes-terminal-dictation\n")
+      );
+      assert.equal(command, "/launcher");
+      assert.deepEqual(args, ["--ghostty-hermes-dictation-hold"]);
+      return child;
+    },
+  });
+  await voice.start({ agentSurface: "hermes" });
+  assert.equal(voice.status().method, "hermes-terminal-dictation");
+  assert.equal(voice.status().agentSurface, "hermes");
   await voice.stop();
   assert.equal(voice.status().state, "idle");
   assert.equal(voice.status().agentSurface, null);

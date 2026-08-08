@@ -186,10 +186,11 @@ terminals only on session start and prompt submission.
 If send does not work, bring Ghostty forward and confirm Louder Bridge is
 enabled under Accessibility.
 
-In Claude Code and Hermes, MIC holds the agent's Space-based push-to-talk
-control. In Codex CLI, MIC uses macOS Dictation. Focus the prompt and confirm
-the same action works from the Mac keyboard first. Louder Bridge must remain
-enabled under Accessibility.
+In Claude Code, MIC holds the agent's Space-based push-to-talk control. In
+Hermes, pressing MIC sends `Control+B` to start voice input, and releasing MIC
+sends it again to stop. Codex CLI uses macOS Dictation. Focus the prompt and
+confirm the matching action works from the Mac keyboard first. Louder Bridge
+must remain enabled under Accessibility.
 
 ### The local port is already in use
 
