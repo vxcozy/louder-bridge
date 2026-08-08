@@ -55,6 +55,38 @@ test("discovers the focused terminal when a hook omits its ID", async () => {
   ]);
 });
 
+test("does not restore a session forgotten during terminal discovery", async () => {
+  let finishDiscovery;
+  const discovery = new Promise((resolve) => {
+    finishDiscovery = resolve;
+  });
+  const calls = [];
+  const navigator = new GhosttyTerminalNavigator({
+    launcher: "/launcher",
+    async run(command, args) {
+      calls.push([command, ...args]);
+      if (args[0] === "--ghostty-front-terminal-id") return discovery;
+      return { stdout: "" };
+    },
+  });
+
+  const observation = navigator.observe("ended-session", undefined, "hermes");
+  navigator.forget("ended-session");
+  await navigator.observe("live-session", "terminal-hermes", "hermes");
+  finishDiscovery({ stdout: "terminal-hermes\n" });
+
+  assert.equal(await observation, false);
+  await navigator.open("live-session");
+  await assert.rejects(
+    navigator.open("ended-session"),
+    /associate its terminal/,
+  );
+  assert.deepEqual(calls, [
+    ["/launcher", "--ghostty-front-terminal-id"],
+    ["/launcher", "--ghostty-focus-terminal", "terminal-hermes"],
+  ]);
+});
+
 test("does not retain invalid terminal IDs or expose observation failures", async () => {
   const invalid = new GhosttyTerminalNavigator({
     launcher: "/launcher",

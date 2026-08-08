@@ -9,8 +9,12 @@ have not shipped appear under "Unreleased."
 
 - Hermes sessions in Ghostty can recover their terminal association when a
   lifecycle hook does not include Ghostty's terminal ID.
+- A delayed Ghostty lookup can no longer restore an ended Hermes session or
+  displace the live session associated with that terminal.
 - MIC now uses Hermes CLI's `Control+B` voice toggle instead of the
   hold-Space control used by Claude Code.
+- Releasing MIC stops Hermes voice input in the pane where recording began,
+  even if focus moved while the key was held.
 
 ## 0.3.1 - 2026-08-08
 

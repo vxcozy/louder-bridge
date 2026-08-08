@@ -163,10 +163,12 @@ navigation use separate desktop controls, so test all three paths.
    For Hermes, confirm the first `Control+B` starts recording and the second
    stops it. For Codex CLI, confirm macOS Dictation inserts the transcript.
    None of these routes should send the draft.
-7. Press the key to the right of MIC. Confirm Ghostty sends the draft once.
-8. Stop the last terminal agent while leaving Ghostty open. Confirm Louder
+7. In Hermes, hold MIC and move to another pane before releasing it. Confirm
+   Ghostty returns to the original Hermes pane and stops recording there.
+8. Press the key to the right of MIC. Confirm Ghostty sends the draft once.
+9. Stop the last terminal agent while leaving Ghostty open. Confirm Louder
    Bridge releases the Micro.
-9. Repeat the focused test once with each installed agent: Claude, Codex, and
+10. Repeat the focused test once with each installed agent: Claude, Codex, and
    Hermes.
 
 Record the Ghostty version, agent version, connection type, voice route, and

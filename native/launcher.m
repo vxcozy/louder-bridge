@@ -272,7 +272,7 @@ static Boolean ghostty_terminal_id_is_safe(const char *terminal_id) {
   return true;
 }
 
-static int print_front_ghostty_terminal_id(void) {
+static int read_front_ghostty_terminal_id(char terminal_id[129]) {
   if (!frontmost_application_is_ghostty()) return 4;
   @autoreleasepool {
     NSDictionary *error = nil;
@@ -282,16 +282,24 @@ static int print_front_ghostty_terminal_id(void) {
        "end tell",
       &error
     );
-    NSString *terminal_id = result.stringValue;
-    if (terminal_id.length < 1) {
+    const char *value = result.stringValue.UTF8String;
+    if (!ghostty_terminal_id_is_safe(value)) {
       return report_applescript_error(
         error,
         "Louder Bridge could not identify the active Ghostty terminal."
       );
     }
-    printf("%s\n", terminal_id.UTF8String);
+    snprintf(terminal_id, 129, "%s", value);
     return 0;
   }
+}
+
+static int print_front_ghostty_terminal_id(void) {
+  char terminal_id[129];
+  int result = read_front_ghostty_terminal_id(terminal_id);
+  if (result != 0) return result;
+  printf("%s\n", terminal_id);
+  return 0;
 }
 
 static int focus_ghostty_terminal(const char *terminal_id) {
@@ -1123,6 +1131,9 @@ static int hold_ghostty_hermes_dictation(void) {
   sigaction(SIGINT, &stop_action, NULL);
   sigaction(SIGTERM, &stop_action, NULL);
 
+  char terminal_id[129];
+  int terminal_error = read_front_ghostty_terminal_id(terminal_id);
+  if (terminal_error != 0) return terminal_error;
   if (!post_control_key_click(11)) {
     fputs("Louder Bridge could not start Hermes voice input in Ghostty.\n", stderr);
     return 6;
@@ -1130,6 +1141,7 @@ static int hold_ghostty_hermes_dictation(void) {
   puts("ready hermes-terminal-dictation");
   fflush(stdout);
   int wait_error = wait_for_stop_signal();
+  if (focus_ghostty_terminal(terminal_id) != 0) return 6;
   if (!post_control_key_click(11)) {
     fputs("Louder Bridge could not stop Hermes voice input in Ghostty.\n", stderr);
     return 6;

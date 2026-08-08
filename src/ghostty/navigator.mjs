@@ -12,6 +12,7 @@ export class GhosttyTerminalNavigator {
     this.launcher = launcher;
     this.run = run;
     this.terminals = new Map();
+    this.observations = new Map();
   }
 
   metadata() {
@@ -22,9 +23,14 @@ export class GhosttyTerminalNavigator {
   }
 
   async observe(sessionId, terminalId, agentSurface = null) {
+    const observation = Symbol();
+    this.observations.set(sessionId, observation);
     let observedTerminalId = terminalId;
     if (observedTerminalId === undefined) {
-      if (!this.launcher) return false;
+      if (!this.launcher) {
+        this.finishObservation(sessionId, observation);
+        return false;
+      }
       try {
         const { stdout } = await this.run(
           this.launcher,
@@ -33,13 +39,18 @@ export class GhosttyTerminalNavigator {
         );
         observedTerminalId = stdout.trim();
       } catch {
+        this.finishObservation(sessionId, observation);
         return false;
       }
     }
+    if (this.observations.get(sessionId) !== observation) return false;
     if (
       typeof observedTerminalId !== "string" ||
       !TERMINAL_ID_PATTERN.test(observedTerminalId)
-    ) return false;
+    ) {
+      this.finishObservation(sessionId, observation);
+      return false;
+    }
     for (const [knownSessionId, terminal] of this.terminals) {
       if (
         knownSessionId !== sessionId &&
@@ -52,11 +63,19 @@ export class GhosttyTerminalNavigator {
       terminalId: observedTerminalId,
       agentSurface,
     });
+    this.finishObservation(sessionId, observation);
     return true;
   }
 
   forget(sessionId) {
+    this.observations.delete(sessionId);
     this.terminals.delete(sessionId);
+  }
+
+  finishObservation(sessionId, observation) {
+    if (this.observations.get(sessionId) === observation) {
+      this.observations.delete(sessionId);
+    }
   }
 
   async open(sessionId) {
