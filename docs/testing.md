@@ -220,7 +220,7 @@ The tester confirmed the transcript in Hermes and reported no missed controls
 or rough transitions. Bridge diagnostics recorded dictation, send, and
 lifecycle events without audio or transcript content.
 
-## Latest release result
+## Latest downloaded-release hardware result
 
 The v0.1.2 archive downloaded from its GitHub release passed a focused physical
 test on August 4, 2026:

@@ -28,7 +28,7 @@ body:
     attributes:
       label: Scope
       options:
-        - label: This request concerns a local workspace in Claude Desktop or Hermes Desktop on Apple Silicon.
+        - label: This request concerns a local agent workflow or Codex Micro control on Apple Silicon.
           required: true
         - label: I searched for an existing request.
           required: true
