@@ -89,25 +89,34 @@ test("detects Ghostty and TTY-backed terminal agents", async () => {
   );
   assert.deepEqual(
     terminalAgentsFromProcessList(`
-ttys000  /opt/homebrew/bin/claude
-ttys001  /usr/local/bin/hermes
-??       /Applications/Codex.app/Contents/MacOS/Codex
-ttys002  /opt/homebrew/bin/codex
-ttys003  /bin/zsh
+100  1    ??       /Applications/Ghostty.app/Contents/MacOS/ghostty
+101  100  ttys000  /bin/zsh
+102  101  ttys000  /opt/homebrew/bin/claude
+200  1    ??       /Applications/iTerm.app/Contents/MacOS/iTerm2
+201  200  ttys001  /bin/zsh
+202  201  ttys001  /usr/local/bin/hermes
+300  1    ??       /Applications/Visual Studio Code.app/Contents/MacOS/Electron
+301  300  ttys002  /opt/homebrew/bin/codex
 `),
-    ["claude", "hermes", "codex"],
+    ["claude"],
   );
   const calls = [];
   assert.deepEqual(
     await terminalAgentsRunning(async (command, args, options) => {
       calls.push({ command, args, options });
-      return { stdout: "ttys000 /opt/homebrew/bin/claude\n" };
+      return {
+        stdout: [
+          "100 1 ?? /Applications/Ghostty.app/Contents/MacOS/ghostty",
+          "101 100 ttys000 /opt/homebrew/bin/claude",
+          "",
+        ].join("\n"),
+      };
     }),
     ["claude"],
   );
   assert.deepEqual(calls, [{
     command: "/bin/ps",
-    args: ["-axo", "tty=,comm="],
+    args: ["-axo", "pid=,ppid=,tty=,comm="],
     options: {
       timeout: 2000,
       maxBuffer: 1024 * 1024,
@@ -116,7 +125,7 @@ ttys003  /bin/zsh
   }]);
 });
 
-test("gives Ghostty ownership only while a terminal agent is running", async () => {
+test("gives Ghostty ownership only while a terminal agent is running", async (context) => {
   let agents = [];
   const calls = [];
   const service = await startDesktopService({
@@ -144,14 +153,20 @@ test("gives Ghostty ownership only while a terminal agent is running", async () 
     pollInterval: 60_000,
     logger: { info() {}, error() {} },
   });
+  context.after(() => service.stop());
 
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, [["surface", null]]);
   agents = ["codex"];
   await service.sync();
-  assert.deepEqual(calls, [["surface", "ghostty"], ["connect"]]);
+  assert.deepEqual(calls, [
+    ["surface", null],
+    ["surface", "ghostty"],
+    ["connect"],
+  ]);
   agents = [];
   await service.sync();
   assert.deepEqual(calls, [
+    ["surface", null],
     ["surface", "ghostty"],
     ["connect"],
     ["disconnect"],

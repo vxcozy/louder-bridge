@@ -48,24 +48,48 @@ export function isGhosttyRunning(run = execFileAsync) {
 }
 
 export function terminalAgentsFromProcessList(output) {
-  const agents = new Set();
+  const processes = new Map();
+  const ghosttyProcesses = new Set();
+  const supportedAgents = new Map();
+
   for (const line of String(output).split(/\r?\n/)) {
-    const match = line.match(/^\s*(\S+)\s+(.+?)\s*$/);
-    if (!match || match[1] === "??") continue;
-    const executable = path.basename(match[2]).toLowerCase();
-    if (["claude", "codex", "hermes"].includes(executable)) {
-      agents.add(executable);
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/);
+    if (!match) continue;
+    const [, pid, parentPid, tty, command] = match;
+    const executable = path.basename(command).toLowerCase();
+    processes.set(pid, parentPid);
+    if (executable === "ghostty") ghosttyProcesses.add(pid);
+    if (tty !== "??" && ["claude", "codex", "hermes"].includes(executable)) {
+      supportedAgents.set(pid, executable);
+    }
+  }
+
+  const agents = new Set();
+  for (const [pid, executable] of supportedAgents) {
+    const visited = new Set([pid]);
+    let ancestor = processes.get(pid);
+    while (ancestor && !visited.has(ancestor)) {
+      if (ghosttyProcesses.has(ancestor)) {
+        agents.add(executable);
+        break;
+      }
+      visited.add(ancestor);
+      ancestor = processes.get(ancestor);
     }
   }
   return [...agents];
 }
 
 export async function terminalAgentsRunning(run = execFileAsync) {
-  const { stdout } = await run("/bin/ps", ["-axo", "tty=,comm="], {
-    timeout: PROCESS_CHECK_TIMEOUT_MS,
-    maxBuffer: 1024 * 1024,
-    windowsHide: true,
-  });
+  const { stdout } = await run(
+    "/bin/ps",
+    ["-axo", "pid=,ppid=,tty=,comm="],
+    {
+      timeout: PROCESS_CHECK_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    },
+  );
   return terminalAgentsFromProcessList(stdout);
 }
 
