@@ -469,7 +469,8 @@ entries and older log files.
 - Ghostty 1.3.1 passed a physical USB test with Claude Code and Codex CLI in
   separate panes. Agent Keys selected the correct panes, both MIC routes and
   send passed, and key and exterior lighting followed both sessions. The
-  Hermes terminal voice route still needs physical verification.
+  Hermes terminal MIC route passed a focused physical test with unreleased
+  build `809cde7`; its Agent Key fallback still needs confirmation.
 - Claude MIC hold and release, transcript insertion, and send passed focused
   physical tests over Bluetooth and USB-C. Bluetooth lifecycle response also passed.
   The full USB-C and Bluetooth acceptance matrix has not passed yet.

@@ -47,6 +47,11 @@ The GitHub-built v0.3.1 archive passed the automated release checks and a
 downloaded checksum and archive check. The hardware run used the local
 candidate, not the published ZIP.
 
+An unreleased locally signed build, revision `809cde7`, passed a focused
+Hermes-in-Ghostty MIC test on August 8, 2026. Pressing MIC started Hermes voice
+input with `Control+B`, and releasing MIC stopped it with the same shortcut.
+Agent Key pane navigation still needs confirmation with this build.
+
 ## Latest Hermes candidate qualification
 
 A locally built v0.2.0 candidate archive passed a focused Hermes Desktop test
