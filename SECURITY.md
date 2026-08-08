@@ -34,12 +34,15 @@ Louder Bridge:
 Preview builds include a native IOKit driver for the independently documented
 Codex Micro protocol. The driver accepts only the status, lighting, and HID
 methods the bridge needs. It cannot issue filesystem, firmware, or bootloader
-commands. Preview builds also open a Claude Desktop resume URL and use Claude's
-Accessibility controls for dictation. These interfaces are experimental, and
-stable release checks reject them. Treat them as part of the local trusted
+commands. Preview builds also open a Claude Desktop resume URL, use
+Accessibility for desktop voice and send controls, and use Ghostty's preview
+AppleScript API to focus terminal panes. These interfaces are experimental,
+and stable release checks reject them. Treat them as part of the local trusted
 computing base until supported vendor interfaces replace them.
 
 Louder Bridge sees MIC press and release events, but it does not receive audio
-or read dictated text. Claude Desktop owns that path when its composer control
-is available. Claude Code views without that control use macOS Dictation, so
-the Mac's Dictation settings and privacy terms apply instead.
+or read dictated text. Claude Desktop and Hermes Desktop own their composer
+voice paths. Some Claude Code desktop views use macOS Dictation instead. In
+Ghostty, Claude Code and Hermes use their hold-Space voice controls, while Codex
+CLI uses macOS Dictation. Audio and transcripts stay with the desktop app,
+terminal agent, or macOS Dictation.

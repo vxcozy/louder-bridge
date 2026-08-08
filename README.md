@@ -101,13 +101,17 @@ because only one can own the Micro at a time.
 
 ## Project status
 
-This is a pre-1.0 project. The v0.1.2 archive downloaded from GitHub passed a
-physical Claude Code test with a Codex Micro. A locally built v0.2.0 candidate
-archive passed its Hermes Desktop test over Bluetooth after a fresh install and
-permission approval. MIC push-to-talk, transcript insertion, send, Agent Key
-navigation, lifecycle lighting, exterior effects, and sound feedback all worked
-on hardware. Claude's core MIC and send controls have passed over Bluetooth and
-USB-C.
+The current release is the v0.3.1 prerelease. Its GitHub archive passed the
+automated release checks, including checksum, SBOM, revision, signature, and
+archive validation. A local v0.3.1 candidate passed the mixed-pane Ghostty test
+described below. The published v0.1.2 archive remains the latest release package
+installed and tested directly from GitHub.
+
+A locally built v0.2.0 candidate passed its Hermes Desktop test over Bluetooth
+after a fresh install and permission approval. MIC push-to-talk, transcript
+insertion, send, Agent Key navigation, lifecycle lighting, exterior effects,
+and sound feedback all worked on hardware. Claude's core MIC and send controls
+have passed over Bluetooth and USB-C.
 
 Ghostty 1.3.1 has passed a physical USB test with Claude Code and Codex CLI in
 separate panes. Agent Keys switched between the correct panes, lifecycle and

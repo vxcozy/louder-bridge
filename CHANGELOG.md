@@ -5,13 +5,29 @@ have not shipped appear under "Unreleased."
 
 ## Unreleased
 
+There are no unreleased changes.
+
+## 0.3.1 - 2026-08-08
+
 ### Added
 
-- Hermes Desktop support for lifecycle lighting, Agent Key session navigation,
-  MIC push-to-talk, and the adjacent send key.
-- A managed Hermes plugin that reports lifecycle events without prompt text,
-  transcripts, project names, or session identifiers in normal logs.
-- A Hermes tutorial and troubleshooting notes.
+- First-run setup now requests Ghostty Automation permission and reports its
+  state separately.
+- Local development builds can use a stable signing identity so macOS keeps
+  their permissions between rebuilds.
+
+### Fixed
+
+- Agent Keys now focus the correct Ghostty window, tab, or split in mixed-agent
+  sessions.
+- Ghostty voice input now uses each agent's own behavior. Claude Code and
+  Hermes use hold-Space push-to-talk, while Codex CLI uses macOS Dictation.
+- The Micro's send key now sends Return to the focused Ghostty terminal.
+
+## 0.3.0 - 2026-08-07
+
+### Added
+
 - Ghostty 1.3 support for local Claude, Codex, and Hermes sessions, including
   lifecycle lighting, exact tab and split navigation, MIC push-to-talk, and
   send.
@@ -22,12 +38,25 @@ have not shipped appear under "Unreleased."
 
 - Louder Bridge now gives the Micro to exactly one supported surface. An idle
   Ghostty window does not claim the device; a local terminal agent does.
-- Claude and Hermes dictation now use the same native helper for startup,
-  shutdown, and error handling.
 - Ghostty send now emits a complete native Return key press instead of relying
   on Ghostty's preview key command.
 - Permission setup now survives the process restarts macOS triggers when a new
   app build is approved.
+
+## 0.2.0 - 2026-08-06
+
+### Added
+
+- Hermes Desktop support for lifecycle lighting, Agent Key session navigation,
+  MIC push-to-talk, and the adjacent send key.
+- A managed Hermes plugin that reports lifecycle events without prompt text,
+  transcripts, project names, or session identifiers in normal logs.
+- A Hermes tutorial and troubleshooting notes.
+
+### Changed
+
+- Claude and Hermes dictation now use the same native helper for startup,
+  shutdown, and error handling.
 
 ### Fixed
 

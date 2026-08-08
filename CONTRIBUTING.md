@@ -38,8 +38,9 @@ change.
 Hardware changes also need the checklist in
 [docs/testing.md](docs/testing.md). Automated mocks are useful, but they do not
 replace a physical Codex Micro test. Changes to MIC handling must be tested in
-every affected Claude or Hermes composer. Record whether the Micro used USB-C
-or Bluetooth.
+every affected app or terminal agent. For Ghostty changes, record the terminal
+agent and confirm pane navigation separately. Record whether the Micro used
+USB-C or Bluetooth.
 
 ## Submit a pull request
 
@@ -53,8 +54,7 @@ In the pull request:
 
 Run `/humanizer` on every outward-facing change before asking for review. This
 includes documentation, app dialogs, CLI output, errors, release notes, issue
-templates, and pull request text. A maintainer must review these files before
-merge.
+templates, and pull request text.
 
 Do not add automated authorship credit to commits, pull requests, source
 comments, documentation, or release notes. Do not add authorship trailers for

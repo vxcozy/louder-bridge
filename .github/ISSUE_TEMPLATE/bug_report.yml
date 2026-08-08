@@ -13,18 +13,19 @@ body:
     attributes:
       label: Louder Bridge version
       description: Run `npm run status` for a source install, or use the version from the release filename.
-      placeholder: 0.2.0
+      placeholder: 0.3.1 or commit SHA
     validations:
       required: true
   - type: textarea
     id: versions
     attributes:
       label: System and component versions
-      description: Include the Mac model, macOS, active desktop app and version, Codex Micro firmware, and connection type.
+      description: Include the Mac model, macOS, active app or terminal agent and version, terminal host when applicable, Codex Micro firmware, and connection type.
       placeholder: |
         Mac:
         macOS:
-        Claude Desktop or Hermes Desktop:
+        App or terminal agent:
+        Terminal host:
         Codex Micro firmware:
         Connection:
     validations:

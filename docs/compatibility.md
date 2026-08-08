@@ -43,6 +43,10 @@ Ghostty passed a mixed-pane physical test on August 8, 2026:
 | Codex CLI MIC | macOS Dictation inserted speech |
 | Send | The Micro's send key submitted each prompt once |
 
+The GitHub-built v0.3.1 archive passed the automated release checks and a
+downloaded checksum and archive check. The hardware run used the local
+candidate, not the published ZIP.
+
 ## Latest Hermes candidate qualification
 
 A locally built v0.2.0 candidate archive passed a focused Hermes Desktop test
@@ -71,7 +75,7 @@ lifecycle event. The bridge received no audio or transcript text.
 This test used the locally generated ad-hoc archive, not an asset downloaded
 from GitHub.
 
-## Latest release qualification
+## Latest downloaded-release hardware qualification
 
 The v0.1.2 archive downloaded from GitHub passed a physical test on August 4,
 2026:

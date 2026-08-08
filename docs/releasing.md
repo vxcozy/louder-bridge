@@ -67,10 +67,10 @@ Settings → Privacy & Security**, find the Louder Bridge message, and choose
 repository's Releases page. Apple documents the same process in [Open a Mac
 app from an unknown developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
 
-Test first launch, permissions, login startup, Micro power cycling, Claude
-lifecycle states, Agent Key navigation, push-to-talk, sending, upgrades, and
-removal. Record the tested macOS, Claude Desktop, bridge, firmware, and
-connection versions in the draft notes.
+Test first launch, permissions, login startup, Micro power cycling, lifecycle
+states, Agent Key navigation, push-to-talk, sending, upgrades, and removal.
+Record the tested macOS, app or terminal agent, terminal host when applicable,
+bridge, firmware, and connection versions in the draft notes.
 
 If qualification changes the notes, run `/humanizer` again. Read every piece
 of public text as it appears on GitHub before publishing.
