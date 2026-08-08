@@ -5,7 +5,12 @@ have not shipped appear under "Unreleased."
 
 ## Unreleased
 
-There are no unreleased changes.
+### Fixed
+
+- Hermes sessions in Ghostty can recover their terminal association when a
+  lifecycle hook does not include Ghostty's terminal ID.
+- MIC now uses Hermes CLI's `Control+B` voice toggle instead of the
+  hold-Space control used by Claude Code.
 
 ## 0.3.1 - 2026-08-08
 

@@ -226,11 +226,11 @@ audio or read the resulting draft.
 
 ## Ghostty voice input
 
-Claude Code and Hermes use their own hold-Space push-to-talk control. While you
-hold MIC, the Ghostty adapter holds Space; releasing MIC releases it. Codex CLI
-uses macOS Dictation instead because its terminal voice control has different
-keyboard behavior. The adjacent Micro key sends Return to the frontmost
-Ghostty terminal.
+Each terminal agent expects a different keyboard gesture. For Claude Code, the
+Ghostty adapter holds Space while MIC is held. Hermes uses a toggle, so the
+adapter sends `Control+B` when MIC is pressed and sends it again on release.
+Codex CLI uses macOS Dictation. The adjacent Micro key sends Return to the
+frontmost Ghostty terminal.
 
 The terminal agent or macOS handles the microphone and transcript. Louder
 Bridge sees the MIC press and release, but it does not receive audio or text.

@@ -707,6 +707,24 @@ static Boolean post_key_event(
   return true;
 }
 
+static Boolean post_control_key_click(CGKeyCode key_code) {
+  CGEventRef down = CGEventCreateKeyboardEvent(NULL, key_code, true);
+  CGEventRef up = CGEventCreateKeyboardEvent(NULL, key_code, false);
+  if (down == NULL || up == NULL) {
+    if (down != NULL) CFRelease(down);
+    if (up != NULL) CFRelease(up);
+    return false;
+  }
+  CGEventSetFlags(down, kCGEventFlagMaskControl);
+  CGEventSetFlags(up, kCGEventFlagMaskControl);
+  CGEventPost(kCGHIDEventTap, down);
+  usleep(30000);
+  CGEventPost(kCGHIDEventTap, up);
+  CFRelease(down);
+  CFRelease(up);
+  return true;
+}
+
 static int repeat_key_until_stop(CGKeyCode key_code) {
   Boolean repeating = false;
   char byte;
@@ -1084,6 +1102,36 @@ static int hold_ghostty_push_to_talk(void) {
   }
   if (wait_error == 2) {
     fputs("Louder Bridge could not repeat Space in Ghostty.\n", stderr);
+    return 6;
+  }
+  return wait_error == 0 ? 0 : 7;
+}
+
+static int hold_ghostty_hermes_dictation(void) {
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (!frontmost_application_is_ghostty()) {
+    fputs("Bring Ghostty to the front before using the MIC key.\n", stderr);
+    return 4;
+  }
+  hold_stop_requested = 0;
+  struct sigaction stop_action = { 0 };
+  stop_action.sa_handler = request_hold_stop;
+  sigemptyset(&stop_action.sa_mask);
+  sigaction(SIGINT, &stop_action, NULL);
+  sigaction(SIGTERM, &stop_action, NULL);
+
+  if (!post_control_key_click(11)) {
+    fputs("Louder Bridge could not start Hermes voice input in Ghostty.\n", stderr);
+    return 6;
+  }
+  puts("ready hermes-terminal-dictation");
+  fflush(stdout);
+  int wait_error = wait_for_stop_signal();
+  if (!post_control_key_click(11)) {
+    fputs("Louder Bridge could not stop Hermes voice input in Ghostty.\n", stderr);
     return 6;
   }
   return wait_error == 0 ? 0 : 7;
@@ -1543,6 +1591,9 @@ int main(int argc, char *argv[]) {
   }
   if (argc > 1 && strcmp(argv[1], "--ghostty-push-to-talk-hold") == 0) {
     return hold_ghostty_push_to_talk();
+  }
+  if (argc > 1 && strcmp(argv[1], "--ghostty-hermes-dictation-hold") == 0) {
+    return hold_ghostty_hermes_dictation();
   }
   if (argc > 1 && strcmp(argv[1], "--ghostty-system-dictation-hold") == 0) {
     return hold_ghostty_system_dictation();

@@ -179,3 +179,36 @@ test("uses macOS Dictation for Codex CLI in Ghostty", async () => {
   assert.equal(voice.status().state, "idle");
   assert.equal(voice.status().agentSurface, null);
 });
+
+test("uses Hermes CLI's Control-B voice toggle in Ghostty", async () => {
+  let child;
+  const voice = new GhosttyAccessibilityVoice({
+    launcher: "/launcher",
+    spawnProcess(command, args) {
+      child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdin = {
+        destroyed: false,
+        writableEnded: false,
+        end() {
+          this.writableEnded = true;
+          queueMicrotask(() => child.emit("exit", 0, null));
+        },
+      };
+      child.kill = () => {};
+      queueMicrotask(() =>
+        child.stdout.emit("data", "ready hermes-terminal-dictation\n")
+      );
+      assert.equal(command, "/launcher");
+      assert.deepEqual(args, ["--ghostty-hermes-dictation-hold"]);
+      return child;
+    },
+  });
+  await voice.start({ agentSurface: "hermes" });
+  assert.equal(voice.status().method, "hermes-terminal-dictation");
+  assert.equal(voice.status().agentSurface, "hermes");
+  await voice.stop();
+  assert.equal(voice.status().state, "idle");
+  assert.equal(voice.status().agentSurface, null);
+});

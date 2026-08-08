@@ -15,10 +15,10 @@ Hold the Micro's MIC control to dictate into the active composer.
 Release it to stop, or double-tap MIC to keep recording without holding it.
 Press MIC again to stop a latched recording. Louder Bridge uses Claude's own
 composer control when one is available and macOS Dictation in Code views that
-do not expose one. In Hermes, it uses the Voice dictation control. In Ghostty,
-Claude Code and Hermes use their hold-Space voice control, while Codex CLI uses
-macOS Dictation. Press the key to the right of MIC to send the composer or
-accept the focused approval.
+do not expose one. In Hermes Desktop, it uses the Voice dictation control. In
+Ghostty, Claude Code uses hold-Space push-to-talk, Hermes uses its `Control+B`
+voice toggle, and Codex CLI uses macOS Dictation. Press the key to the right of
+MIC to send the composer or accept the focused approval.
 
 Louder Bridge reads Claude and Codex command hooks or a small Hermes plugin,
 then sends the resulting state to the Micro. The bridge runs on your Mac. It

@@ -955,6 +955,17 @@ test("routes terminal-agent hooks and every Micro control through Ghostty", asyn
     undefined,
     "hermes",
   ]);
+  await bridge.setSurface("ghostty");
+  const actionStart = actions.length;
+  await controls.onAgentKey(0);
+  await controls.onVoiceButton("press");
+  await controls.onVoiceButton("release");
+  await bridge.setSurface("claude");
+  assert.deepEqual(actions.slice(actionStart), [
+    ["ghostty", "open", hermesObservation[2]],
+    ["ghostty", "voice-start", { agentSurface: "hermes" }],
+    ["ghostty", "voice-stop"],
+  ]);
 });
 
 test("rejects hooks from unknown surfaces", async (context) => {
