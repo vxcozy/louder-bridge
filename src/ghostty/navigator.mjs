@@ -22,19 +22,36 @@ export class GhosttyTerminalNavigator {
   }
 
   async observe(sessionId, terminalId, agentSurface = null) {
+    let observedTerminalId = terminalId;
+    if (observedTerminalId === undefined) {
+      if (!this.launcher) return false;
+      try {
+        const { stdout } = await this.run(
+          this.launcher,
+          ["--ghostty-front-terminal-id"],
+          { timeout: 3000, maxBuffer: 4096, windowsHide: true },
+        );
+        observedTerminalId = stdout.trim();
+      } catch {
+        return false;
+      }
+    }
     if (
-      typeof terminalId !== "string" ||
-      !TERMINAL_ID_PATTERN.test(terminalId)
+      typeof observedTerminalId !== "string" ||
+      !TERMINAL_ID_PATTERN.test(observedTerminalId)
     ) return false;
     for (const [knownSessionId, terminal] of this.terminals) {
       if (
         knownSessionId !== sessionId &&
-        terminal.terminalId === terminalId
+        terminal.terminalId === observedTerminalId
       ) {
         this.terminals.delete(knownSessionId);
       }
     }
-    this.terminals.set(sessionId, { terminalId, agentSurface });
+    this.terminals.set(sessionId, {
+      terminalId: observedTerminalId,
+      agentSurface,
+    });
     return true;
   }
 

@@ -554,7 +554,6 @@ export async function startBridge({
       if (
         isGhosttyHook &&
         terminalSessionIsValid &&
-        typeof event.terminal_id === "string" &&
         ["SessionStart", "UserPromptSubmit"].includes(event.hook_event_name)
       ) {
         Promise.resolve(

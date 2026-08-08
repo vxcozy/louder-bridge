@@ -865,8 +865,8 @@ test("routes terminal-agent hooks and every Micro control through Ghostty", asyn
     forget(sessionId) { actions.push(["ghostty", "forget", sessionId]); },
     async activeAgentSurface() { return null; },
     agentSurfaceForSession(sessionId) {
-      assert.match(sessionId, /^codex:/);
-      return "codex";
+      assert.match(sessionId, /^(codex|hermes):/);
+      return sessionId.startsWith("codex:") ? "codex" : "hermes";
     },
   };
   const bridge = await startBridge({
@@ -939,6 +939,22 @@ test("routes terminal-agent hooks and every Micro control through Ghostty", asyn
     hook_event_name: "SessionEnd",
   })).status, 200);
   assert.deepEqual(actions.at(-1), ["ghostty", "forget", internalId]);
+
+  assert.equal((await postHook(bridge, {
+    surface: "hermes",
+    host: "ghostty",
+    session_id: "private-hermes-session",
+    hook_event_name: "SessionStart",
+  })).status, 200);
+  const hermesObservation = actions.at(-1);
+  assert.match(hermesObservation[2], /^hermes:[A-Za-z0-9_-]{43}$/);
+  assert.deepEqual(hermesObservation, [
+    "ghostty",
+    "observe",
+    hermesObservation[2],
+    undefined,
+    "hermes",
+  ]);
 });
 
 test("rejects hooks from unknown surfaces", async (context) => {

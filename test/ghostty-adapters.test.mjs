@@ -27,6 +27,34 @@ test("associates sessions with stable Ghostty terminal IDs", async () => {
   );
 });
 
+test("discovers the focused terminal when a hook omits its ID", async () => {
+  const calls = [];
+  const navigator = new GhosttyTerminalNavigator({
+    launcher: "/launcher",
+    async run(command, args) {
+      calls.push([command, ...args]);
+      if (args[0] === "--ghostty-front-terminal-id") {
+        return { stdout: "terminal-hermes\n" };
+      }
+      return { stdout: "" };
+    },
+  });
+
+  assert.equal(
+    await navigator.observe("hermes-session", undefined, "hermes"),
+    true,
+  );
+  assert.equal(
+    navigator.agentSurfaceForSession("hermes-session"),
+    "hermes",
+  );
+  await navigator.open("hermes-session");
+  assert.deepEqual(calls, [
+    ["/launcher", "--ghostty-front-terminal-id"],
+    ["/launcher", "--ghostty-focus-terminal", "terminal-hermes"],
+  ]);
+});
+
 test("does not retain invalid terminal IDs or expose observation failures", async () => {
   const invalid = new GhosttyTerminalNavigator({
     launcher: "/launcher",
