@@ -1,6 +1,6 @@
 {
   "name": "louder-bridge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "license": "MIT",
   "description": "Use a Work Louder Codex Micro with Claude, Hermes, and terminal agents in Ghostty",
@@ -27,6 +27,7 @@
     "security:check": "node scripts/security-check.mjs",
     "release:check": "node scripts/release-check.mjs",
     "release:build": "node scripts/build-release.mjs",
+    "release:build:local": "LOUDER_LOCAL_SIGNING_IDENTITY='Louder Bridge Development' node scripts/build-release.mjs",
     "release:notarize": "node scripts/notarize-release.mjs",
     "release:publish": "node scripts/publish-release.mjs",
     "release:verify": "node scripts/verify-release.mjs"
@@ -63,7 +64,7 @@
       "support": "experimental"
     },
     "ghosttyVoice": {
-      "id": "ghostty-accessibility-dictation",
+      "id": "ghostty-agent-aware-dictation",
       "support": "experimental"
     }
   }

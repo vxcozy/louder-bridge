@@ -250,6 +250,21 @@ try {
       "The embedded Node.js runtime must not disable library validation.",
     );
   }
+  const launcherEntitlements = run("/usr/bin/codesign", [
+    "-d",
+    "--entitlements",
+    "-",
+    launcher,
+  ]);
+  if (
+    !launcherEntitlements.includes(
+      "com.apple.security.automation.apple-events",
+    )
+  ) {
+    throw new Error(
+      "The Louder Bridge launcher is missing its Automation entitlement.",
+    );
+  }
 
   const infoPlist = path.join(app, "Contents", "Info.plist");
   const bundledMetadata = JSON.parse(

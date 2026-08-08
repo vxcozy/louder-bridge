@@ -15,6 +15,7 @@ import {
 } from "./logging.mjs";
 import { accessibilityStatus } from "./macos/accessibility.mjs";
 import { showActivationDialog } from "./macos/activation-dialog.mjs";
+import { ghosttyAutomationStatus } from "./macos/automation.mjs";
 import { platformSupport } from "./macos/platform.mjs";
 import {
   beginClaudeSettingsUpdate,
@@ -266,10 +267,15 @@ if (command === "help" || command === "--help" || command === "-h") {
             });
             signLocalApplication({
               ...staged,
-              entitlements: path.join(
+              nodeEntitlements: path.join(
                 sourceRoot,
                 "release",
                 "node.entitlements.plist",
+              ),
+              launcherEntitlements: path.join(
+                sourceRoot,
+                "release",
+                "launcher.entitlements.plist",
               ),
             });
           },
@@ -278,6 +284,7 @@ if (command === "help" || command === "--help" || command === "-h") {
           command: bridgeHookCommand({
             nodePath: application.node,
             hookPath: application.hook,
+            launcherPath: application.launcher,
           }),
         });
         file = settingsTransaction.settingsFile;
@@ -285,6 +292,7 @@ if (command === "help" || command === "--help" || command === "-h") {
           command: codexBridgeHookCommand({
             nodePath: application.node,
             hookPath: application.hook,
+            launcherPath: application.launcher,
           }),
         });
         codexHooksFile = codexHooksTransaction.settingsFile;
@@ -359,6 +367,9 @@ if (command === "help" || command === "--help" || command === "-h") {
   const runtime = applicationBundlePathsForCli(fileURLToPath(import.meta.url));
   const permission = inputMonitoringStatus({ launcher: runtime.launcher });
   const accessibility = accessibilityStatus({ launcher: runtime.launcher });
+  const ghosttyAutomation = ghosttyAutomationStatus({
+    launcher: runtime.launcher,
+  });
   let authentication;
   let file;
   let agent;
@@ -373,6 +384,7 @@ if (command === "help" || command === "--help" || command === "-h") {
       command: bridgeHookCommand({
         nodePath: runtime.node,
         hookPath: runtime.hook,
+        launcherPath: runtime.launcher,
       }),
     });
     file = settingsTransaction.settingsFile;
@@ -380,6 +392,7 @@ if (command === "help" || command === "--help" || command === "-h") {
       command: codexBridgeHookCommand({
         nodePath: runtime.node,
         hookPath: runtime.hook,
+        launcherPath: runtime.launcher,
       }),
     });
     codexHooksFile = codexHooksTransaction.settingsFile;
@@ -438,9 +451,18 @@ if (command === "help" || command === "--help" || command === "-h") {
     }
     if (agent) {
       console.log(`Background agent installed in ${agent.plist}.`);
-      showActivationDialog(
-        "Louder Bridge is ready. Open Claude, Hermes, or a supported agent in Ghostty, then turn on the Codex Micro.",
-      );
+      if (
+        ghosttyAutomation === "denied" ||
+        ghosttyAutomation === "not-requested"
+      ) {
+        showActivationDialog(
+          "Louder Bridge is ready, but Ghostty pane switching is off. In System Settings, open Privacy & Security › Automation, then allow Louder Bridge to control Ghostty.",
+        );
+      } else {
+        showActivationDialog(
+          "Louder Bridge is ready. Open Claude, Hermes, or a supported agent in Ghostty, then turn on the Codex Micro.",
+        );
+      }
     } else {
       const needsInputMonitoring = permission !== "granted";
       const label = needsInputMonitoring
@@ -569,6 +591,7 @@ if (command === "help" || command === "--help" || command === "-h") {
   }
 } else if (command === "status") {
   const paths = launchAgentPaths();
+  const ghosttyAutomation = ghosttyAutomationStatus();
   const agentRunning = launchAgentIsRunning();
   console.log(
     `Background agent: ${agentRunning ? "running" : "not running"}`,
@@ -629,6 +652,7 @@ if (command === "help" || command === "--help" || command === "-h") {
     console.log(
       `Accessibility: ${health.service?.accessibility ?? "unknown"}`,
     );
+    console.log(`Ghostty Automation: ${ghosttyAutomation}`);
     console.log(
       `Codex Micro: ${health.service?.device?.state ?? "unknown"}`,
     );
@@ -659,7 +683,9 @@ if (command === "help" || command === "--help" || command === "-h") {
               ? "Claude composer"
               : voice.method === "hermes-composer"
                 ? "Hermes composer"
-                : "macOS Dictation"
+                : voice.method === "ghostty-terminal-push-to-talk"
+                  ? "terminal push-to-talk"
+                  : "macOS Dictation"
           }`,
         );
       }
@@ -674,6 +700,7 @@ if (command === "help" || command === "--help" || command === "-h") {
     );
     console.log(`Input Monitoring: ${installed.inputMonitoring}`);
     console.log(`Accessibility: ${installed.accessibility}`);
+    console.log(`Ghostty Automation: ${ghosttyAutomation}`);
   }
   console.log(`Log: ${paths.stdout}`);
   console.log(`Error log: ${paths.stderr}`);

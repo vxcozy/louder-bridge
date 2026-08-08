@@ -24,19 +24,24 @@ need to remain on the user's shell path after installation.
 
 ## Ghostty qualification
 
-Ghostty passed native and physical checks on August 4 and 5, 2026:
+Ghostty passed a mixed-pane physical test on August 8, 2026:
 
 | Component | Version or result |
 |---|---|
-| Ghostty | 1.3.1, commit `332b2aefc` |
+| macOS | 26.5.2 (25F84) |
+| Ghostty | 1.3.1 |
+| Claude Code | 2.1.226 |
+| Codex CLI | 0.147.0 |
+| Louder Bridge | 0.3.1 candidate |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | USB |
 | Terminal discovery | Read the stable ID of the focused terminal |
-| Navigation | Focused the terminal again by its stable ID |
-| Lifecycle lighting | Assigned Agent Key and exterior lighting turned blue while Claude worked |
-| MIC | macOS Dictation inserted speech into the Claude Code prompt |
-| Send | The Micro's send key submitted the prompt once |
-
-The physical test covered one focused Claude Code session. Agent Key navigation
-between multiple terminals still needs a hardware test.
+| Navigation | Agent Keys switched between the correct panes |
+| Lifecycle lighting | Agent Key and exterior lighting followed both sessions |
+| Claude Code MIC | Hold-Space push-to-talk inserted speech |
+| Codex CLI MIC | macOS Dictation inserted speech |
+| Send | The Micro's send key submitted each prompt once |
 
 ## Latest Hermes candidate qualification
 

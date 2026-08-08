@@ -212,6 +212,35 @@ static NSAppleEventDescriptor *run_applescript(
   return [script executeAndReturnError:error];
 }
 
+static OSStatus ghostty_automation_permission(Boolean ask_user_if_needed) {
+  static const char bundle_identifier[] = "com.mitchellh.ghostty";
+  AEAddressDesc target = {typeNull, NULL};
+  OSStatus descriptor_error = AECreateDesc(
+    typeApplicationBundleID,
+    bundle_identifier,
+    sizeof(bundle_identifier) - 1,
+    &target
+  );
+  if (descriptor_error != noErr) return descriptor_error;
+  OSStatus permission = AEDeterminePermissionToAutomateTarget(
+    &target,
+    typeWildCard,
+    typeWildCard,
+    ask_user_if_needed
+  );
+  AEDisposeDesc(&target);
+  return permission;
+}
+
+static const char *automation_access_name(OSStatus permission) {
+  if (permission == noErr) return "granted";
+  if (permission == errAEEventNotPermitted) return "denied";
+  if (permission == errAEEventWouldRequireUserConsent) {
+    return "not-requested";
+  }
+  return "unavailable";
+}
+
 static int report_applescript_error(
   NSDictionary *error,
   const char *fallback
@@ -678,6 +707,42 @@ static Boolean post_key_event(
   return true;
 }
 
+static int repeat_key_until_stop(CGKeyCode key_code) {
+  Boolean repeating = false;
+  char byte;
+  while (!hold_stop_requested) {
+    NSTimeInterval delay = repeating
+      ? NSEvent.keyRepeatInterval
+      : NSEvent.keyRepeatDelay;
+    if (delay < 0.001) delay = 0.001;
+    struct timeval timeout = {
+      .tv_sec = (time_t)delay,
+      .tv_usec = (suseconds_t)((delay - (time_t)delay) * 1000000.0)
+    };
+    fd_set input;
+    FD_ZERO(&input);
+    FD_SET(STDIN_FILENO, &input);
+    int selected = select(
+      STDIN_FILENO + 1,
+      &input,
+      NULL,
+      NULL,
+      &timeout
+    );
+    if (selected > 0) {
+      ssize_t count = read(STDIN_FILENO, &byte, 1);
+      if (count >= 0) return 0;
+      if (errno != EINTR) return 1;
+    } else if (selected < 0) {
+      if (errno != EINTR) return 1;
+    } else {
+      if (!post_key_event(key_code, true, true)) return 2;
+      repeating = true;
+    }
+  }
+  return 0;
+}
+
 static int submit_in_ghostty(void) {
   if (!AXIsProcessTrusted()) {
     fputs("Louder Bridge needs Accessibility permission.\n", stderr);
@@ -990,7 +1055,7 @@ static int hold_hermes_dictation(void) {
   return result;
 }
 
-static int hold_ghostty_dictation(void) {
+static int hold_ghostty_push_to_talk(void) {
   if (!AXIsProcessTrusted()) {
     fputs("Louder Bridge needs Accessibility permission.\n", stderr);
     return 3;
@@ -1005,10 +1070,41 @@ static int hold_ghostty_dictation(void) {
   sigemptyset(&stop_action.sa_mask);
   sigaction(SIGINT, &stop_action, NULL);
   sigaction(SIGTERM, &stop_action, NULL);
-  return hold_system_dictation(
-    ghostty_process_identifier(),
-    "the Ghostty terminal"
-  );
+  if (!post_key_event(49, true, false)) {
+    fputs("Louder Bridge could not hold Space in Ghostty.\n", stderr);
+    return 6;
+  }
+  puts("ready terminal-push-to-talk");
+  fflush(stdout);
+
+  int wait_error = repeat_key_until_stop(49);
+  if (!post_key_event(49, false, false)) {
+    fputs("Louder Bridge could not release Space in Ghostty.\n", stderr);
+    return 6;
+  }
+  if (wait_error == 2) {
+    fputs("Louder Bridge could not repeat Space in Ghostty.\n", stderr);
+    return 6;
+  }
+  return wait_error == 0 ? 0 : 7;
+}
+
+static int hold_ghostty_system_dictation(void) {
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (!frontmost_application_is_ghostty()) {
+    fputs("Bring Ghostty to the front before using the MIC key.\n", stderr);
+    return 4;
+  }
+  hold_stop_requested = 0;
+  struct sigaction stop_action = { 0 };
+  stop_action.sa_handler = request_hold_stop;
+  sigemptyset(&stop_action.sa_mask);
+  sigaction(SIGINT, &stop_action, NULL);
+  sigaction(SIGTERM, &stop_action, NULL);
+  return hold_system_dictation(ghostty_process_identifier(), "Codex CLI");
 }
 
 static const char *access_name(IOHIDAccessType access) {
@@ -1405,6 +1501,15 @@ int main(int argc, char *argv[]) {
     puts(accessibility_name(AXIsProcessTrusted()));
     return 0;
   }
+  if (argc > 1 && strcmp(argv[1], "--ghostty-automation-status") == 0) {
+    puts(automation_access_name(ghostty_automation_permission(false)));
+    return 0;
+  }
+  if (argc > 1 && strcmp(argv[1], "--request-ghostty-automation") == 0) {
+    OSStatus permission = ghostty_automation_permission(true);
+    puts(automation_access_name(permission));
+    return permission == noErr ? 0 : 3;
+  }
   if (argc > 1 && strcmp(argv[1], "--request-accessibility") == 0) {
     char executable[PATH_MAX];
     if (resolve_executable(executable) != 0) return 1;
@@ -1436,8 +1541,11 @@ int main(int argc, char *argv[]) {
   if (argc > 1 && strcmp(argv[1], "--ghostty-submit") == 0) {
     return submit_in_ghostty();
   }
-  if (argc > 1 && strcmp(argv[1], "--ghostty-dictation-hold") == 0) {
-    return hold_ghostty_dictation();
+  if (argc > 1 && strcmp(argv[1], "--ghostty-push-to-talk-hold") == 0) {
+    return hold_ghostty_push_to_talk();
+  }
+  if (argc > 1 && strcmp(argv[1], "--ghostty-system-dictation-hold") == 0) {
+    return hold_ghostty_system_dictation();
   }
   if (
     argc == 3 &&
@@ -1561,6 +1669,12 @@ int main(int argc, char *argv[]) {
     setenv(
       "LOUDER_ACCESSIBILITY_STATUS",
       "granted",
+      1
+    );
+    OSStatus automation = ghostty_automation_permission(true);
+    setenv(
+      "LOUDER_GHOSTTY_AUTOMATION_STATUS",
+      automation_access_name(automation),
       1
     );
   }

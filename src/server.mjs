@@ -169,6 +169,7 @@ export async function startBridge({
   let submitQueue = Promise.resolve();
   let stopPromise = null;
   const ambientSlots = new Map([[initialSurface, 0]]);
+  const selectedSessions = new Map();
   const metadata = applicationMetadata();
   if (openSession) {
     adapters[initialSurface].navigator = {
@@ -246,6 +247,7 @@ export async function startBridge({
     await Promise.resolve(adapter.navigator.open(session.id));
     const selected = activeStore.select(slot);
     if (selected?.id === session.id) {
+      selectedSessions.set(activeSurface, session.id);
       ambientSlots.set(activeSurface, slot);
       await renderDevice(deviceSlotStates(), "Agent Key");
     }
@@ -264,10 +266,23 @@ export async function startBridge({
       .then(async () => {
         const adapter = currentAdapter();
         if (!adapter) return;
-        await adapter.voice[operation]();
+        let agentSurface = null;
+        if (operation === "start" && activeSurface === "ghostty") {
+          agentSurface = await adapter.navigator.activeAgentSurface?.();
+          if (!agentSurface) {
+            agentSurface = adapter.navigator.agentSurfaceForSession?.(
+              selectedSessions.get(activeSurface),
+            );
+          }
+        }
+        await adapter.voice[operation]({ agentSurface });
         logger.info(
           operation === "start"
-            ? `${adapter.label} voice input started.`
+            ? `${
+                activeSurface === "ghostty" && agentSurface === "codex"
+                  ? "Codex CLI in Ghostty"
+                  : adapter.label
+              } voice input started.`
             : `${adapter.label} voice input stopped.`,
         );
       });
@@ -539,16 +554,24 @@ export async function startBridge({
       if (
         isGhosttyHook &&
         terminalSessionIsValid &&
+        typeof event.terminal_id === "string" &&
         ["SessionStart", "UserPromptSubmit"].includes(event.hook_event_name)
       ) {
-        Promise.resolve(adapters.ghostty.navigator.observe?.(sessionId)).catch(
-          () => {},
-        );
+        Promise.resolve(
+          adapters.ghostty.navigator.observe?.(
+            sessionId,
+            event.terminal_id,
+            agentSurface,
+          ),
+        ).catch(() => {});
       }
       lastHookAt = now().toISOString();
       const changed = storeFor(surface).apply(routedEvent);
       if (isGhosttyHook && event.hook_event_name === "SessionEnd") {
         adapters.ghostty.navigator.forget?.(sessionId);
+        if (selectedSessions.get(surface) === sessionId) {
+          selectedSessions.delete(surface);
+        }
       }
       if (changed && surface === activeSurface) {
         ambientSlots.set(surface, changed.slot);

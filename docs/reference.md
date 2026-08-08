@@ -9,7 +9,7 @@
 | Hardware | Work Louder Codex Micro |
 | Hardware connection | USB-C or Bluetooth |
 | Agent surfaces | Claude Desktop, Hermes Desktop, or local Claude, Codex, and Hermes sessions in Ghostty 1.3 or newer |
-| Voice service | Claude voice, Hermes Voice dictation, or macOS Dictation |
+| Voice service | Claude voice, Hermes Voice dictation, terminal push-to-talk, or macOS Dictation |
 | Permissions | Input Monitoring and Accessibility for Louder Bridge; Ghostty Automation for terminal control; Microphone for the app handling dictation |
 | Device driver | Bundled native IOKit driver; vendor-supported interface required for v1 |
 | Protocol reference | FreeMicro revision `64258eb6cc3312a43f9f9f86d87e55e0b609ccc5` (MIT) |
@@ -301,7 +301,7 @@ Returns bridge status and the six current slot states:
     "activeSurface": "claude",
     "inputMonitoring": "granted",
     "accessibility": "granted",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "buildRevision": "0123456789abcdef0123456789abcdef01234567",
     "nodeVersion": "v24.8.0",
     "navigator": {
@@ -426,7 +426,7 @@ entries and older log files.
 | `src/hermes/submit.mjs` | Hermes composer and approval submit adapter |
 | `src/setup/hermes-plugin.mjs` | Hermes plugin installation and rollback |
 | `src/ghostty/navigator.mjs` | Stable terminal association and navigation |
-| `src/ghostty/voice.mjs` | macOS Dictation adapter for the focused terminal |
+| `src/ghostty/voice.mjs` | Agent-aware terminal push-to-talk and macOS Dictation routing |
 | `src/ghostty/submit.mjs` | Ghostty Return command adapter |
 | `src/macos/input-monitoring.mjs` | Native permission status checks |
 | `src/macos/native-executable.mjs` | Mach-O validation shared by native helpers |
@@ -466,11 +466,9 @@ entries and older log files.
   shortcuts and is limited to the nine most recent sessions.
 - Hermes lifecycle lighting, Agent Key navigation, MIC hold and release,
   transcript insertion, and send passed a focused Bluetooth hardware test.
-- Ghostty 1.3.1 passed a physical Micro test in Claude Code. The assigned Agent
-  Key and exterior lighting turned blue while Claude worked, MIC dictation
-  inserted speech, and send submitted the prompt. Stable terminal discovery
-  and exact focus passed a separate native check. Agent Key navigation between
-  terminals still needs a physical test.
+- Ghostty 1.3.1 passed a physical USB test with Claude Code and Codex CLI in
+  separate panes. Agent Keys selected the correct panes, both MIC routes and
+  send passed, and key and exterior lighting followed both sessions.
 - Claude MIC hold and release, transcript insertion, and send passed focused
   physical tests over Bluetooth and USB-C. Bluetooth lifecycle response also passed.
   The full USB-C and Bluetooth acceptance matrix has not passed yet.

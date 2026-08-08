@@ -82,9 +82,10 @@ test("replaces and removes hooks whose install path contains an apostrophe", () 
 });
 
 test("hook command captures the configured bridge address", () => {
-  const command = bridgeHookCommand();
+  const command = bridgeHookCommand({ launcherPath: "/app/LouderBridge" });
   assert.match(command, /LOUDER_BRIDGE_HOST=127\.0\.0\.1/);
   assert.match(command, /LOUDER_BRIDGE_PORT=47831/);
+  assert.match(command, /LOUDER_BRIDGE_LAUNCHER=\/app\/LouderBridge/);
   assert.match(command, /# louder-bridge$/);
 });
 

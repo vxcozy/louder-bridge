@@ -16,8 +16,9 @@ Release it to stop, or double-tap MIC to keep recording without holding it.
 Press MIC again to stop a latched recording. Louder Bridge uses Claude's own
 composer control when one is available and macOS Dictation in Code views that
 do not expose one. In Hermes, it uses the Voice dictation control. In Ghostty,
-it uses macOS Dictation in the focused terminal. Press the key to the right of
-MIC to send the composer or accept the focused approval.
+Claude Code and Hermes use their hold-Space voice control, while Codex CLI uses
+macOS Dictation. Press the key to the right of MIC to send the composer or
+accept the focused approval.
 
 Louder Bridge reads Claude and Codex command hooks or a small Hermes plugin,
 then sends the resulting state to the Micro. The bridge runs on your Mac. It
@@ -108,11 +109,10 @@ navigation, lifecycle lighting, exterior effects, and sound feedback all worked
 on hardware. Claude's core MIC and send controls have passed over Bluetooth and
 USB-C.
 
-Ghostty 1.3.1 has passed a physical Micro test in Claude Code. The assigned
-Agent Key and exterior lighting turned blue while Claude worked, MIC dictation
-inserted speech, and send submitted the prompt. Stable terminal discovery and
-exact focus also passed a live native check. Agent Key navigation still needs a
-physical test across multiple terminals.
+Ghostty 1.3.1 has passed a physical USB test with Claude Code and Codex CLI in
+separate panes. Agent Keys switched between the correct panes, lifecycle and
+exterior lighting followed each session, both voice routes inserted speech,
+and send submitted each prompt once.
 
 The visible Cowork composer route, double-tap latching, approval prompts, wired
 restart and power-cycle cases, and the remaining recovery checks still need

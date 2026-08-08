@@ -193,10 +193,19 @@ export function signLocalApplication({
   app,
   launcher,
   node,
-  entitlements,
+  nodeEntitlements,
+  launcherEntitlements,
+  identity = process.env.LOUDER_LOCAL_SIGNING_IDENTITY?.trim() || "-",
   run = spawnSync,
 } = {}) {
-  if (!app || !launcher || !node || !entitlements) {
+  if (
+    !app ||
+    !launcher ||
+    !node ||
+    !nodeEntitlements ||
+    !launcherEntitlements ||
+    !identity
+  ) {
     throw new Error(
       "Local signing requires app, launcher, Node.js, and entitlement paths.",
     );
@@ -208,21 +217,39 @@ export function signLocalApplication({
       "--options",
       "runtime",
       "--entitlements",
-      entitlements,
+      nodeEntitlements,
       "--sign",
-      "-",
+      identity,
       node,
     ],
     run,
   );
   runChecked(
     "/usr/bin/codesign",
-    ["--force", "--options", "runtime", "--sign", "-", launcher],
+    [
+      "--force",
+      "--options",
+      "runtime",
+      "--entitlements",
+      launcherEntitlements,
+      "--sign",
+      identity,
+      launcher,
+    ],
     run,
   );
   runChecked(
     "/usr/bin/codesign",
-    ["--force", "--options", "runtime", "--sign", "-", app],
+    [
+      "--force",
+      "--options",
+      "runtime",
+      "--entitlements",
+      launcherEntitlements,
+      "--sign",
+      identity,
+      app,
+    ],
     run,
   );
   runChecked(

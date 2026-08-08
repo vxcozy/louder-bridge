@@ -177,7 +177,8 @@ test("ad hoc signs and verifies a local application", () => {
     app: "/Applications/Louder Bridge.app",
     launcher: "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
     node: "/Applications/Louder Bridge.app/Contents/MacOS/node",
-    entitlements: "/source/release/node.entitlements.plist",
+    nodeEntitlements: "/source/release/node.entitlements.plist",
+    launcherEntitlements: "/source/release/launcher.entitlements.plist",
     run(command, args) {
       calls.push([command, ...args]);
       return { status: 0, stdout: "", stderr: "" };
@@ -203,6 +204,8 @@ test("ad hoc signs and verifies a local application", () => {
         "--force",
         "--options",
         "runtime",
+        "--entitlements",
+        "/source/release/launcher.entitlements.plist",
         "--sign",
         "-",
         "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
@@ -212,6 +215,8 @@ test("ad hoc signs and verifies a local application", () => {
         "--force",
         "--options",
         "runtime",
+        "--entitlements",
+        "/source/release/launcher.entitlements.plist",
         "--sign",
         "-",
         "/Applications/Louder Bridge.app",
@@ -226,6 +231,28 @@ test("ad hoc signs and verifies a local application", () => {
       ],
     ],
   );
+});
+
+test("uses a stable local identity when one is configured", () => {
+  const calls = [];
+  signLocalApplication({
+    app: "/Applications/Louder Bridge.app",
+    launcher: "/Applications/Louder Bridge.app/Contents/MacOS/LouderBridge",
+    node: "/Applications/Louder Bridge.app/Contents/MacOS/node",
+    nodeEntitlements: "/source/release/node.entitlements.plist",
+    launcherEntitlements: "/source/release/launcher.entitlements.plist",
+    identity: "Louder Bridge Development",
+    run(command, args) {
+      calls.push([command, ...args]);
+      return { status: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  const signingCalls = calls.filter(([, ...args]) => args.includes("--sign"));
+  assert.equal(signingCalls.length, 3);
+  for (const call of signingCalls) {
+    assert.equal(call[call.indexOf("--sign") + 1], "Louder Bridge Development");
+  }
 });
 
 test("reports compiler failures with their diagnostic", () => {
@@ -473,6 +500,69 @@ test("sends a complete Return gesture through Ghostty", () => {
   );
   assert.match(ghosttySubmit, /post_key_event\(36, true, false\)/);
   assert.match(ghosttySubmit, /post_key_event\(36, false, false\)/);
+});
+
+test("requests Ghostty Automation access during app onboarding", () => {
+  const source = fs.readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "native",
+      "launcher.m",
+    ),
+    "utf8",
+  );
+  assert.match(source, /AEDeterminePermissionToAutomateTarget\(/);
+  assert.match(source, /typeApplicationBundleID/);
+  assert.match(source, /ghostty_automation_permission\(true\)/);
+  assert.match(source, /LOUDER_GHOSTTY_AUTOMATION_STATUS/);
+});
+
+test("holds Space for Ghostty push-to-talk", () => {
+  const source = fs.readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "native",
+      "launcher.m",
+    ),
+    "utf8",
+  );
+  const pushToTalk = source.slice(
+    source.indexOf("static int hold_ghostty_push_to_talk"),
+    source.indexOf("static const char *access_name"),
+  );
+  const press = pushToTalk.indexOf("post_key_event(49, true, false)");
+  const repeat = pushToTalk.indexOf("repeat_key_until_stop(49)");
+  const release = pushToTalk.indexOf("post_key_event(49, false, false)");
+  assert.ok(press >= 0);
+  assert.ok(repeat > press);
+  assert.ok(release > repeat);
+  assert.match(source, /NSEvent\.keyRepeatDelay/);
+  assert.match(source, /NSEvent\.keyRepeatInterval/);
+  assert.match(source, /post_key_event\(key_code, true, true\)/);
+});
+
+test("starts macOS Dictation for Codex CLI in Ghostty", () => {
+  const source = fs.readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "native",
+      "launcher.m",
+    ),
+    "utf8",
+  );
+  const dictation = source.slice(
+    source.indexOf("static int hold_ghostty_system_dictation"),
+    source.indexOf("static const char *access_name"),
+  );
+  assert.match(dictation, /frontmost_application_is_ghostty\(\)/);
+  assert.match(
+    dictation,
+    /hold_system_dictation\(ghostty_process_identifier\(\), "Codex CLI"\)/,
+  );
+  assert.match(source, /--ghostty-system-dictation-hold/);
 });
 
 test("enables and retries Hermes's Electron accessibility tree", (context) => {

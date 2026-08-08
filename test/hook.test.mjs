@@ -126,6 +126,12 @@ test("the hook sends only allowlisted lifecycle fields", { timeout: 2000 }, asyn
 test("the hook identifies Codex sessions running in Ghostty", { timeout: 2000 }, async (context) => {
   const home = fixtureHome();
   context.after(() => fs.rmSync(home, { recursive: true }));
+  const launcher = path.join(home, "LouderBridge");
+  fs.writeFileSync(
+    launcher,
+    "#!/bin/sh\nprintf '%s\\n' 'terminal-codex'\n",
+    { mode: 0o700 },
+  );
   let receive;
   const received = new Promise((resolve) => { receive = resolve; });
   const server = http.createServer((request, response) => {
@@ -145,6 +151,7 @@ test("the hook identifies Codex sessions running in Ghostty", { timeout: 2000 },
     port: server.address().port,
     environment: {
       LOUDER_AGENT_SURFACE: "codex",
+      LOUDER_BRIDGE_LAUNCHER: launcher,
       TERM_PROGRAM: "ghostty",
     },
     input: {
@@ -158,6 +165,7 @@ test("the hook identifies Codex sessions running in Ghostty", { timeout: 2000 },
   assert.deepEqual(await received, {
     surface: "codex",
     host: "ghostty",
+    terminal_id: "terminal-codex",
     session_id: "session-b",
     hook_event_name: "SessionStart",
   });
