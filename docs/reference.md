@@ -470,7 +470,9 @@ entries and older log files.
   separate panes. Agent Keys selected the correct panes, both MIC routes and
   send passed, and key and exterior lighting followed both sessions. The
   Hermes terminal MIC route, Agent Key navigation, and lighting passed a
-  focused physical test with unreleased build `809cde7`.
+  focused physical test with unreleased build `809cde7`. Follow-up build
+  `b00c76a` also stopped Hermes voice input in its original pane after focus
+  moved during recording.
 - Claude MIC hold and release, transcript insertion, and send passed focused
   physical tests over Bluetooth and USB-C. Bluetooth lifecycle response also passed.
   The full USB-C and Bluetooth acceptance matrix has not passed yet.

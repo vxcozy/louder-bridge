@@ -53,6 +53,10 @@ input with `Control+B`, and releasing MIC stopped it with the same shortcut.
 The Hermes Agent Key focused the correct pane, and the session lighting worked
 as expected.
 
+Follow-up build `b00c76a` passed the focused pane-switch test. When focus moved
+to another pane while MIC was held, releasing MIC returned to the original
+Hermes pane and stopped recording there.
+
 ## Latest Hermes candidate qualification
 
 A locally built v0.2.0 candidate archive passed a focused Hermes Desktop test

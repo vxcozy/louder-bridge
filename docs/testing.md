@@ -202,6 +202,9 @@ August 8, 2026. The bridge recorded a matching voice start and stop, Hermes
 voice input worked, the Agent Key focused the correct pane, and the session
 lighting behaved as expected.
 
+Follow-up build `b00c76a` passed the pane-switch check. Releasing MIC after
+moving focus returned to the original Hermes pane and stopped recording there.
+
 ## Latest Hermes candidate result
 
 A locally built v0.2.0 candidate archive passed the focused Hermes test on
