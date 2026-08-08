@@ -6,6 +6,14 @@ const ALLOWED_FIELDS = [
   "hook_event_name",
   "notification_type",
 ];
+const ALLOWED_SURFACES = new Set(["claude", "codex"]);
+
+function isGhosttyTerminal() {
+  return (
+    process.env.TERM_PROGRAM?.toLowerCase() === "ghostty" ||
+    process.env.TERM?.toLowerCase() === "xterm-ghostty"
+  );
+}
 
 async function stdinJson() {
   let body = "";
@@ -28,7 +36,11 @@ const payload = Object.fromEntries(
     input[field],
   ]),
 );
-payload.surface = "claude";
+const requestedSurface = process.env.LOUDER_AGENT_SURFACE ?? "claude";
+payload.surface = ALLOWED_SURFACES.has(requestedSurface)
+  ? requestedSurface
+  : "claude";
+if (isGhosttyTerminal()) payload.host = "ghostty";
 
 try {
   const authToken = readAuthToken();

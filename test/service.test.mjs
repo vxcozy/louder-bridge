@@ -3,13 +3,18 @@ import assert from "node:assert/strict";
 import {
   isClaudeDesktopRunning,
   isCodexDesktopRunning,
+  isGhosttyRunning,
   isHermesDesktopRunning,
+  terminalAgentsFromProcessList,
+  terminalAgentsRunning,
   startDesktopService as startDesktopServiceImplementation,
 } from "../src/service.mjs";
 
 function startDesktopService(options) {
   return startDesktopServiceImplementation({
     checkHermes: async () => false,
+    checkGhostty: async () => false,
+    checkTerminalAgents: async () => [],
     ...options,
   });
 }
@@ -75,6 +80,99 @@ test("detects whether Hermes Desktop is running", async () => {
       options: { timeout: 2000, maxBuffer: 1024, windowsHide: true },
     },
   ]);
+});
+
+test("detects Ghostty and TTY-backed terminal agents", async () => {
+  assert.equal(
+    await isGhosttyRunning(async () => ({ stdout: "123\n" })),
+    true,
+  );
+  assert.deepEqual(
+    terminalAgentsFromProcessList(`
+100  1    ??       /Applications/Ghostty.app/Contents/MacOS/ghostty
+101  100  ttys000  /bin/zsh
+102  101  ttys000  /opt/homebrew/bin/claude
+200  1    ??       /Applications/iTerm.app/Contents/MacOS/iTerm2
+201  200  ttys001  /bin/zsh
+202  201  ttys001  /usr/local/bin/hermes
+300  1    ??       /Applications/Visual Studio Code.app/Contents/MacOS/Electron
+301  300  ttys002  /opt/homebrew/bin/codex
+`),
+    ["claude"],
+  );
+  const calls = [];
+  assert.deepEqual(
+    await terminalAgentsRunning(async (command, args, options) => {
+      calls.push({ command, args, options });
+      return {
+        stdout: [
+          "100 1 ?? /Applications/Ghostty.app/Contents/MacOS/ghostty",
+          "101 100 ttys000 /opt/homebrew/bin/claude",
+          "",
+        ].join("\n"),
+      };
+    }),
+    ["claude"],
+  );
+  assert.deepEqual(calls, [{
+    command: "/bin/ps",
+    args: ["-axo", "pid=,ppid=,tty=,comm="],
+    options: {
+      timeout: 2000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    },
+  }]);
+});
+
+test("gives Ghostty ownership only while a terminal agent is running", async (context) => {
+  let agents = [];
+  const calls = [];
+  const service = await startDesktopService({
+    checkClaude: async () => false,
+    checkHermes: async () => false,
+    checkCodex: async () => false,
+    checkGhostty: async () => true,
+    checkTerminalAgents: async () => agents,
+    checkInputMonitoring: () => "granted",
+    checkAccessibility: () => "granted",
+    createBridge: async () => ({
+      async setSurface(surface) {
+        calls.push(["surface", surface]);
+      },
+      async connectDevice() {
+        calls.push(["connect"]);
+      },
+      async disconnectDevice() {
+        calls.push(["disconnect"]);
+      },
+      async stop() {},
+      setRuntimeStatus() {},
+    }),
+    authToken: "test-auth-token",
+    pollInterval: 60_000,
+    logger: { info() {}, error() {} },
+  });
+  context.after(() => service.stop());
+
+  assert.deepEqual(calls, [["surface", null]]);
+  agents = ["codex"];
+  await service.sync();
+  assert.deepEqual(calls, [
+    ["surface", null],
+    ["surface", "ghostty"],
+    ["connect"],
+  ]);
+  agents = [];
+  await service.sync();
+  assert.deepEqual(calls, [
+    ["surface", null],
+    ["surface", "ghostty"],
+    ["connect"],
+    ["disconnect"],
+    ["surface", null],
+  ]);
+  await service.stop();
 });
 
 test("gives Hermes Desktop ownership of the Micro", async () => {
@@ -204,6 +302,8 @@ test("reports Micro input contention once for each app overlap", async () => {
     claudeDesktop: "open",
     codexDesktop: "open",
     hermesDesktop: "closed",
+    ghostty: "closed",
+    terminalAgent: "closed",
   });
   await service.stop();
 });
@@ -320,6 +420,8 @@ test("releases the Micro when desktop ownership cannot be checked", async () => 
     claudeDesktop: "open",
     codexDesktop: "unknown",
     hermesDesktop: "closed",
+    ghostty: "closed",
+    terminalAgent: "closed",
   });
   assert.deepEqual(errors, ["process check failed"]);
 
@@ -374,6 +476,8 @@ test("reports both desktop ownership check failures", async () => {
     claudeDesktop: "unknown",
     codexDesktop: "unknown",
     hermesDesktop: "closed",
+    ghostty: "closed",
+    terminalAgent: "closed",
   });
   assert.equal(errors.length, 1);
   assert.equal(errors[0] instanceof AggregateError, true);

@@ -179,6 +179,10 @@ static pid_t hermes_process_identifier(void) {
   return process_identifier_for_bundle("com.nousresearch.hermes");
 }
 
+static pid_t ghostty_process_identifier(void) {
+  return process_identifier_for_bundle("com.mitchellh.ghostty");
+}
+
 static Boolean frontmost_application_has_bundle(const char *bundle_identifier) {
   @autoreleasepool {
     NSRunningApplication *application =
@@ -194,6 +198,92 @@ static Boolean frontmost_application_is_claude(void) {
 
 static Boolean frontmost_application_is_hermes(void) {
   return frontmost_application_has_bundle("com.nousresearch.hermes");
+}
+
+static Boolean frontmost_application_is_ghostty(void) {
+  return frontmost_application_has_bundle("com.mitchellh.ghostty");
+}
+
+static NSAppleEventDescriptor *run_applescript(
+  NSString *source,
+  NSDictionary **error
+) {
+  NSAppleScript *script = [[NSAppleScript alloc] initWithSource:source];
+  return [script executeAndReturnError:error];
+}
+
+static int report_applescript_error(
+  NSDictionary *error,
+  const char *fallback
+) {
+  NSString *message = error[NSAppleScriptErrorMessage];
+  if (message.length > 0) {
+    fprintf(stderr, "%s\n", message.UTF8String);
+  } else {
+    fprintf(stderr, "%s\n", fallback);
+  }
+  return 6;
+}
+
+static Boolean ghostty_terminal_id_is_safe(const char *terminal_id) {
+  if (terminal_id == NULL) return false;
+  size_t length = strlen(terminal_id);
+  if (length < 1 || length > 128) return false;
+  for (size_t index = 0; index < length; index += 1) {
+    char value = terminal_id[index];
+    if (
+      !((value >= 'a' && value <= 'z') ||
+        (value >= 'A' && value <= 'Z') ||
+        (value >= '0' && value <= '9') ||
+        value == '.' || value == '_' || value == ':' || value == '-')
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static int print_front_ghostty_terminal_id(void) {
+  if (!frontmost_application_is_ghostty()) return 4;
+  @autoreleasepool {
+    NSDictionary *error = nil;
+    NSAppleEventDescriptor *result = run_applescript(
+      @"tell application \"Ghostty\"\n"
+       "return id of focused terminal of selected tab of front window\n"
+       "end tell",
+      &error
+    );
+    NSString *terminal_id = result.stringValue;
+    if (terminal_id.length < 1) {
+      return report_applescript_error(
+        error,
+        "Louder Bridge could not identify the active Ghostty terminal."
+      );
+    }
+    printf("%s\n", terminal_id.UTF8String);
+    return 0;
+  }
+}
+
+static int focus_ghostty_terminal(const char *terminal_id) {
+  if (!ghostty_terminal_id_is_safe(terminal_id)) return 2;
+  @autoreleasepool {
+    NSString *source = [NSString stringWithFormat:
+      @"tell application \"Ghostty\"\n"
+       "set targetTerminal to first terminal whose id is \"%s\"\n"
+       "focus targetTerminal\n"
+       "end tell",
+      terminal_id
+    ];
+    NSDictionary *error = nil;
+    if (run_applescript(source, &error) == nil) {
+      return report_applescript_error(
+        error,
+        "Louder Bridge could not focus the Ghostty terminal."
+      );
+    }
+    return 0;
+  }
 }
 
 typedef enum {
@@ -588,6 +678,27 @@ static Boolean post_key_event(
   return true;
 }
 
+static int submit_in_ghostty(void) {
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (!frontmost_application_is_ghostty()) {
+    fputs("Bring Ghostty to the front before using the send key.\n", stderr);
+    return 4;
+  }
+  if (!post_key_event(36, true, false)) {
+    fputs("Louder Bridge could not press Return in Ghostty.\n", stderr);
+    return 6;
+  }
+  usleep(30000);
+  if (!post_key_event(36, false, false)) {
+    fputs("Louder Bridge could not release Return in Ghostty.\n", stderr);
+    return 6;
+  }
+  return 0;
+}
+
 static int submit_in_claude(void) {
   if (!AXIsProcessTrusted()) {
     fputs("Louder Bridge needs Accessibility permission.\n", stderr);
@@ -729,8 +840,10 @@ static AXUIElementRef find_element_by_identifier(
   return match;
 }
 
-static AXUIElementRef claude_menu_item(const char *identifier) {
-  pid_t process_identifier = claude_process_identifier();
+static AXUIElementRef application_menu_item(
+  pid_t process_identifier,
+  const char *identifier
+) {
   if (process_identifier == 0) return NULL;
   AXUIElementRef application = AXUIElementCreateApplication(
     process_identifier
@@ -776,21 +889,27 @@ static Boolean accessibility_element_is_enabled(AXUIElementRef element) {
   return enabled;
 }
 
-static int hold_system_dictation(void) {
-  AXUIElementRef item = claude_menu_item("startDictation:");
+static int hold_system_dictation(
+  pid_t process_identifier,
+  const char *surface
+) {
+  AXUIElementRef item = application_menu_item(
+    process_identifier,
+    "startDictation:"
+  );
   if (item == NULL) {
-    fputs("Claude does not expose the macOS Dictation command.\n", stderr);
+    fprintf(stderr, "%s does not expose the macOS Dictation command.\n", surface);
     return 5;
   }
   if (!accessibility_element_is_enabled(item)) {
     CFRelease(item);
-    fputs("Click in the Claude Code composer before using the MIC key.\n", stderr);
+    fprintf(stderr, "Click in the %s prompt before using the MIC key.\n", surface);
     return 4;
   }
   Boolean started = click_accessibility_button(item);
   CFRelease(item);
   if (!started) {
-    fputs("Louder Bridge could not start macOS Dictation in Claude.\n", stderr);
+    fprintf(stderr, "Louder Bridge could not start macOS Dictation in %s.\n", surface);
     return 6;
   }
   usleep(250000);
@@ -826,7 +945,9 @@ static int hold_claude_dictation(void) {
 
   ComposerButtonMode mode = kComposerButtonMissing;
   AXUIElementRef button = focused_claude_record_button(&mode);
-  if (button == NULL) return hold_system_dictation();
+  if (button == NULL) {
+    return hold_system_dictation(claude_process_identifier(), "Claude Code");
+  }
   int result = hold_composer_dictation(
     button,
     mode,
@@ -867,6 +988,27 @@ static int hold_hermes_dictation(void) {
   );
   CFRelease(button);
   return result;
+}
+
+static int hold_ghostty_dictation(void) {
+  if (!AXIsProcessTrusted()) {
+    fputs("Louder Bridge needs Accessibility permission.\n", stderr);
+    return 3;
+  }
+  if (!frontmost_application_is_ghostty()) {
+    fputs("Bring Ghostty to the front before using the MIC key.\n", stderr);
+    return 4;
+  }
+  hold_stop_requested = 0;
+  struct sigaction stop_action = { 0 };
+  stop_action.sa_handler = request_hold_stop;
+  sigemptyset(&stop_action.sa_mask);
+  sigaction(SIGINT, &stop_action, NULL);
+  sigaction(SIGTERM, &stop_action, NULL);
+  return hold_system_dictation(
+    ghostty_process_identifier(),
+    "the Ghostty terminal"
+  );
 }
 
 static const char *access_name(IOHIDAccessType access) {
@@ -1281,6 +1423,21 @@ int main(int argc, char *argv[]) {
   }
   if (argc > 1 && strcmp(argv[1], "--hermes-submit") == 0) {
     return submit_in_hermes();
+  }
+  if (argc > 1 && strcmp(argv[1], "--ghostty-front-terminal-id") == 0) {
+    return print_front_ghostty_terminal_id();
+  }
+  if (
+    argc == 3 &&
+    strcmp(argv[1], "--ghostty-focus-terminal") == 0
+  ) {
+    return focus_ghostty_terminal(argv[2]);
+  }
+  if (argc > 1 && strcmp(argv[1], "--ghostty-submit") == 0) {
+    return submit_in_ghostty();
+  }
+  if (argc > 1 && strcmp(argv[1], "--ghostty-dictation-hold") == 0) {
+    return hold_ghostty_dictation();
   }
   if (
     argc == 3 &&

@@ -134,7 +134,7 @@ test("reports service and device health", async (context) => {
       inputMonitoring: "unknown",
       accessibility: "unknown",
       activeSurface: "claude",
-      version: "0.2.0",
+      version: "0.3.0",
       buildRevision: null,
       nodeVersion: process.version,
       navigator: {
@@ -841,6 +841,85 @@ test("keeps Hermes sessions isolated and routes every Micro control to Hermes", 
   assert.equal(bridge.health().service.navigator.id, "claude-navigator");
 });
 
+test("routes terminal-agent hooks and every Micro control through Ghostty", async (context) => {
+  const actions = [];
+  let controls;
+  const basicVoice = (surface) => ({
+    metadata: () => ({ id: `${surface}-voice`, support: "test" }),
+    status: () => ({ id: `${surface}-voice`, support: "test", state: "idle" }),
+    async start() { actions.push([surface, "voice-start"]); },
+    async stop() { actions.push([surface, "voice-stop"]); },
+  });
+  const ghosttyNavigator = {
+    metadata: () => ({ id: "ghostty-navigator", support: "test" }),
+    async observe(sessionId) { actions.push(["ghostty", "observe", sessionId]); },
+    async open(sessionId) { actions.push(["ghostty", "open", sessionId]); },
+    forget(sessionId) { actions.push(["ghostty", "forget", sessionId]); },
+  };
+  const bridge = await startBridge({
+    host: "127.0.0.1",
+    port: 0,
+    authToken,
+    logger,
+    initialSurface: "claude",
+    surfaceAdapters: {
+      claude: {
+        label: "Claude",
+        navigator: { metadata: () => ({ id: "claude", support: "test" }), async open() {} },
+        submit: { async submit() {} },
+        voice: basicVoice("claude"),
+      },
+      ghostty: {
+        label: "Ghostty",
+        navigator: ghosttyNavigator,
+        submit: { async submit() { actions.push(["ghostty", "submit"]); } },
+        voice: basicVoice("ghostty"),
+      },
+    },
+    deviceFactory(options) {
+      controls = options;
+      return {
+        async start() {},
+        async render() {},
+        status() { return { state: "connected", error: null }; },
+        async stop() {},
+      };
+    },
+  });
+  context.after(() => bridge.stop());
+  await bridge.setSurface("ghostty");
+
+  assert.equal((await postHook(bridge, {
+    surface: "codex",
+    host: "ghostty",
+    session_id: "private-terminal-session",
+    hook_event_name: "SessionStart",
+  })).status, 200);
+  const internalId = actions[0][2];
+  assert.match(internalId, /^codex:[A-Za-z0-9_-]{43}$/);
+  assert.equal(internalId.includes("private-terminal-session"), false);
+
+  await controls.onAgentKey(0);
+  await controls.onSubmitButton();
+  await controls.onVoiceButton("press");
+  await controls.onVoiceButton("release");
+  await bridge.setSurface("claude");
+  assert.deepEqual(actions.slice(1), [
+    ["ghostty", "open", internalId],
+    ["ghostty", "submit"],
+    ["ghostty", "voice-start"],
+    ["ghostty", "voice-stop"],
+  ]);
+
+  assert.equal((await postHook(bridge, {
+    surface: "codex",
+    host: "ghostty",
+    session_id: "private-terminal-session",
+    hook_event_name: "SessionEnd",
+  })).status, 200);
+  assert.deepEqual(actions.at(-1), ["ghostty", "forget", internalId]);
+});
+
 test("rejects hooks from unknown surfaces", async (context) => {
   const bridge = await startBridge({
     host: "127.0.0.1",
@@ -860,6 +939,18 @@ test("rejects hooks from unknown surfaces", async (context) => {
   assert.deepEqual(await response.json(), {
     ok: false,
     error: "Unknown hook surface.",
+  });
+
+  const terminalResponse = await postHook(bridge, {
+    surface: "unknown",
+    host: "ghostty",
+    session_id: "private-session",
+    hook_event_name: "SessionStart",
+  });
+  assert.equal(terminalResponse.status, 400);
+  assert.deepEqual(await terminalResponse.json(), {
+    ok: false,
+    error: "Unknown terminal agent surface.",
   });
 });
 

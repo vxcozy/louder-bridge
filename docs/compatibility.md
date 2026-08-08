@@ -15,10 +15,28 @@ on hardware.
 | Device | Work Louder Codex Micro |
 | Claude | Local Code sessions in Claude Desktop |
 | Hermes | Local sessions in Hermes Desktop |
+| Terminal host | Ghostty 1.3 or newer |
+| Terminal agents | Local Claude Code, Codex CLI, and Hermes sessions |
 | Device driver | Bundled native IOKit driver, experimental until vendor-supported |
 
 Louder Bridge embeds the Node.js executable used during setup, so Node does not
 need to remain on the user's shell path after installation.
+
+## Ghostty qualification
+
+Ghostty passed native and physical checks on August 4 and 5, 2026:
+
+| Component | Version or result |
+|---|---|
+| Ghostty | 1.3.1, commit `332b2aefc` |
+| Terminal discovery | Read the stable ID of the focused terminal |
+| Navigation | Focused the terminal again by its stable ID |
+| Lifecycle lighting | Assigned Agent Key and exterior lighting turned blue while Claude worked |
+| MIC | macOS Dictation inserted speech into the Claude Code prompt |
+| Send | The Micro's send key submitted the prompt once |
+
+The physical test covered one focused Claude Code session. Agent Key navigation
+between multiple terminals still needs a hardware test.
 
 ## Latest Hermes candidate qualification
 
@@ -130,10 +148,11 @@ checklist](testing.md).
 
 ## Compatibility policy
 
-The independently documented device protocol, Claude resume URL, and Claude
-Accessibility surface for dictation are unsupported integration points. A
-firmware or desktop update can break them without notice. Stable v1 is blocked
-until supported replacements exist.
+The independently documented device protocol, Claude resume URL, and desktop
+Accessibility routes are unsupported integration points. Ghostty's AppleScript
+API is official but still marked as a preview. A firmware or app update can
+break these interfaces without notice. Stable v1 is blocked until supported
+replacements exist.
 
 The current vendor documentation does not cover the adapters the bridge needs.
 [Anthropic's desktop link guide](https://support.claude.com/en/articles/14729294-open-claude-desktop-with-a-link)

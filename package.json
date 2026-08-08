@@ -1,9 +1,9 @@
 {
   "name": "louder-bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
-  "description": "Use a Work Louder Codex Micro with Claude Desktop and Hermes Desktop",
+  "description": "Use a Work Louder Codex Micro with Claude, Hermes, and terminal agents in Ghostty",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vxcozy/louder-bridge.git"
@@ -56,6 +56,14 @@
     },
     "hermesVoice": {
       "id": "hermes-accessibility-dictation",
+      "support": "experimental"
+    },
+    "ghosttyNavigator": {
+      "id": "ghostty-applescript-terminal",
+      "support": "experimental"
+    },
+    "ghosttyVoice": {
+      "id": "ghostty-accessibility-dictation",
       "support": "experimental"
     }
   }

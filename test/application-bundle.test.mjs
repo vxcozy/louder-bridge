@@ -94,6 +94,7 @@ test("installs a self-contained application bundle", () => {
     infoPlist,
     /<key>NSAccessibilityUsageDescription<\/key>/,
   );
+  assert.match(infoPlist, /<key>NSAppleEventsUsageDescription<\/key>/);
   assert.match(fs.readFileSync(transaction.launcher, "utf8"), /cli\.mjs/);
   assert.match(fs.readFileSync(transaction.launcher, "utf8"), /activate/);
   assert.equal(fs.statSync(transaction.node).mode & 0o777, 0o755);

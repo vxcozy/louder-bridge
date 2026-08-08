@@ -29,7 +29,7 @@ function fixtureHome() {
   return home;
 }
 
-function runHook({ home, port, input }) {
+function runHook({ home, port, input, environment = {} }) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [hook], {
       cwd: root,
@@ -38,6 +38,9 @@ function runHook({ home, port, input }) {
         HOME: home,
         LOUDER_BRIDGE_HOST: "127.0.0.1",
         LOUDER_BRIDGE_PORT: String(port),
+        TERM_PROGRAM: "",
+        TERM: "xterm-256color",
+        ...environment,
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -117,6 +120,46 @@ test("the hook sends only allowlisted lifecycle fields", { timeout: 2000 }, asyn
     session_id: "session-a",
     hook_event_name: "UserPromptSubmit",
     notification_type: "permission_prompt",
+  });
+});
+
+test("the hook identifies Codex sessions running in Ghostty", { timeout: 2000 }, async (context) => {
+  const home = fixtureHome();
+  context.after(() => fs.rmSync(home, { recursive: true }));
+  let receive;
+  const received = new Promise((resolve) => { receive = resolve; });
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      receive(JSON.parse(body));
+      response.end('{"ok":true}');
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const result = await runHook({
+    home,
+    port: server.address().port,
+    environment: {
+      LOUDER_AGENT_SURFACE: "codex",
+      TERM_PROGRAM: "ghostty",
+    },
+    input: {
+      session_id: "session-b",
+      hook_event_name: "SessionStart",
+      prompt: "private prompt",
+    },
+  });
+
+  assert.equal(result.code, 0);
+  assert.deepEqual(await received, {
+    surface: "codex",
+    host: "ghostty",
+    session_id: "session-b",
+    hook_event_name: "SessionStart",
   });
 });
 

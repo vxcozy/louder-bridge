@@ -22,6 +22,11 @@ import {
   rollbackClaudeSettingsUpdate,
 } from "./setup/claude-hooks.mjs";
 import {
+  beginCodexHooksUpdate,
+  codexBridgeHookCommand,
+  rollbackCodexHooksUpdate,
+} from "./setup/codex-hooks.mjs";
+import {
   commitHermesPluginInstallation,
   commitHermesPluginRemoval,
   installHermesPlugin,
@@ -239,6 +244,8 @@ if (command === "help" || command === "--help" || command === "-h") {
   let authentication;
   let file;
   let settingsTransaction;
+  let codexHooksTransaction;
+  let codexHooksFile;
   let agent;
   let stoppedOnboarding = false;
   const { error: setupError, signal: setupSignal } =
@@ -274,16 +281,17 @@ if (command === "help" || command === "--help" || command === "-h") {
           }),
         });
         file = settingsTransaction.settingsFile;
+        codexHooksTransaction = beginCodexHooksUpdate({
+          command: codexBridgeHookCommand({
+            nodePath: application.node,
+            hookPath: application.hook,
+          }),
+        });
+        codexHooksFile = codexHooksTransaction.settingsFile;
         agent = removeLaunchAgent();
         await completePermissionOnboarding(application.app, {
           signal,
           isReady: waitForLaunchAgent,
-          permissionState() {
-            const status = installedApplicationStatus({
-              launcher: application.launcher,
-            });
-            return `${status.inputMonitoring}:${status.accessibility}`;
-          },
         });
         await waitForBridgeReady({
           authToken: authentication.token,
@@ -291,6 +299,11 @@ if (command === "help" || command === "--help" || command === "-h") {
         });
       },
       async rollback(error) {
+        if (codexHooksTransaction) {
+          attemptRollback(error, "Codex hooks could not be restored", () =>
+            rollbackCodexHooksUpdate(codexHooksTransaction),
+          );
+        }
         if (settingsTransaction) {
           attemptRollback(
             error,
@@ -336,8 +349,11 @@ if (command === "help" || command === "--help" || command === "-h") {
     }
     console.log(`Application installed in ${application.app}.`);
     console.log(`Claude Code hooks installed in ${file}.`);
+    console.log(`Codex CLI hooks installed in ${codexHooksFile}.`);
     console.log(`Background agent installed in ${launchAgentPaths().plist}.`);
-    console.log("Louder Bridge will connect when Claude Desktop or Hermes Desktop opens.");
+    console.log(
+      "Louder Bridge will connect to Claude Desktop, Hermes Desktop, or a supported agent running in Ghostty.",
+    );
   }
 } else if (command === "activate") {
   const runtime = applicationBundlePathsForCli(fileURLToPath(import.meta.url));
@@ -347,6 +363,8 @@ if (command === "help" || command === "--help" || command === "-h") {
   let file;
   let agent;
   let settingsTransaction;
+  let codexHooksTransaction;
+  let codexHooksFile;
   let hermesPlugin;
   try {
     prepareRotatingLogs(launchAgentPaths());
@@ -358,6 +376,13 @@ if (command === "help" || command === "--help" || command === "-h") {
       }),
     });
     file = settingsTransaction.settingsFile;
+    codexHooksTransaction = beginCodexHooksUpdate({
+      command: codexBridgeHookCommand({
+        nodePath: runtime.node,
+        hookPath: runtime.hook,
+      }),
+    });
+    codexHooksFile = codexHooksTransaction.settingsFile;
     hermesPlugin = await installHermesPlugin({
       source: path.join(runtime.resources, "src", "hermes", "plugin"),
     });
@@ -389,6 +414,11 @@ if (command === "help" || command === "--help" || command === "-h") {
         rollbackClaudeSettingsUpdate(settingsTransaction);
       });
     }
+    if (codexHooksTransaction) {
+      attemptRollback(error, "Codex hooks could not be restored", () => {
+        rollbackCodexHooksUpdate(codexHooksTransaction);
+      });
+    }
     if (authentication?.created) {
       removeAuthToken({ identity: authentication.identity });
     }
@@ -402,13 +432,14 @@ if (command === "help" || command === "--help" || command === "-h") {
       console.warn(`Could not remove the previous Hermes plugin backup: ${error.message}`);
     }
     console.log(`Claude Code hooks installed in ${file}.`);
+    console.log(`Codex CLI hooks installed in ${codexHooksFile}.`);
     if (hermesPlugin?.installed) {
       console.log(`Hermes plugin installed in ${hermesPlugin.target}.`);
     }
     if (agent) {
       console.log(`Background agent installed in ${agent.plist}.`);
       showActivationDialog(
-        "Louder Bridge is ready. Open Claude Desktop or Hermes Desktop, then turn on the Codex Micro.",
+        "Louder Bridge is ready. Open Claude, Hermes, or a supported agent in Ghostty, then turn on the Codex Micro.",
       );
     } else {
       const needsInputMonitoring = permission !== "granted";
@@ -435,6 +466,7 @@ if (command === "help" || command === "--help" || command === "-h") {
   let application;
   let authentication;
   let settingsTransaction;
+  let codexHooksTransaction;
   let hermesPlugin;
   let stoppedOnboarding = false;
   try {
@@ -468,10 +500,13 @@ if (command === "help" || command === "--help" || command === "-h") {
     throw error;
   }
   let file;
+  let codexHooksFile;
   let agent;
   try {
     settingsTransaction = beginClaudeSettingsUpdate({ remove: true });
     file = settingsTransaction.settingsFile;
+    codexHooksTransaction = beginCodexHooksUpdate({ remove: true });
+    codexHooksFile = codexHooksTransaction.settingsFile;
     hermesPlugin = await removeHermesPlugin();
     agent = removeLaunchAgent();
   } catch (error) {
@@ -485,6 +520,11 @@ if (command === "help" || command === "--help" || command === "-h") {
     if (settingsTransaction) {
       attemptRollback(error, "Claude settings could not be restored", () => {
         rollbackClaudeSettingsUpdate(settingsTransaction);
+      });
+    }
+    if (codexHooksTransaction) {
+      attemptRollback(error, "Codex hooks could not be restored", () => {
+        rollbackCodexHooksUpdate(codexHooksTransaction);
       });
     }
     attemptRollback(error, "The app could not be restored", () => {
@@ -523,6 +563,7 @@ if (command === "help" || command === "--help" || command === "-h") {
   }
   console.log(`Background agent removed from ${agent.plist}.`);
   console.log(`Claude Code hooks removed from ${file}.`);
+  console.log(`Codex CLI hooks removed from ${codexHooksFile}.`);
   if (hermesPlugin?.removed) {
     console.log(`Hermes plugin removed from ${hermesPlugin.target}.`);
   }
@@ -557,6 +598,8 @@ if (command === "help" || command === "--help" || command === "-h") {
     console.log(`Node runtime: ${health.service?.nodeVersion ?? "unknown"}`);
     console.log(`Claude Desktop: ${health.service?.claudeDesktop ?? "unknown"}`);
     console.log(`Hermes Desktop: ${health.service?.hermesDesktop ?? "unknown"}`);
+    console.log(`Ghostty: ${health.service?.ghostty ?? "unknown"}`);
+    console.log(`Terminal agent: ${health.service?.terminalAgent ?? "unknown"}`);
     const codexDesktop = health.service?.codexDesktop ?? "unknown";
     const claudeDesktop = health.service?.claudeDesktop ?? "unknown";
     const hermesDesktop = health.service?.hermesDesktop ?? "unknown";
@@ -575,6 +618,8 @@ if (command === "help" || command === "--help" || command === "-h") {
           ? "Claude Desktop"
           : activeSurface === "hermes"
             ? "Hermes Desktop"
+            : activeSurface === "ghostty"
+              ? "Ghostty terminal"
             : "none"
       }`,
     );

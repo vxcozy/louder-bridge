@@ -132,15 +132,11 @@ test("reports a real Node command timeout", async () => {
 test("reopens after permission-driven app restarts", async () => {
   const launches = [];
   const readiness = [false, true];
-  const permissionStates = [
-    "denied:denied",
-    "granted:denied",
-  ];
 
   await completePermissionOnboarding("/Applications/Louder Bridge.app", {
     signal: AbortSignal.timeout(1000),
     isReady: () => readiness.shift(),
-    permissionState: () => permissionStates.shift(),
+    restartDelayMs: 0,
     async openApplication(app, options) {
       launches.push({ app, options });
     },
@@ -151,22 +147,18 @@ test("reopens after permission-driven app restarts", async () => {
   assert.equal(launches[0].options.waitForExit, true);
 });
 
-test("does not reopen after a permission timeout", async () => {
+test("reopens when macOS has not published the permission change yet", async () => {
   let launches = 0;
-  const permissionStates = ["denied:denied", "denied:denied"];
+  const readiness = [false, true];
 
-  await assert.rejects(
-    () =>
-      completePermissionOnboarding("/Applications/Louder Bridge.app", {
-        isReady: () => false,
-        permissionState: () => permissionStates.shift(),
-        async openApplication() {
-          launches += 1;
-        },
-      }),
-    /closed without completing permission setup/,
-  );
-  assert.equal(launches, 1);
+  await completePermissionOnboarding("/Applications/Louder Bridge.app", {
+    isReady: () => readiness.shift(),
+    restartDelayMs: 0,
+    async openApplication() {
+      launches += 1;
+    },
+  });
+  assert.equal(launches, 2);
 });
 
 test("bounds permission-driven app restarts", async () => {
@@ -175,6 +167,8 @@ test("bounds permission-driven app restarts", async () => {
     () =>
       completePermissionOnboarding("/Applications/Louder Bridge.app", {
         isReady: () => false,
+        attempts: 5,
+        restartDelayMs: 0,
         async openApplication() {
           launches += 1;
         },

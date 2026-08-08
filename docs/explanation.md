@@ -21,19 +21,19 @@ moving to another session.
 ## Data flow
 
 ```text
-Claude Desktop or Hermes Desktop
-  ├─ Claude command hooks or Hermes plugin hooks
+Claude Desktop, Hermes Desktop, or a supported agent in Ghostty
+  ├─ Claude/Codex command hooks or Hermes plugin hooks
   │    └─ POST 127.0.0.1:47831/hook
   │         └─ six-slot session store
   │              ├─ status → Work Louder lighting RPC
   │              └─ Agent Key → active navigation adapter
-  └─ Accessibility composer control
+  └─ Accessibility or Ghostty control
        └─ MIC press/release ← background service ← Micro HID events
 ```
 
-Claude Code runs small command hooks for session events. Hermes loads a managed
-plugin that observes its lifecycle hooks. Both adapters build a minimal payload
-and send it to the bridge over loopback HTTP.
+Claude Code and Codex CLI run small command hooks for session events. Hermes
+loads a managed plugin that observes its lifecycle hooks. Each adapter builds a
+minimal payload and sends it to the bridge over loopback HTTP.
 
 The bridge updates its session store and sends color data for all six slots.
 The device reports Agent Key presses back to the bridge. A press selects the
@@ -54,10 +54,11 @@ own Node.js runtime, so the agent does not depend on a source checkout or the
 user's shell configuration. The agent starts at login and keeps the local hook
 server available.
 
-The service checks whether Claude Desktop or Hermes Desktop is running. It
-connects when exactly one supported app is open and disconnects when neither is
-open. If both are open, it waits. This prevents a Micro control from reaching
-two agent apps.
+The service checks Claude Desktop, Hermes Desktop, Ghostty, and TTY-backed agent
+processes. An idle Ghostty window does not claim the Micro. Ghostty becomes a
+supported surface only while Claude, Codex, or Hermes is attached to a real
+terminal. If more than one surface is available, the bridge waits. This keeps
+one Micro press from reaching two agent apps.
 
 macOS can cache a privacy decision in the process that requested it. A child
 process may also inherit the parent's privacy identity, which makes a direct
@@ -68,9 +69,9 @@ file and starts the background agent as soon as both permissions are granted.
 
 ## Why use lifecycle hooks
 
-Claude Code command hooks and Hermes plugin hooks report lifecycle events
+Claude and Codex command hooks plus Hermes plugin hooks report lifecycle events
 directly: session start, prompt submission, approval, completion, failure, and
-session end.
+session end. Codex does not currently expose a separate failure hook.
 
 Unlike interface scraping, hooks do not depend on either app's rendering or
 layout. They also avoid watching private session files.
@@ -162,6 +163,21 @@ The adapter depends on the default shortcut bindings. If the session has fallen
 outside the first nine or the shortcut has been remapped, navigation fails
 without changing the selected Micro slot.
 
+## Ghostty terminal navigation
+
+Ghostty 1.3 exposes stable terminal IDs through its AppleScript API. When a
+terminal session starts or submits a prompt, the bridge associates that session
+with the currently focused Ghostty terminal. Completion and approval events do
+not change the association because they may arrive while another tab is open.
+
+Pressing an Agent Key asks Ghostty to focus the terminal with the stored ID.
+This works across windows, tabs, and splits without reading terminal text,
+shell history, working directories, or process arguments. Session identifiers
+are hashed before they enter the shared terminal-session store.
+
+Ghostty describes the AppleScript API as a preview. The bridge keeps terminal
+navigation behind its own adapter in case that API changes.
+
 ## Claude voice input
 
 Codex treats MIC as push-to-talk, so Louder Bridge preserves that interaction
@@ -203,13 +219,23 @@ released. The adjacent Micro key sends Return to the frontmost Hermes window.
 Hermes owns microphone access and transcription. The bridge does not receive
 audio or read the resulting draft.
 
+## Ghostty voice input
+
+The Ghostty adapter starts the standard macOS Dictation command from the
+focused terminal's Edit menu. It stops dictation with Escape when MIC is
+released. The adjacent Micro key sends a native Return key press to the
+frontmost Ghostty terminal.
+
+macOS handles the microphone and transcript. Louder Bridge sees the MIC press
+and release, but it does not receive audio or text.
+
 ## Privacy boundary
 
 The hook receives more data than the lighting system needs, so it builds a new
 allowlisted payload before making the local request.
 
-The allowlist contains only the surface, session ID, event name, and optional
-notification type.
+The allowlist contains only the surface, optional terminal host, session ID,
+event name, and optional notification type.
 It excludes the working directory, model name, stop reason, prompt text,
 responses, transcripts, and tool data. The server keeps session IDs in memory
 for Agent Key navigation but omits them from diagnostics. The voice path does
@@ -234,9 +260,10 @@ When the bridge finds a connected Micro while Codex and a supported app are
 open, it shows one conflict notice and releases the device. It reconnects after
 Codex quits without restarting the agent app.
 
-For predictable controls and lighting, keep one desktop app open at a time:
+For predictable controls and lighting, keep one surface active at a time:
 
 - Open only Claude Desktop or Hermes Desktop while using the bridge.
+- Close those desktop apps before using a terminal agent in Ghostty.
 - Quit Codex while using the Micro with either app.
 - Quit both supported apps before returning to Codex.
 

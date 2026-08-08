@@ -91,6 +91,11 @@ def _emit(hook_event_name: str, session_id: Optional[str]) -> None:
         "session_id": str(session_id),
         "hook_event_name": hook_event_name,
     }
+    if (
+        os.environ.get("TERM_PROGRAM", "").lower() == "ghostty"
+        or os.environ.get("TERM", "").lower() == "xterm-ghostty"
+    ):
+        payload["host"] = "ghostty"
     try:
         _EVENTS.put_nowait(payload)
     except queue.Full:

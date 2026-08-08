@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import path from "node:path";
 import { inputMonitoringStatus } from "./macos/input-monitoring.mjs";
 import { accessibilityStatus } from "./macos/accessibility.mjs";
 import { showCodexContentionNotice } from "./macos/contention-notice.mjs";
@@ -7,6 +8,12 @@ import { startBridge } from "./server.mjs";
 
 const execFileAsync = promisify(execFile);
 const PROCESS_CHECK_TIMEOUT_MS = 2000;
+
+function surfaceName(surface) {
+  if (surface === "hermes") return "Hermes Desktop";
+  if (surface === "ghostty") return "Ghostty";
+  return "Claude Desktop";
+}
 
 async function isNamedProcessRunning(names, run) {
   for (const name of names) {
@@ -36,10 +43,62 @@ export function isHermesDesktopRunning(run = execFileAsync) {
   return isNamedProcessRunning(["Hermes"], run);
 }
 
+export function isGhosttyRunning(run = execFileAsync) {
+  return isNamedProcessRunning(["ghostty", "Ghostty"], run);
+}
+
+export function terminalAgentsFromProcessList(output) {
+  const processes = new Map();
+  const ghosttyProcesses = new Set();
+  const supportedAgents = new Map();
+
+  for (const line of String(output).split(/\r?\n/)) {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/);
+    if (!match) continue;
+    const [, pid, parentPid, tty, command] = match;
+    const executable = path.basename(command).toLowerCase();
+    processes.set(pid, parentPid);
+    if (executable === "ghostty") ghosttyProcesses.add(pid);
+    if (tty !== "??" && ["claude", "codex", "hermes"].includes(executable)) {
+      supportedAgents.set(pid, executable);
+    }
+  }
+
+  const agents = new Set();
+  for (const [pid, executable] of supportedAgents) {
+    const visited = new Set([pid]);
+    let ancestor = processes.get(pid);
+    while (ancestor && !visited.has(ancestor)) {
+      if (ghosttyProcesses.has(ancestor)) {
+        agents.add(executable);
+        break;
+      }
+      visited.add(ancestor);
+      ancestor = processes.get(ancestor);
+    }
+  }
+  return [...agents];
+}
+
+export async function terminalAgentsRunning(run = execFileAsync) {
+  const { stdout } = await run(
+    "/bin/ps",
+    ["-axo", "pid=,ppid=,tty=,comm="],
+    {
+      timeout: PROCESS_CHECK_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    },
+  );
+  return terminalAgentsFromProcessList(stdout);
+}
+
 export async function startDesktopService({
   checkClaude = isClaudeDesktopRunning,
   checkCodex = isCodexDesktopRunning,
   checkHermes = isHermesDesktopRunning,
+  checkGhostty = isGhosttyRunning,
+  checkTerminalAgents = terminalAgentsRunning,
   createBridge = startBridge,
   pollInterval = 1000,
   logger = console,
@@ -58,6 +117,8 @@ export async function startDesktopService({
   bridge.setRuntimeStatus?.({
     claudeDesktop: "closed",
     hermesDesktop: "closed",
+    ghostty: "closed",
+    terminalAgent: "closed",
     codexDesktop: "unknown",
   });
   let previousSurface = null;
@@ -111,10 +172,18 @@ export async function startDesktopService({
     }
     previousPermission = permission;
     previousAccessibility = accessibility;
-    const [claudeResult, codexResult, hermesResult] = await Promise.allSettled([
+    const [
+      claudeResult,
+      codexResult,
+      hermesResult,
+      ghosttyResult,
+      terminalAgentsResult,
+    ] = await Promise.allSettled([
       checkClaude(),
       checkCodex(),
       checkHermes(),
+      checkGhostty(),
+      checkTerminalAgents(),
     ]);
     const claudeIsRunning =
       claudeResult.status === "fulfilled" ? claudeResult.value : null;
@@ -122,9 +191,19 @@ export async function startDesktopService({
       codexResult.status === "fulfilled" ? codexResult.value : null;
     const hermesIsRunning =
       hermesResult.status === "fulfilled" ? hermesResult.value : null;
+    const ghosttyIsRunning =
+      ghosttyResult.status === "fulfilled" ? ghosttyResult.value : null;
+    const terminalAgents =
+      terminalAgentsResult.status === "fulfilled"
+        ? terminalAgentsResult.value
+        : null;
+    const ghosttyOwnsMicro = Boolean(
+      ghosttyIsRunning && Array.isArray(terminalAgents) && terminalAgents.length,
+    );
     const supportedSurfaces = [
       claudeIsRunning ? "claude" : null,
       hermesIsRunning ? "hermes" : null,
+      ghosttyOwnsMicro ? "ghostty" : null,
     ].filter(Boolean);
     const surface = supportedSurfaces.length === 1 ? supportedSurfaces[0] : null;
     bridge.setRuntimeStatus?.({
@@ -140,8 +219,22 @@ export async function startDesktopService({
         hermesIsRunning === null
           ? "unknown"
           : (hermesIsRunning ? "open" : "closed"),
+      ghostty:
+        ghosttyIsRunning === null
+          ? "unknown"
+          : (ghosttyIsRunning ? "open" : "closed"),
+      terminalAgent:
+        terminalAgents === null
+          ? "unknown"
+          : (terminalAgents.length ? "open" : "closed"),
     });
-    const processFailures = [claudeResult, codexResult, hermesResult]
+    const processFailures = [
+      claudeResult,
+      codexResult,
+      hermesResult,
+      ghosttyResult,
+      terminalAgentsResult,
+    ]
       .filter((result) => result.status === "rejected")
       .map((result) => result.reason);
     if (processFailures.length) {
@@ -168,7 +261,7 @@ export async function startDesktopService({
     const contentionIsActive = Boolean(surface && codexIsRunning);
     if (contentionIsActive && !contentionWasActive) {
       logger.info(
-        `Codex is also open. Waiting to give the Micro to ${surface === "hermes" ? "Hermes" : "Claude"}.`,
+        `Codex is also open. Waiting to give the Micro to ${surfaceName(surface)}.`,
       );
     }
     if (!contentionIsActive) contentionNoticeShown = false;
@@ -176,7 +269,7 @@ export async function startDesktopService({
     const surfaceContentionIsActive = supportedSurfaces.length > 1;
     if (surfaceContentionIsActive && !surfaceContentionWasActive) {
       logger.info(
-        "Claude and Hermes are both open. Waiting until only one supported app is open.",
+        "More than one supported app is open. Waiting until only one can use the Micro.",
       );
     }
     surfaceContentionWasActive = surfaceContentionIsActive;
@@ -208,7 +301,7 @@ export async function startDesktopService({
         };
         try {
           if (notifyContention({
-            surface: surface === "hermes" ? "Hermes Desktop" : "Claude Desktop",
+            surface: surfaceName(surface),
             onError: reportNoticeFailure,
           }) === false) {
             reportNoticeFailure();
@@ -225,7 +318,7 @@ export async function startDesktopService({
     if (!deviceRequested) {
       if (previousSurface !== surface) {
         logger.info(
-          `${surface === "hermes" ? "Hermes" : "Claude Desktop"} opened. Connecting Codex Micro...`,
+          `${surfaceName(surface)} opened. Connecting Codex Micro...`,
         );
       }
       await bridge.connectDevice();

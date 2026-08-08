@@ -12,13 +12,22 @@ have not shipped appear under "Unreleased."
 - A managed Hermes plugin that reports lifecycle events without prompt text,
   transcripts, project names, or session identifiers in normal logs.
 - A Hermes tutorial and troubleshooting notes.
+- Ghostty 1.3 support for local Claude, Codex, and Hermes sessions, including
+  lifecycle lighting, exact tab and split navigation, MIC push-to-talk, and
+  send.
+- Transactional Codex CLI hooks that preserve unrelated hook configuration.
+- A Ghostty tutorial and terminal-agent hardware checklist.
 
 ### Changed
 
-- Louder Bridge now gives the Micro to exactly one open supported app. It waits
-  when Claude Desktop and Hermes Desktop are open together.
+- Louder Bridge now gives the Micro to exactly one supported surface. An idle
+  Ghostty window does not claim the device; a local terminal agent does.
 - Claude and Hermes dictation now use the same native helper for startup,
   shutdown, and error handling.
+- Ghostty send now emits a complete native Return key press instead of relying
+  on Ghostty's preview key command.
+- Permission setup now survives the process restarts macOS triggers when a new
+  app build is approved.
 
 ### Fixed
 
