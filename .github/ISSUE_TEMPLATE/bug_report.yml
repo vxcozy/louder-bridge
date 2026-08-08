@@ -13,7 +13,7 @@ body:
     attributes:
       label: Louder Bridge version
       description: Run `npm run status` for a source install, or use the version from the release filename.
-      placeholder: 0.3.1 or commit SHA
+      placeholder: 0.3.2 or commit SHA
     validations:
       required: true
   - type: textarea

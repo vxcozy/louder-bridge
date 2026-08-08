@@ -5,6 +5,10 @@ have not shipped appear under "Unreleased."
 
 ## Unreleased
 
+There are no unreleased changes.
+
+## 0.3.2 - 2026-08-08
+
 ### Fixed
 
 - Hermes sessions in Ghostty can recover their terminal association when a

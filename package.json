@@ -1,6 +1,6 @@
 {
   "name": "louder-bridge",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "license": "MIT",
   "description": "Use a Work Louder Codex Micro with Claude, Hermes, and terminal agents in Ghostty",
