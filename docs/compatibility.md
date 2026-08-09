@@ -47,15 +47,24 @@ The GitHub-built v0.3.1 archive passed the automated release checks and a
 downloaded checksum and archive check. The hardware run used the local
 candidate, not the published ZIP.
 
-An unreleased locally signed build, revision `809cde7`, passed a focused
-Hermes-in-Ghostty test on August 8, 2026. Pressing MIC started Hermes voice
-input with `Control+B`, and releasing MIC stopped it with the same shortcut.
-The Hermes Agent Key focused the correct pane, and the session lighting worked
-as expected.
+The v0.3.2 archive downloaded from GitHub passed a focused Hermes-in-Ghostty
+test over USB on August 8, 2026:
 
-Follow-up build `b00c76a` passed the focused pane-switch test. When focus moved
-to another pane while MIC was held, releasing MIC returned to the original
-Hermes pane and stopped recording there.
+| Component | Version or result |
+|---|---|
+| macOS | 26.5.2 (25F84) |
+| Ghostty | 1.3.1 |
+| Hermes Agent | 0.19.0 (2026.7.20), upstream `a4973c3f` |
+| Louder Bridge | 0.3.2, GitHub release archive |
+| Embedded Node.js | 22.23.1 |
+| Codex Micro firmware | v0.4.1 |
+| Connection | USB |
+| Voice | MIC started and stopped Hermes recording with `Control+B` |
+| Pane switch | MIC release returned to the pane where recording began |
+| Navigation | The Hermes Agent Key focused the correct pane |
+| Lighting | Session and exterior lighting followed the active session |
+
+The archive checksum and app signature were verified before installation.
 
 ## Latest Hermes candidate qualification
 
@@ -85,7 +94,7 @@ lifecycle event. The bridge received no audio or transcript text.
 This test used the locally generated ad-hoc archive, not an asset downloaded
 from GitHub.
 
-## Latest downloaded-release hardware qualification
+## Earlier Claude Desktop package qualification
 
 The v0.1.2 archive downloaded from GitHub passed a physical test on August 4,
 2026:

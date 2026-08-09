@@ -26,26 +26,26 @@ function run(refName, { branchRef = "HEAD" } = {}) {
 }
 
 test("requires the release tag to match the package version", () => {
-  const matching = run("v0.3.2");
+  const matching = run("v0.3.3");
   assert.equal(matching.status, 0, matching.stderr);
 
   const mismatched = run("v0.1.0");
   assert.equal(mismatched.status, 1);
   assert.match(
     mismatched.stderr,
-    /Release tag v0\.1\.0 does not match package version 0\.3\.2/,
+    /Release tag v0\.1\.0 does not match package version 0\.3\.3/,
   );
 });
 
 test("requires the release tag commit to belong to the protected branch", () => {
-  const outsideBranch = run("v0.3.2", { branchRef: "HEAD^" });
+  const outsideBranch = run("v0.3.3", { branchRef: "HEAD^" });
   assert.equal(outsideBranch.status, 1);
   assert.match(
     outsideBranch.stderr,
     /release tag commit is not part of HEAD\^/,
   );
 
-  const missingBranch = run("v0.3.2", { branchRef: null });
+  const missingBranch = run("v0.3.3", { branchRef: null });
   assert.equal(missingBranch.status, 1);
   assert.match(
     missingBranch.stderr,
