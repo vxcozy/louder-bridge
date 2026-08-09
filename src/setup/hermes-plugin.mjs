@@ -218,8 +218,8 @@ async function removePluginConfigEntries(
   }
 }
 
-function pluginConfigStatesMatch(left, right) {
-  const managedState = (state) => ({
+function managedPluginConfigState(state) {
+  return {
     enabled:
       Array.isArray(state.enabled.value) &&
       state.enabled.value.includes(PLUGIN_NAME),
@@ -229,11 +229,23 @@ function pluginConfigStatesMatch(left, right) {
     override: state.override.exists
       ? { exists: true, value: state.override.value }
       : { exists: false },
-  });
+  };
+}
+
+function pluginConfigStatesMatch(left, right) {
   return (
-    JSON.stringify(managedState(left)) ===
-    JSON.stringify(managedState(right))
+    JSON.stringify(managedPluginConfigState(left)) ===
+    JSON.stringify(managedPluginConfigState(right))
   );
+}
+
+function requirePluginConfigRemoved(state) {
+  const managed = managedPluginConfigState(state);
+  if (managed.enabled || managed.disabled || managed.override.exists) {
+    throw new Error(
+      "Hermes plugin settings changed during removal, so Louder Bridge restored the previous installation.",
+    );
+  }
 }
 
 async function setBooleanConfigValue(hermes, key, value, run, hermesHome) {
@@ -531,6 +543,7 @@ async function removeHermesPluginLocation(location, hermes, run) {
     const fileAfter = configFileSnapshot(configFile);
     const stateAfter = await pluginConfigSnapshot(hermes, run, hermesHome);
     requireConfigSnapshot(configFile, fileAfter);
+    requirePluginConfigRemoved(stateAfter);
     return {
       target,
       backup,
