@@ -501,6 +501,94 @@ test("removes managed plugins and settings from every Hermes profile", async (co
   );
 });
 
+test("leaves an unowned same-name plugin in another profile untouched", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const writerConfig = path.join(
+    files.root,
+    ".hermes",
+    "profiles",
+    "writer",
+    "config.yaml",
+  );
+  const writerTarget = hermesPluginPath(files.root, writerConfig);
+  for (const target of [files.target, writerTarget]) {
+    fs.mkdirSync(target, { recursive: true });
+  }
+  fs.writeFileSync(path.join(files.target, ".louder-bridge-owned"), "owned\n");
+  fs.writeFileSync(path.join(writerTarget, "unrelated.txt"), "keep\n");
+  const hermes = fakeHermes(
+    { "plugins.enabled": ["louder-bridge"] },
+    files.config,
+  );
+  hermes.setConfig(writerConfig, {
+    "plugins.enabled": ["louder-bridge"],
+  });
+
+  const removal = await removeHermesPlugin({
+    homeDirectory: files.root,
+    hermes: "/hermes",
+    run: hermes.run,
+  });
+
+  assert.deepEqual(removal.targets, [files.target]);
+  assert.equal(fs.existsSync(files.target), false);
+  assert.equal(
+    fs.readFileSync(path.join(writerTarget, "unrelated.txt"), "utf8"),
+    "keep\n",
+  );
+  assert.deepEqual(readFakeConfig(writerConfig).get("plugins.enabled"), [
+    "louder-bridge",
+  ]);
+  commitHermesPluginRemoval(removal);
+});
+
+test("attempts every profile rollback after a target conflict", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const writerConfig = path.join(
+    files.root,
+    ".hermes",
+    "profiles",
+    "writer",
+    "config.yaml",
+  );
+  const writerTarget = hermesPluginPath(files.root, writerConfig);
+  for (const target of [files.target, writerTarget]) {
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(target, ".louder-bridge-owned"), "owned\n");
+  }
+  const hermes = fakeHermes(
+    { "plugins.enabled": ["louder-bridge"] },
+    files.config,
+  );
+  hermes.setConfig(writerConfig, {
+    "plugins.enabled": ["louder-bridge"],
+  });
+  const removal = await removeHermesPlugin({
+    homeDirectory: files.root,
+    hermes: "/hermes",
+    run: hermes.run,
+  });
+  fs.mkdirSync(writerTarget);
+  fs.writeFileSync(path.join(writerTarget, "new.txt"), "keep\n");
+
+  await assert.rejects(
+    rollbackHermesPluginRemoval(removal),
+    /could not be fully rolled back/,
+  );
+
+  assert.equal(fs.existsSync(files.target), true);
+  assert.deepEqual(readFakeConfig(files.config).get("plugins.enabled"), [
+    "louder-bridge",
+  ]);
+  assert.equal(
+    fs.readFileSync(path.join(writerTarget, "new.txt"), "utf8"),
+    "keep\n",
+  );
+  assert.deepEqual(readFakeConfig(writerConfig).get("plugins.enabled"), []);
+});
+
 test("stops uninstall when a plugin list changes before indexed removal", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));

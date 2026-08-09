@@ -75,6 +75,13 @@ function requireOwnedPlugin(directory) {
   return true;
 }
 
+function isOwnedPlugin(directory) {
+  const target = entry(directory);
+  if (!target?.isDirectory() || target.isSymbolicLink()) return false;
+  const marker = entry(path.join(directory, OWNERSHIP_MARKER));
+  return Boolean(marker?.isFile() && !marker.isSymbolicLink());
+}
+
 function configFileSnapshot(filename) {
   const target = entry(filename);
   if (!target) return { exists: false, contents: null, mode: null };
@@ -368,7 +375,7 @@ function installedHermesPluginLocations(homeDirectory) {
       );
     }
   }
-  return locations.filter(({ target }) => entry(target));
+  return locations.filter(({ target }) => isOwnedPlugin(target));
 }
 
 function removeDirectory(directory) {
@@ -591,8 +598,19 @@ async function rollbackHermesPluginRemovalEntry(removal) {
 
 export async function rollbackHermesPluginRemoval(transaction) {
   if (!transaction?.removed) return;
+  const errors = [];
   for (const removal of [...transaction.removals].reverse()) {
-    await rollbackHermesPluginRemovalEntry(removal);
+    try {
+      await rollbackHermesPluginRemovalEntry(removal);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      "Hermes plugin removal could not be fully rolled back.",
+    );
   }
 }
 
