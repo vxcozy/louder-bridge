@@ -401,6 +401,65 @@ test("does not restore old settings onto a replacement plugin", async (context) 
   );
 });
 
+test("rechecks ownership after failed-install cleanup reads", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  fs.mkdirSync(files.target, { recursive: true });
+  fs.writeFileSync(path.join(files.target, ".louder-bridge-owned"), "owned\n");
+  const hermes = fakeHermes({
+    "plugins.enabled": ["louder-bridge"],
+    "plugins.entries.louder-bridge.allow_tool_override": true,
+  }, files.config);
+  let cleanupReady = false;
+  let replaced = false;
+  const run = async (...args) => {
+    const result = await hermes.run(...args);
+    if (args[1][0] === "plugins" && args[1][1] === "enable") {
+      const changed = Object.fromEntries(readFakeConfig(files.config));
+      changed["plugins.enabled"] = [];
+      writeFakeConfig(files.config, changed);
+    } else if (
+      args[1][0] === "config" &&
+      args[1][1] === "get" &&
+      args[1][2] === "plugins.entries.louder-bridge.allow_tool_override"
+    ) {
+      cleanupReady = true;
+    } else if (
+      cleanupReady &&
+      !replaced &&
+      args[1][0] === "config" &&
+      args[1][1] === "get"
+    ) {
+      replaced = true;
+      fs.rmSync(files.target, { recursive: true });
+      fs.mkdirSync(files.target);
+      fs.writeFileSync(path.join(files.target, "unrelated.txt"), "keep\n");
+    }
+    return result;
+  };
+
+  await assert.rejects(
+    installHermesPlugin({
+      homeDirectory: files.root,
+      source: files.source,
+      hermes: "/hermes",
+      run,
+    }),
+    /could not be fully rolled back/,
+  );
+
+  assert.equal(
+    fs.readFileSync(path.join(files.target, "unrelated.txt"), "utf8"),
+    "keep\n",
+  );
+  assert.equal(
+    readFakeConfig(files.config).get(
+      "plugins.entries.louder-bridge.allow_tool_override",
+    ),
+    false,
+  );
+});
+
 test("revalidates the installed plugin before reporting success", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));
@@ -843,6 +902,53 @@ test("removes managed plugins and settings from every Hermes profile", async (co
     readFakeConfig(writerConfig).get("plugins.enabled"),
     ["writer-plugin", "louder-bridge"],
   );
+});
+
+test("rechecks a restored plugin before replaying removal state", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  fs.mkdirSync(files.target, { recursive: true });
+  fs.writeFileSync(path.join(files.target, ".louder-bridge-owned"), "owned\n");
+  const hermes = fakeHermes({
+    "plugins.enabled": ["louder-bridge"],
+    "plugins.entries.louder-bridge.allow_tool_override": true,
+  }, files.config);
+  let rollbackStarted = false;
+  let replaced = false;
+  const run = async (...args) => {
+    const result = await hermes.run(...args);
+    if (
+      rollbackStarted &&
+      !replaced &&
+      args[1][0] === "config" &&
+      args[1][1] === "get"
+    ) {
+      replaced = true;
+      fs.rmSync(files.target, { recursive: true });
+      fs.mkdirSync(files.target);
+      fs.writeFileSync(path.join(files.target, "unrelated.txt"), "keep\n");
+    }
+    return result;
+  };
+  const transaction = await removeHermesPlugin({
+    homeDirectory: files.root,
+    hermes: "/hermes",
+    run,
+  });
+  rollbackStarted = true;
+
+  await assert.rejects(
+    rollbackHermesPluginRemoval(transaction),
+    (error) =>
+      error instanceof AggregateError &&
+      error.errors.some((cause) => /does not own/.test(cause.message)),
+  );
+
+  assert.equal(
+    fs.readFileSync(path.join(files.target, "unrelated.txt"), "utf8"),
+    "keep\n",
+  );
+  assert.deepEqual(readFakeConfig(files.config).get("plugins.enabled"), []);
 });
 
 test("leaves an unowned same-name plugin in another profile untouched", async (context) => {

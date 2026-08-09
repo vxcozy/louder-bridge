@@ -378,6 +378,7 @@ async function rollbackPluginConfig({
   run,
   hermesHome,
   configFile,
+  target,
   stateBefore,
   stateAfter,
 }) {
@@ -389,6 +390,7 @@ async function rollbackPluginConfig({
       "Hermes plugin settings changed during setup, so Louder Bridge left them untouched.",
     );
   }
+  requireExistingOwnedPlugin(target);
   await applyAndVerifyPluginConfigState(
     hermes,
     currentState,
@@ -495,7 +497,6 @@ export async function installHermesPlugin({
     const rollbackErrors = [];
     if (enableStarted) {
       try {
-        if (entry(target)) requireExistingOwnedPlugin(target);
         const currentFile = configFileSnapshot(configFile);
         const currentState = await pluginConfigSnapshot(
           hermes,
@@ -503,6 +504,7 @@ export async function installHermesPlugin({
           hermesHome,
         );
         requireConfigSnapshot(configFile, currentFile);
+        if (entry(target)) requireExistingOwnedPlugin(target);
         await applyAndVerifyPluginConfigState(
           hermes,
           currentState,
