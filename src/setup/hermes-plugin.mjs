@@ -18,8 +18,29 @@ function defaultPluginSource() {
   );
 }
 
-export function hermesPluginPath(homeDirectory = os.homedir()) {
-  return path.join(homeDirectory, ".hermes", "plugins", PLUGIN_NAME);
+export function hermesPluginPath(
+  homeDirectory = os.homedir(),
+  configFile = path.join(homeDirectory, ".hermes", "config.yaml"),
+) {
+  const hermesDirectory = path.resolve(homeDirectory, ".hermes");
+  const resolvedConfig = path.resolve(configFile);
+  const configDirectory = path.dirname(resolvedConfig);
+  const defaultConfig = path.join(hermesDirectory, "config.yaml");
+  const profilesDirectory = path.join(hermesDirectory, "profiles");
+  const profile = path.relative(profilesDirectory, configDirectory);
+  const namedProfile =
+    path.basename(resolvedConfig) === "config.yaml" &&
+    profile.length > 0 &&
+    !path.isAbsolute(profile) &&
+    !profile.startsWith(`..${path.sep}`) &&
+    profile !== ".." &&
+    !profile.includes(path.sep);
+  if (resolvedConfig !== defaultConfig && !namedProfile) {
+    throw new Error(
+      "Hermes reported a config path outside the expected Hermes directory.",
+    );
+  }
+  return path.join(configDirectory, "plugins", PLUGIN_NAME);
 }
 
 function entry(filename) {
@@ -52,6 +73,15 @@ async function runHermes(hermes, args, run = execFileAsync) {
     maxBuffer: 1024 * 1024,
     windowsHide: true,
   });
+}
+
+async function activeHermesPluginPath(homeDirectory, hermes, run) {
+  const { stdout } = await runHermes(hermes, ["config", "path"], run);
+  const configFile = typeof stdout === "string" ? stdout.trim() : "";
+  if (!configFile) {
+    throw new Error("Hermes did not report an active config path.");
+  }
+  return hermesPluginPath(homeDirectory, configFile);
 }
 
 async function readConfigValue(hermes, key, run) {
@@ -123,7 +153,7 @@ export async function installHermesPlugin({
   run = execFileAsync,
 } = {}) {
   if (!hermes) return { installed: false, reason: "not-installed" };
-  const target = hermesPluginPath(homeDirectory);
+  const target = await activeHermesPluginPath(homeDirectory, hermes, run);
   const parent = path.dirname(target);
   const staging = path.join(parent, `.${PLUGIN_NAME}.${randomUUID()}.tmp`);
   const backup = path.join(parent, `.${PLUGIN_NAME}.${randomUUID()}.previous`);
@@ -190,7 +220,9 @@ export async function removeHermesPlugin({
   hermes = findHermesExecutable(),
   run = execFileAsync,
 } = {}) {
-  const target = hermesPluginPath(homeDirectory);
+  const target = hermes
+    ? await activeHermesPluginPath(homeDirectory, hermes, run)
+    : hermesPluginPath(homeDirectory);
   if (!entry(target)) return { removed: false, target };
   requireOwnedPlugin(target);
   if (!hermes) {

@@ -21,17 +21,21 @@ const execFileAsync = promisify(execFile);
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "louder-hermes-plugin-"));
   const source = path.join(root, "source");
+  const config = path.join(root, ".hermes", "config.yaml");
   fs.mkdirSync(source);
   fs.writeFileSync(path.join(source, "plugin.yaml"), "name: louder-bridge\n");
   fs.writeFileSync(path.join(source, "__init__.py"), "VERSION = 2\n");
-  return { root, source, target: hermesPluginPath(root) };
+  return { root, source, config, target: hermesPluginPath(root) };
 }
 
-function fakeHermes(initial = {}) {
+function fakeHermes(initial = {}, configPath = "/tmp/hermes/config.yaml") {
   const config = new Map(Object.entries(initial));
   const calls = [];
   const run = async (command, args) => {
     calls.push([command, ...args]);
+    if (args[0] === "config" && args[1] === "path") {
+      return { stdout: `${configPath}\n` };
+    }
     if (args[0] === "plugins" && args[1] === "enable") {
       const enabled = config.get("plugins.enabled") ?? [];
       config.set("plugins.enabled", [...new Set([...enabled, "louder-bridge"])]);
@@ -88,7 +92,7 @@ test("installs, enables, and commits the managed Hermes plugin", async (context)
   const hermes = fakeHermes({
     "plugins.enabled": ["existing-plugin"],
     "plugins.disabled": ["disabled-plugin"],
-  });
+  }, files.config);
 
   const transaction = await installHermesPlugin({
     homeDirectory: files.root,
@@ -121,7 +125,7 @@ test("rolls a Hermes plugin upgrade back to its exact prior state", async (conte
     "plugins.enabled": ["louder-bridge", "existing-plugin"],
     "plugins.disabled": ["disabled-plugin"],
     "plugins.entries.louder-bridge.allow_tool_override": true,
-  });
+  }, files.config);
 
   const transaction = await installHermesPlugin({
     homeDirectory: files.root,
@@ -153,7 +157,7 @@ test("does not overwrite an unrelated Hermes plugin with the same name", async (
       homeDirectory: files.root,
       source: files.source,
       hermes: "/hermes",
-      run: fakeHermes().run,
+      run: fakeHermes({}, files.config).run,
     }),
     /does not own/,
   );
@@ -170,7 +174,7 @@ test("removes only the managed plugin and can roll the removal back", async (con
     "plugins.enabled": ["existing-plugin", "louder-bridge"],
     "plugins.disabled": ["disabled-plugin"],
     "plugins.entries.louder-bridge.allow_tool_override": false,
-  });
+  }, files.config);
 
   const transaction = await removeHermesPlugin({
     homeDirectory: files.root,
@@ -194,6 +198,72 @@ test("removes only the managed plugin and can roll the removal back", async (con
     run: hermes.run,
   });
   commitHermesPluginRemoval(second);
+  assert.equal(fs.existsSync(files.target), false);
+});
+
+test("installs and removes the plugin for the active Hermes profile", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const profileConfig = path.join(
+    files.root,
+    ".hermes",
+    "profiles",
+    "writer",
+    "config.yaml",
+  );
+  const target = hermesPluginPath(files.root, profileConfig);
+  const existingPlugin = path.join(path.dirname(target), "existing-plugin");
+  fs.mkdirSync(existingPlugin, { recursive: true });
+  fs.writeFileSync(path.join(existingPlugin, "keep.txt"), "keep\n");
+  const hermes = fakeHermes(
+    { "plugins.enabled": ["existing-plugin"] },
+    profileConfig,
+  );
+
+  const installation = await installHermesPlugin({
+    homeDirectory: files.root,
+    source: files.source,
+    hermes: "/hermes",
+    run: hermes.run,
+  });
+
+  assert.equal(installation.target, target);
+  assert.equal(fs.existsSync(target), true);
+  assert.equal(fs.existsSync(files.target), false);
+  assert.equal(
+    fs.readFileSync(path.join(existingPlugin, "keep.txt"), "utf8"),
+    "keep\n",
+  );
+  commitHermesPluginInstallation(installation);
+
+  const removal = await removeHermesPlugin({
+    homeDirectory: files.root,
+    hermes: "/hermes",
+    run: hermes.run,
+  });
+  commitHermesPluginRemoval(removal);
+
+  assert.equal(removal.target, target);
+  assert.equal(fs.existsSync(target), false);
+  assert.equal(
+    fs.readFileSync(path.join(existingPlugin, "keep.txt"), "utf8"),
+    "keep\n",
+  );
+});
+
+test("rejects an active Hermes config outside the user Hermes directory", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+
+  await assert.rejects(
+    installHermesPlugin({
+      homeDirectory: files.root,
+      source: files.source,
+      hermes: "/hermes",
+      run: fakeHermes({}, path.join(files.root, "other", "config.yaml")).run,
+    }),
+    /outside the expected Hermes directory/,
+  );
   assert.equal(fs.existsSync(files.target), false);
 });
 
