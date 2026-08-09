@@ -589,6 +589,65 @@ test("attempts every profile rollback after a target conflict", async (context) 
   assert.deepEqual(readFakeConfig(writerConfig).get("plugins.enabled"), []);
 });
 
+test("revalidates each profile target immediately before removal", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const writerConfig = path.join(
+    files.root,
+    ".hermes",
+    "profiles",
+    "writer",
+    "config.yaml",
+  );
+  const writerTarget = hermesPluginPath(files.root, writerConfig);
+  for (const target of [files.target, writerTarget]) {
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(target, ".louder-bridge-owned"), "owned\n");
+  }
+  const hermes = fakeHermes(
+    { "plugins.enabled": ["louder-bridge"] },
+    files.config,
+  );
+  hermes.setConfig(writerConfig, {
+    "plugins.enabled": ["louder-bridge"],
+  });
+  let replaced = false;
+  const run = async (...args) => {
+    const result = await hermes.run(...args);
+    const hermesHome = args[2].env?.HERMES_HOME;
+    if (
+      !replaced &&
+      hermesHome === path.dirname(files.config) &&
+      args[1][0] === "config" &&
+      args[1][1] === "unset"
+    ) {
+      replaced = true;
+      fs.rmSync(writerTarget, { recursive: true });
+      fs.mkdirSync(writerTarget);
+      fs.writeFileSync(path.join(writerTarget, "unrelated.txt"), "keep\n");
+    }
+    return result;
+  };
+
+  await assert.rejects(
+    removeHermesPlugin({
+      homeDirectory: files.root,
+      hermes: "/hermes",
+      run,
+    }),
+    /does not own/,
+  );
+
+  assert.equal(fs.existsSync(files.target), true);
+  assert.deepEqual(readFakeConfig(files.config).get("plugins.enabled"), [
+    "louder-bridge",
+  ]);
+  assert.equal(
+    fs.readFileSync(path.join(writerTarget, "unrelated.txt"), "utf8"),
+    "keep\n",
+  );
+});
+
 test("stops uninstall when a plugin list changes before indexed removal", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));

@@ -533,6 +533,7 @@ async function removeHermesPluginLocation(location, hermes, run) {
   const fileBefore = configFileSnapshot(configFile);
   const stateBefore = await pluginConfigSnapshot(hermes, run, hermesHome);
   requireConfigSnapshot(configFile, fileBefore);
+  requireOwnedPlugin(target);
   const backup = path.join(
     path.dirname(target),
     `.${PLUGIN_NAME}.${randomUUID()}.removing`,
