@@ -208,16 +208,17 @@ async function removePluginConfigEntries(
   if (configFile && expectedFile) {
     requireConfigSnapshot(configFile, expectedFile);
   }
-  for (const [key, state] of [
-    ["plugins.enabled", config.enabled],
-    ["plugins.disabled", config.disabled],
-  ]) {
-    if (!Array.isArray(state.value)) continue;
-    const indexes = state.value
-      .map((name, index) => (name === PLUGIN_NAME ? index : -1))
-      .filter((index) => index >= 0)
-      .reverse();
-    for (const index of indexes) {
+  for (const key of ["plugins.enabled", "plugins.disabled"]) {
+    while (true) {
+      const currentFile = configFile
+        ? configFileSnapshot(configFile)
+        : null;
+      const state = await readConfigValue(hermes, key, run, hermesHome);
+      if (configFile) requireConfigSnapshot(configFile, currentFile);
+      const index = Array.isArray(state.value)
+        ? state.value.lastIndexOf(PLUGIN_NAME)
+        : -1;
+      if (index < 0) break;
       await unsetConfigValue(hermes, `${key}.${index}`, run, hermesHome);
     }
   }

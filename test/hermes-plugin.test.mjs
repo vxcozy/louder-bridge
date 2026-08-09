@@ -1139,6 +1139,54 @@ test("stops uninstall when a plugin list changes before indexed removal", async 
   ]);
 });
 
+test("recomputes plugin indexes after each Hermes config edit", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  fs.mkdirSync(files.target, { recursive: true });
+  fs.writeFileSync(path.join(files.target, ".louder-bridge-owned"), "owned\n");
+  const hermes = fakeHermes({
+    "plugins.enabled": [
+      "existing-a",
+      "louder-bridge",
+      "existing-b",
+      "louder-bridge",
+    ],
+  }, files.config);
+  let reordered = false;
+  const run = async (...args) => {
+    const result = await hermes.run(...args);
+    if (
+      !reordered &&
+      args[1][0] === "config" &&
+      args[1][1] === "unset" &&
+      args[1][2].startsWith("plugins.enabled.")
+    ) {
+      reordered = true;
+      const changed = Object.fromEntries(readFakeConfig(files.config));
+      changed["plugins.enabled"] = [
+        "existing-b",
+        "existing-a",
+        "louder-bridge",
+      ];
+      writeFakeConfig(files.config, changed);
+    }
+    return result;
+  };
+
+  const transaction = await removeHermesPlugin({
+    homeDirectory: files.root,
+    hermes: "/hermes",
+    run,
+  });
+
+  assert.equal(reordered, true);
+  assert.deepEqual(readFakeConfig(files.config).get("plugins.enabled"), [
+    "existing-b",
+    "existing-a",
+  ]);
+  commitHermesPluginRemoval(transaction);
+});
+
 test("rolls uninstall back when Hermes re-enables the plugin", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));
