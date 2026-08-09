@@ -445,6 +445,7 @@ export async function installHermesPlugin({
     const stateAfter = await pluginConfigSnapshot(hermes, run, hermesHome);
     requireConfigSnapshot(configFile, fileAfter);
     requirePluginConfigEnabled(stateAfter);
+    requireOwnedPlugin(target);
     return {
       installed: true,
       hermes,

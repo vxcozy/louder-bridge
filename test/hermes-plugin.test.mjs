@@ -349,6 +349,47 @@ test("preserves a replacement during failed-install cleanup", async (context) =>
   );
 });
 
+test("revalidates the installed plugin before reporting success", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const hermes = fakeHermes({}, files.config);
+  let enabled = false;
+  let replaced = false;
+  const run = async (...args) => {
+    const result = await hermes.run(...args);
+    if (args[1][0] === "plugins" && args[1][1] === "enable") {
+      enabled = true;
+    } else if (
+      enabled &&
+      !replaced &&
+      args[1][0] === "config" &&
+      args[1][1] === "get" &&
+      args[1][2] === "plugins.entries.louder-bridge.allow_tool_override"
+    ) {
+      replaced = true;
+      fs.rmSync(files.target, { recursive: true });
+      fs.mkdirSync(files.target);
+      fs.writeFileSync(path.join(files.target, "unrelated.txt"), "keep\n");
+    }
+    return result;
+  };
+
+  await assert.rejects(
+    installHermesPlugin({
+      homeDirectory: files.root,
+      source: files.source,
+      hermes: "/hermes",
+      run,
+    }),
+    /could not be fully rolled back/,
+  );
+
+  assert.equal(
+    fs.readFileSync(path.join(files.target, "unrelated.txt"), "utf8"),
+    "keep\n",
+  );
+});
+
 test("does not overwrite an unrelated Hermes plugin with the same name", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));
