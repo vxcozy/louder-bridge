@@ -497,6 +497,7 @@ export async function rollbackHermesPluginInstallation(transaction) {
   if (!transaction?.installed) return;
   requireOwnedPlugin(transaction.target);
   await rollbackPluginConfig(transaction);
+  requireOwnedPlugin(transaction.target);
   removeDirectory(transaction.target);
   if (transaction.backup) fs.renameSync(transaction.backup, transaction.target);
 }

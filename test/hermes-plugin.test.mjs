@@ -524,6 +524,53 @@ test("preserves unrelated plugin edits during install rollback", async (context)
   assert.equal(fs.existsSync(files.target), false);
 });
 
+test("revalidates the installed plugin before rollback deletes it", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  fs.mkdirSync(files.target, { recursive: true });
+  fs.writeFileSync(path.join(files.target, ".louder-bridge-owned"), "owned\n");
+  fs.writeFileSync(path.join(files.target, "previous.txt"), "previous\n");
+  const hermes = fakeHermes(
+    { "plugins.enabled": ["louder-bridge"] },
+    files.config,
+  );
+  let replaceDuringRollback = false;
+  let replaced = false;
+  const run = async (...args) => {
+    const result = await hermes.run(...args);
+    if (
+      replaceDuringRollback &&
+      !replaced &&
+      args[1][0] === "config" &&
+      args[1][1] === "unset"
+    ) {
+      replaced = true;
+      fs.rmSync(files.target, { recursive: true });
+      fs.mkdirSync(files.target);
+      fs.writeFileSync(path.join(files.target, "unrelated.txt"), "keep\n");
+    }
+    return result;
+  };
+  const installation = await installHermesPlugin({
+    homeDirectory: files.root,
+    source: files.source,
+    hermes: "/hermes",
+    run,
+  });
+  replaceDuringRollback = true;
+
+  await assert.rejects(
+    rollbackHermesPluginInstallation(installation),
+    /does not own/,
+  );
+
+  assert.equal(
+    fs.readFileSync(path.join(files.target, "unrelated.txt"), "utf8"),
+    "keep\n",
+  );
+  assert.equal(fs.existsSync(installation.backup), true);
+});
+
 test("removes managed plugins and settings from every Hermes profile", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));
