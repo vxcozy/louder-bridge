@@ -410,6 +410,41 @@ test("preserves unrelated config edits during install rollback", async (context)
   assert.equal(fs.existsSync(files.target), false);
 });
 
+test("preserves unrelated plugin edits during install rollback", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const hermes = fakeHermes(
+    {
+      "plugins.enabled": ["existing-plugin"],
+      "plugins.disabled": ["disabled-plugin"],
+    },
+    files.config,
+  );
+  const installation = await installHermesPlugin({
+    homeDirectory: files.root,
+    source: files.source,
+    hermes: "/hermes",
+    run: hermes.run,
+  });
+  const edited = Object.fromEntries(readFakeConfig(files.config));
+  edited["plugins.enabled"].push("concurrent-plugin");
+  edited["plugins.disabled"].push("concurrent-disabled-plugin");
+  writeFakeConfig(files.config, edited);
+
+  await rollbackHermesPluginInstallation(installation);
+
+  const restored = readFakeConfig(files.config);
+  assert.deepEqual(restored.get("plugins.enabled"), [
+    "existing-plugin",
+    "concurrent-plugin",
+  ]);
+  assert.deepEqual(restored.get("plugins.disabled"), [
+    "disabled-plugin",
+    "concurrent-disabled-plugin",
+  ]);
+  assert.equal(fs.existsSync(files.target), false);
+});
+
 test("removes managed plugins and settings from every Hermes profile", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));

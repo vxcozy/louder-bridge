@@ -204,7 +204,21 @@ async function removePluginConfigEntries(
 }
 
 function pluginConfigStatesMatch(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
+  const managedState = (state) => ({
+    enabled:
+      Array.isArray(state.enabled.value) &&
+      state.enabled.value.includes(PLUGIN_NAME),
+    disabled:
+      Array.isArray(state.disabled.value) &&
+      state.disabled.value.includes(PLUGIN_NAME),
+    override: state.override.exists
+      ? { exists: true, value: state.override.value }
+      : { exists: false },
+  });
+  return (
+    JSON.stringify(managedState(left)) ===
+    JSON.stringify(managedState(right))
+  );
 }
 
 async function setBooleanConfigValue(hermes, key, value, run, hermesHome) {
