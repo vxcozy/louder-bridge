@@ -44,6 +44,9 @@ Setup adds a managed `louder-bridge` plugin to Hermes and enables it without
 granting it tool access. It does not change unrelated Hermes plugins or
 settings.
 
+If you use a named Hermes profile, switch to that profile before opening
+Louder Bridge. The app installs the plugin in the active profile.
+
 If you installed Hermes after Louder Bridge, open Louder Bridge again so it can
 add the plugin.
 
