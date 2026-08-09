@@ -6,7 +6,6 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { findHermesExecutable } from "../hermes/navigator.mjs";
-import { writeFileAtomic } from "./atomic-file.mjs";
 
 const execFileAsync = promisify(execFile);
 const PLUGIN_NAME = "louder-bridge";
@@ -103,15 +102,6 @@ function requireConfigSnapshot(filename, expected) {
   }
 }
 
-function restoreConfigFile(filename, before, expected) {
-  requireConfigSnapshot(filename, expected);
-  if (!before.exists) {
-    if (entry(filename)) fs.unlinkSync(filename);
-    return;
-  }
-  writeFileAtomic(filename, before.contents, { mode: before.mode });
-}
-
 async function runHermes(
   hermes,
   args,
@@ -179,7 +169,17 @@ async function unsetConfigValue(hermes, key, run, hermesHome) {
   }
 }
 
-async function removePluginConfigEntries(hermes, config, run, hermesHome) {
+async function removePluginConfigEntries(
+  hermes,
+  config,
+  run,
+  hermesHome,
+  configFile = null,
+  expectedFile = null,
+) {
+  if (configFile && expectedFile) {
+    requireConfigSnapshot(configFile, expectedFile);
+  }
   for (const [key, state] of [
     ["plugins.enabled", config.enabled],
     ["plugins.disabled", config.disabled],
@@ -201,6 +201,107 @@ async function removePluginConfigEntries(hermes, config, run, hermesHome) {
       hermesHome,
     );
   }
+}
+
+function pluginConfigStatesMatch(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function setBooleanConfigValue(hermes, key, value, run, hermesHome) {
+  await runHermes(
+    hermes,
+    ["config", "set", "--force", key, String(Boolean(value))],
+    run,
+    hermesHome,
+  );
+}
+
+async function applyPluginConfigState(
+  hermes,
+  current,
+  desired,
+  run,
+  hermesHome,
+  configFile,
+  expectedFile,
+) {
+  await removePluginConfigEntries(
+    hermes,
+    current,
+    run,
+    hermesHome,
+    configFile,
+    expectedFile,
+  );
+  const enabled = Array.isArray(desired.enabled.value) &&
+    desired.enabled.value.includes(PLUGIN_NAME);
+  const disabled = Array.isArray(desired.disabled.value) &&
+    desired.disabled.value.includes(PLUGIN_NAME);
+  if (enabled) {
+    const override = desired.override.exists && desired.override.value === true;
+    await runHermes(
+      hermes,
+      [
+        "plugins",
+        "enable",
+        PLUGIN_NAME,
+        override ? "--allow-tool-override" : "--no-allow-tool-override",
+      ],
+      run,
+      hermesHome,
+    );
+  }
+  if (disabled) {
+    await runHermes(
+      hermes,
+      ["plugins", "disable", PLUGIN_NAME],
+      run,
+      hermesHome,
+    );
+  }
+  if (desired.override.exists) {
+    await setBooleanConfigValue(
+      hermes,
+      "plugins.entries.louder-bridge.allow_tool_override",
+      desired.override.value,
+      run,
+      hermesHome,
+    );
+  } else {
+    await unsetConfigValue(
+      hermes,
+      "plugins.entries.louder-bridge.allow_tool_override",
+      run,
+      hermesHome,
+    );
+  }
+}
+
+async function rollbackPluginConfig({
+  hermes,
+  run,
+  hermesHome,
+  configFile,
+  stateBefore,
+  stateAfter,
+}) {
+  const currentFile = configFileSnapshot(configFile);
+  const currentState = await pluginConfigSnapshot(hermes, run, hermesHome);
+  requireConfigSnapshot(configFile, currentFile);
+  if (!pluginConfigStatesMatch(currentState, stateAfter)) {
+    throw new Error(
+      "Hermes plugin settings changed during setup, so Louder Bridge left them untouched.",
+    );
+  }
+  await applyPluginConfigState(
+    hermes,
+    currentState,
+    stateBefore,
+    run,
+    hermesHome,
+    configFile,
+    currentFile,
+  );
 }
 
 function installedHermesPluginLocations(homeDirectory) {
@@ -249,7 +350,10 @@ export async function installHermesPlugin({
   const staging = path.join(parent, `.${PLUGIN_NAME}.${randomUUID()}.tmp`);
   const backup = path.join(parent, `.${PLUGIN_NAME}.${randomUUID()}.previous`);
   const previous = requireOwnedPlugin(target);
-  const configBefore = configFileSnapshot(configFile);
+  const fileBefore = configFileSnapshot(configFile);
+  const stateBefore = await pluginConfigSnapshot(hermes, run, hermesHome);
+  requireConfigSnapshot(configFile, fileBefore);
+  let enableStarted = false;
   fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
 
   try {
@@ -261,34 +365,55 @@ export async function installHermesPlugin({
     );
     if (previous) fs.renameSync(target, backup);
     fs.renameSync(staging, target);
+    enableStarted = true;
     await runHermes(
       hermes,
       ["plugins", "enable", PLUGIN_NAME, "--no-allow-tool-override"],
       run,
       hermesHome,
     );
+    const fileAfter = configFileSnapshot(configFile);
+    const stateAfter = await pluginConfigSnapshot(hermes, run, hermesHome);
+    requireConfigSnapshot(configFile, fileAfter);
     return {
       installed: true,
       hermes,
       target,
       backup: previous ? backup : null,
       configFile,
-      configBefore,
-      configAfter: configFileSnapshot(configFile),
+      stateBefore,
+      stateAfter,
       hermesHome,
       run,
     };
   } catch (error) {
+    let rollbackError = null;
+    if (enableStarted && entry(target)) {
+      try {
+        const currentFile = configFileSnapshot(configFile);
+        const currentState = await pluginConfigSnapshot(
+          hermes,
+          run,
+          hermesHome,
+        );
+        requireConfigSnapshot(configFile, currentFile);
+        await applyPluginConfigState(
+          hermes,
+          currentState,
+          stateBefore,
+          run,
+          hermesHome,
+          configFile,
+          currentFile,
+        );
+      } catch (caught) {
+        rollbackError = caught;
+      }
+    }
     removeDirectory(staging);
     removeDirectory(target);
     if (entry(backup)) fs.renameSync(backup, target);
-    try {
-      restoreConfigFile(
-        configFile,
-        configBefore,
-        configFileSnapshot(configFile),
-      );
-    } catch (rollbackError) {
+    if (rollbackError) {
       throw new AggregateError(
         [error, rollbackError],
         "Hermes plugin setup failed and its configuration could not be restored.",
@@ -301,14 +426,9 @@ export async function installHermesPlugin({
 export async function rollbackHermesPluginInstallation(transaction) {
   if (!transaction?.installed) return;
   requireOwnedPlugin(transaction.target);
-  requireConfigSnapshot(transaction.configFile, transaction.configAfter);
+  await rollbackPluginConfig(transaction);
   removeDirectory(transaction.target);
   if (transaction.backup) fs.renameSync(transaction.backup, transaction.target);
-  restoreConfigFile(
-    transaction.configFile,
-    transaction.configBefore,
-    transaction.configAfter,
-  );
 }
 
 export function commitHermesPluginInstallation(transaction) {
@@ -362,29 +482,57 @@ export async function removeHermesPlugin({
 
 async function removeHermesPluginLocation(location, hermes, run) {
   const { configFile, hermesHome, target } = location;
-  const config = await pluginConfigSnapshot(hermes, run, hermesHome);
-  const configBefore = configFileSnapshot(configFile);
+  const fileBefore = configFileSnapshot(configFile);
+  const stateBefore = await pluginConfigSnapshot(hermes, run, hermesHome);
+  requireConfigSnapshot(configFile, fileBefore);
   const backup = path.join(
     path.dirname(target),
     `.${PLUGIN_NAME}.${randomUUID()}.removing`,
   );
   fs.renameSync(target, backup);
   try {
-    await removePluginConfigEntries(hermes, config, run, hermesHome);
+    await removePluginConfigEntries(
+      hermes,
+      stateBefore,
+      run,
+      hermesHome,
+      configFile,
+      fileBefore,
+    );
+    const fileAfter = configFileSnapshot(configFile);
+    const stateAfter = await pluginConfigSnapshot(hermes, run, hermesHome);
+    requireConfigSnapshot(configFile, fileAfter);
     return {
       target,
       backup,
+      hermes,
+      run,
+      hermesHome,
       configFile,
-      configBefore,
-      configAfter: configFileSnapshot(configFile),
+      stateBefore,
+      stateAfter,
     };
   } catch (error) {
     fs.renameSync(backup, target);
-    restoreConfigFile(
-      configFile,
-      configBefore,
-      configFileSnapshot(configFile),
-    );
+    try {
+      const currentFile = configFileSnapshot(configFile);
+      const currentState = await pluginConfigSnapshot(hermes, run, hermesHome);
+      requireConfigSnapshot(configFile, currentFile);
+      await applyPluginConfigState(
+        hermes,
+        currentState,
+        stateBefore,
+        run,
+        hermesHome,
+        configFile,
+        currentFile,
+      );
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        "Hermes plugin removal failed and its configuration could not be restored.",
+      );
+    }
     throw error;
   }
 }
@@ -395,13 +543,8 @@ async function rollbackHermesPluginRemovalEntry(removal) {
       "A new Hermes louder-bridge plugin appeared during rollback.",
     );
   }
-  requireConfigSnapshot(removal.configFile, removal.configAfter);
   fs.renameSync(removal.backup, removal.target);
-  restoreConfigFile(
-    removal.configFile,
-    removal.configBefore,
-    removal.configAfter,
-  );
+  await rollbackPluginConfig(removal);
 }
 
 export async function rollbackHermesPluginRemoval(transaction) {

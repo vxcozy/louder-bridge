@@ -70,6 +70,20 @@ function fakeHermes(initial = {}, configPath = "/tmp/hermes/config.yaml") {
       persist(hermesHome, config);
       return { stdout: "" };
     }
+    if (args[0] === "plugins" && args[1] === "disable") {
+      const enabled = config.get("plugins.enabled") ?? [];
+      const disabled = config.get("plugins.disabled") ?? [];
+      config.set(
+        "plugins.enabled",
+        enabled.filter((name) => name !== "louder-bridge"),
+      );
+      config.set(
+        "plugins.disabled",
+        [...new Set([...disabled, "louder-bridge"])],
+      );
+      persist(hermesHome, config);
+      return { stdout: "" };
+    }
     if (args[0] === "config" && args[1] === "get") {
       const key = args[2];
       if (!config.has(key)) {
@@ -133,6 +147,10 @@ function readFakeConfig(configFile) {
   );
 }
 
+function writeFakeConfig(configFile, config) {
+  fs.writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
+}
+
 test("keeps the Hermes plugin version aligned with the package", () => {
   const metadata = JSON.parse(fs.readFileSync("package.json", "utf8"));
   const manifest = fs.readFileSync(
@@ -174,7 +192,7 @@ test("installs, enables, and commits the managed Hermes plugin", async (context)
   commitHermesPluginInstallation(transaction);
 });
 
-test("rolls a Hermes plugin upgrade back to its exact prior state", async (context) => {
+test("rolls a Hermes plugin upgrade back to its prior membership", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));
   fs.mkdirSync(files.target, { recursive: true });
@@ -196,10 +214,10 @@ test("rolls a Hermes plugin upgrade back to its exact prior state", async (conte
 
   assert.equal(fs.readFileSync(path.join(files.target, "__init__.py"), "utf8"), "VERSION = 1\n");
   const restored = readFakeConfig(files.config);
-  assert.deepEqual(restored.get("plugins.enabled"), [
+  assert.deepEqual(new Set(restored.get("plugins.enabled")), new Set([
     "louder-bridge",
     "existing-plugin",
-  ]);
+  ]));
   assert.equal(
     restored.get("plugins.entries.louder-bridge.allow_tool_override"),
     true,
@@ -367,6 +385,31 @@ test("pins install and rollback to the profile selected at startup", async (cont
   ]);
 });
 
+test("preserves unrelated config edits during install rollback", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const hermes = fakeHermes(
+    { "plugins.enabled": ["existing-plugin"] },
+    files.config,
+  );
+  const installation = await installHermesPlugin({
+    homeDirectory: files.root,
+    source: files.source,
+    hermes: "/hermes",
+    run: hermes.run,
+  });
+  const edited = Object.fromEntries(readFakeConfig(files.config));
+  edited["model.provider"] = "work-provider";
+  writeFakeConfig(files.config, edited);
+
+  await rollbackHermesPluginInstallation(installation);
+
+  const restored = readFakeConfig(files.config);
+  assert.equal(restored.get("model.provider"), "work-provider");
+  assert.deepEqual(restored.get("plugins.enabled"), ["existing-plugin"]);
+  assert.equal(fs.existsSync(files.target), false);
+});
+
 test("removes managed plugins and settings from every Hermes profile", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));
@@ -421,6 +464,47 @@ test("removes managed plugins and settings from every Hermes profile", async (co
     readFakeConfig(writerConfig).get("plugins.enabled"),
     ["writer-plugin", "louder-bridge"],
   );
+});
+
+test("stops uninstall when a plugin list changes before indexed removal", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  fs.mkdirSync(files.target, { recursive: true });
+  fs.writeFileSync(path.join(files.target, ".louder-bridge-owned"), "owned\n");
+  const hermes = fakeHermes(
+    { "plugins.enabled": ["louder-bridge", "existing-plugin"] },
+    files.config,
+  );
+  let configReads = 0;
+  const run = async (...args) => {
+    const isConfigRead = args[1][0] === "config" && args[1][1] === "get";
+    const readNumber = isConfigRead ? ++configReads : 0;
+    try {
+      return await hermes.run(...args);
+    } finally {
+      if (readNumber === 3) {
+        const changed = Object.fromEntries(readFakeConfig(files.config));
+        changed["plugins.enabled"].unshift("concurrent-plugin");
+        writeFakeConfig(files.config, changed);
+      }
+    }
+  };
+
+  await assert.rejects(
+    removeHermesPlugin({
+      homeDirectory: files.root,
+      hermes: "/hermes",
+      run,
+    }),
+    /configuration changed during setup/,
+  );
+
+  assert.equal(fs.existsSync(files.target), true);
+  assert.deepEqual(readFakeConfig(files.config).get("plugins.enabled"), [
+    "concurrent-plugin",
+    "louder-bridge",
+    "existing-plugin",
+  ]);
 });
 
 test("rejects an active Hermes config outside the user Hermes directory", async (context) => {
