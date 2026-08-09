@@ -197,13 +197,13 @@ A locally built v0.3.1 candidate passed a mixed-pane USB test on August 8,
 | Agent Keys | Switched to the correct pane |
 | Lifecycle response | Key and exterior lighting followed both sessions |
 
-Hermes-in-Ghostty controls passed a physical test with build `809cde7` on
-August 8, 2026. The bridge recorded a matching voice start and stop, Hermes
-voice input worked, the Agent Key focused the correct pane, and the session
-lighting behaved as expected.
-
-Follow-up build `b00c76a` passed the pane-switch check. Releasing MIC after
-moving focus returned to the original Hermes pane and stopped recording there.
+The v0.3.2 archive downloaded from GitHub passed the focused Hermes-in-Ghostty
+check over USB on August 8, 2026. MIC started and stopped Hermes recording with
+`Control+B`, the Agent Key focused the correct pane, and the session and
+exterior lighting followed the active session. The pane-switch check also
+passed: releasing MIC after moving focus returned to the pane where recording
+began and stopped it there. The archive checksum and app signature were
+verified before installation.
 
 ## Latest Hermes candidate result
 

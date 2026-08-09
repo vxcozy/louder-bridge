@@ -1,5 +1,5 @@
 name: louder-bridge
-version: "0.3.2"
+version: "0.3.3"
 description: Send Hermes session state to a locally installed Louder Bridge
 provides_hooks:
   - on_session_start

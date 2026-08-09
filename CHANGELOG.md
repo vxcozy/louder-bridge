@@ -7,6 +7,21 @@ have not shipped appear under "Unreleased."
 
 There are no unreleased changes.
 
+## 0.3.3 - 2026-08-09
+
+### Fixed
+
+- Hermes plugin setup now installs beside the active profile instead of always
+  using the default profile.
+- Every command in a Hermes setup transaction stays pinned to the profile that
+  was active when setup began.
+- Uninstall removes Louder Bridge's managed plugin and settings from the
+  default profile and every named profile without changing unrelated plugins.
+- Hermes setup, upgrade, removal, and rollback recheck plugin ownership and
+  managed settings before cleanup continues.
+- Indexed Hermes plugin-list cleanup rereads the current list before each
+  removal so a reordered list cannot delete a different plugin.
+
 ## 0.3.2 - 2026-08-08
 
 ### Fixed

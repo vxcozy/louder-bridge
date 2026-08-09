@@ -117,12 +117,12 @@ separate panes. Agent Keys switched between the correct panes, lifecycle and
 exterior lighting followed each session, both voice routes inserted speech,
 and send submitted each prompt once.
 
-Two locally signed development builds containing the v0.3.2 Hermes changes
-passed in Ghostty. MIC used Hermes's `Control+B` voice toggle, the Agent Key
-focused the correct pane, and the session lighting worked. Releasing MIC after
-moving to another pane returned to the original Hermes pane and stopped
-recording there. The GitHub-built v0.3.2 candidate still needs its hardware
-check before release.
+The GitHub-built v0.3.2 archive passed its focused Hermes-in-Ghostty test over
+USB. MIC used Hermes's `Control+B` voice toggle, the Agent Key focused the
+correct pane, and the session lighting followed the active session. Releasing
+MIC after moving to another pane returned to the original Hermes pane and
+stopped recording there. The downloaded archive's checksum and app signature
+were verified before installation.
 
 The visible Cowork composer route, double-tap latching, approval prompts, wired
 restart and power-cycle cases, and the remaining recovery checks still need
