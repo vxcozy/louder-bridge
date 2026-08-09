@@ -75,6 +75,12 @@ function requireOwnedPlugin(directory) {
   return true;
 }
 
+function requireExistingOwnedPlugin(directory) {
+  if (!requireOwnedPlugin(directory)) {
+    throw new Error("The managed Hermes plugin is missing.");
+  }
+}
+
 function isOwnedPlugin(directory) {
   const target = entry(directory);
   if (!target?.isDirectory() || target.isSymbolicLink()) return false;
@@ -427,7 +433,7 @@ export async function installHermesPlugin({
       { mode: 0o600 },
     );
     if (previous) {
-      requireOwnedPlugin(target);
+      requireExistingOwnedPlugin(target);
       fs.renameSync(target, backup);
     } else if (entry(target)) {
       throw new Error("A Hermes louder-bridge plugin appeared during setup.");
@@ -445,7 +451,7 @@ export async function installHermesPlugin({
     const stateAfter = await pluginConfigSnapshot(hermes, run, hermesHome);
     requireConfigSnapshot(configFile, fileAfter);
     requirePluginConfigEnabled(stateAfter);
-    requireOwnedPlugin(target);
+    requireExistingOwnedPlugin(target);
     return {
       installed: true,
       hermes,
@@ -459,7 +465,7 @@ export async function installHermesPlugin({
     };
   } catch (error) {
     const rollbackErrors = [];
-    if (enableStarted && entry(target)) {
+    if (enableStarted) {
       try {
         const currentFile = configFileSnapshot(configFile);
         const currentState = await pluginConfigSnapshot(
@@ -517,9 +523,9 @@ export async function installHermesPlugin({
 
 export async function rollbackHermesPluginInstallation(transaction) {
   if (!transaction?.installed) return;
-  requireOwnedPlugin(transaction.target);
+  requireExistingOwnedPlugin(transaction.target);
   await rollbackPluginConfig(transaction);
-  requireOwnedPlugin(transaction.target);
+  requireExistingOwnedPlugin(transaction.target);
   removeDirectory(transaction.target);
   if (transaction.backup) fs.renameSync(transaction.backup, transaction.target);
 }
@@ -537,7 +543,7 @@ export async function removeHermesPlugin({
   if (locations.length === 0) {
     return { removed: false, targets: [] };
   }
-  for (const { target } of locations) requireOwnedPlugin(target);
+  for (const { target } of locations) requireExistingOwnedPlugin(target);
   if (!hermes) {
     throw new Error(
       "Hermes is not executable, so its plugin settings were left unchanged.",
@@ -578,7 +584,7 @@ async function removeHermesPluginLocation(location, hermes, run) {
   const fileBefore = configFileSnapshot(configFile);
   const stateBefore = await pluginConfigSnapshot(hermes, run, hermesHome);
   requireConfigSnapshot(configFile, fileBefore);
-  requireOwnedPlugin(target);
+  requireExistingOwnedPlugin(target);
   const backup = path.join(
     path.dirname(target),
     `.${PLUGIN_NAME}.${randomUUID()}.removing`,

@@ -390,6 +390,43 @@ test("revalidates the installed plugin before reporting success", async (context
   );
 });
 
+test("rejects a missing plugin before reporting setup success", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const hermes = fakeHermes({}, files.config);
+  let enabled = false;
+  let removed = false;
+  const run = async (...args) => {
+    const result = await hermes.run(...args);
+    if (args[1][0] === "plugins" && args[1][1] === "enable") {
+      enabled = true;
+    } else if (
+      enabled &&
+      !removed &&
+      args[1][0] === "config" &&
+      args[1][1] === "get" &&
+      args[1][2] === "plugins.entries.louder-bridge.allow_tool_override"
+    ) {
+      removed = true;
+      fs.rmSync(files.target, { recursive: true });
+    }
+    return result;
+  };
+
+  await assert.rejects(
+    installHermesPlugin({
+      homeDirectory: files.root,
+      source: files.source,
+      hermes: "/hermes",
+      run,
+    }),
+    /managed Hermes plugin is missing/,
+  );
+
+  assert.equal(fs.existsSync(files.target), false);
+  assert.deepEqual(readFakeConfig(files.config).get("plugins.enabled"), []);
+});
+
 test("does not overwrite an unrelated Hermes plugin with the same name", async (context) => {
   const files = fixture();
   context.after(() => fs.rmSync(files.root, { recursive: true }));
