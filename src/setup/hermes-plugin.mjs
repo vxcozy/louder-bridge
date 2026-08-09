@@ -457,7 +457,7 @@ export async function installHermesPlugin({
       run,
     };
   } catch (error) {
-    let rollbackError = null;
+    const rollbackErrors = [];
     if (enableStarted && entry(target)) {
       try {
         const currentFile = configFileSnapshot(configFile);
@@ -477,16 +477,37 @@ export async function installHermesPlugin({
           currentFile,
         );
       } catch (caught) {
-        rollbackError = caught;
+        rollbackErrors.push(caught);
       }
     }
     removeDirectory(staging);
-    if (targetInstalled) removeDirectory(target);
-    if (entry(backup)) fs.renameSync(backup, target);
-    if (rollbackError) {
+    let canRestoreBackup = true;
+    if (targetInstalled) {
+      try {
+        requireOwnedPlugin(target);
+        removeDirectory(target);
+      } catch (caught) {
+        rollbackErrors.push(caught);
+        canRestoreBackup = false;
+      }
+    }
+    if (entry(backup) && canRestoreBackup) {
+      if (entry(target)) {
+        rollbackErrors.push(
+          new Error("A Hermes louder-bridge plugin appeared during setup rollback."),
+        );
+      } else {
+        try {
+          fs.renameSync(backup, target);
+        } catch (caught) {
+          rollbackErrors.push(caught);
+        }
+      }
+    }
+    if (rollbackErrors.length > 0) {
       throw new AggregateError(
-        [error, rollbackError],
-        "Hermes plugin setup failed and its configuration could not be restored.",
+        [error, ...rollbackErrors],
+        "Hermes plugin setup failed and could not be fully rolled back.",
       );
     }
     throw error;
@@ -586,7 +607,18 @@ async function removeHermesPluginLocation(location, hermes, run) {
       stateAfter,
     };
   } catch (error) {
-    fs.renameSync(backup, target);
+    const rollbackErrors = [];
+    if (entry(target)) {
+      rollbackErrors.push(
+        new Error("A new Hermes louder-bridge plugin appeared during rollback."),
+      );
+    } else {
+      try {
+        fs.renameSync(backup, target);
+      } catch (caught) {
+        rollbackErrors.push(caught);
+      }
+    }
     try {
       const currentFile = configFileSnapshot(configFile);
       const currentState = await pluginConfigSnapshot(hermes, run, hermesHome);
@@ -601,9 +633,12 @@ async function removeHermesPluginLocation(location, hermes, run) {
         currentFile,
       );
     } catch (rollbackError) {
+      rollbackErrors.push(rollbackError);
+    }
+    if (rollbackErrors.length > 0) {
       throw new AggregateError(
-        [error, rollbackError],
-        "Hermes plugin removal failed and its configuration could not be restored.",
+        [error, ...rollbackErrors],
+        "Hermes plugin removal failed and could not be fully rolled back.",
       );
     }
     throw error;
