@@ -558,6 +558,54 @@ test("rejects an active Hermes config outside the user Hermes directory", async 
   assert.equal(fs.existsSync(files.target), false);
 });
 
+test("rejects a named Hermes profile reached through a symbolic link", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const hermesDirectory = path.join(files.root, ".hermes");
+  const realProfiles = path.join(hermesDirectory, "real-profiles");
+  const profiles = path.join(hermesDirectory, "profiles");
+  const writer = path.join(realProfiles, "writer");
+  const profileConfig = path.join(profiles, "writer", "config.yaml");
+  fs.mkdirSync(writer, { recursive: true });
+  fs.symlinkSync(realProfiles, profiles);
+  const hermes = fakeHermes({}, profileConfig);
+
+  await assert.rejects(
+    installHermesPlugin({
+      homeDirectory: files.root,
+      source: files.source,
+      hermes: "/hermes",
+      run: hermes.run,
+    }),
+    /profile uses a symbolic link/,
+  );
+  assert.equal(fs.existsSync(hermesPluginPath(files.root, profileConfig)), false);
+});
+
+test("rejects a symbolic link used as the active Hermes profile", async (context) => {
+  const files = fixture();
+  context.after(() => fs.rmSync(files.root, { recursive: true }));
+  const profiles = path.join(files.root, ".hermes", "profiles");
+  const realWriter = path.join(files.root, ".hermes", "real-writer");
+  const writer = path.join(profiles, "writer");
+  const profileConfig = path.join(writer, "config.yaml");
+  fs.mkdirSync(profiles, { recursive: true });
+  fs.mkdirSync(realWriter);
+  fs.symlinkSync(realWriter, writer);
+  const hermes = fakeHermes({}, profileConfig);
+
+  await assert.rejects(
+    installHermesPlugin({
+      homeDirectory: files.root,
+      source: files.source,
+      hermes: "/hermes",
+      run: hermes.run,
+    }),
+    /profile uses a symbolic link/,
+  );
+  assert.equal(fs.existsSync(hermesPluginPath(files.root, profileConfig)), false);
+});
+
 test("Hermes lifecycle callbacks emit only surface, session, and state", async () => {
   const plugin = path.resolve("src/hermes/plugin/__init__.py");
   const script = String.raw`

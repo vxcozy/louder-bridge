@@ -125,7 +125,22 @@ async function activeHermesPluginLocation(homeDirectory, hermes, run) {
   if (!configFile) {
     throw new Error("Hermes did not report an active config path.");
   }
-  return hermesPluginLocation(homeDirectory, configFile);
+  const location = hermesPluginLocation(homeDirectory, configFile);
+  const profilesDirectory = path.join(
+    path.resolve(homeDirectory, ".hermes"),
+    "profiles",
+  );
+  if (path.dirname(location.hermesHome) === profilesDirectory) {
+    for (const directory of [profilesDirectory, location.hermesHome]) {
+      const target = entry(directory);
+      if (!target?.isDirectory() || target.isSymbolicLink()) {
+        throw new Error(
+          "The active Hermes profile uses a symbolic link. Louder Bridge cannot install its plugin there safely.",
+        );
+      }
+    }
+  }
+  return location;
 }
 
 async function readConfigValue(hermes, key, run, hermesHome) {
