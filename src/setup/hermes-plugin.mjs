@@ -255,6 +255,20 @@ function requirePluginConfigRemoved(state) {
   }
 }
 
+function requirePluginConfigEnabled(state) {
+  const managed = managedPluginConfigState(state);
+  if (
+    !managed.enabled ||
+    managed.disabled ||
+    !managed.override.exists ||
+    managed.override.value !== false
+  ) {
+    throw new Error(
+      "Hermes plugin settings changed before setup finished, so Louder Bridge restored the previous installation.",
+    );
+  }
+}
+
 async function setBooleanConfigValue(hermes, key, value, run, hermesHome) {
   await runHermes(
     hermes,
@@ -402,6 +416,7 @@ export async function installHermesPlugin({
   const stateBefore = await pluginConfigSnapshot(hermes, run, hermesHome);
   requireConfigSnapshot(configFile, fileBefore);
   let enableStarted = false;
+  let targetInstalled = false;
   fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
 
   try {
@@ -411,8 +426,14 @@ export async function installHermesPlugin({
       "Managed by Louder Bridge.\n",
       { mode: 0o600 },
     );
-    if (previous) fs.renameSync(target, backup);
+    if (previous) {
+      requireOwnedPlugin(target);
+      fs.renameSync(target, backup);
+    } else if (entry(target)) {
+      throw new Error("A Hermes louder-bridge plugin appeared during setup.");
+    }
     fs.renameSync(staging, target);
+    targetInstalled = true;
     enableStarted = true;
     await runHermes(
       hermes,
@@ -423,6 +444,7 @@ export async function installHermesPlugin({
     const fileAfter = configFileSnapshot(configFile);
     const stateAfter = await pluginConfigSnapshot(hermes, run, hermesHome);
     requireConfigSnapshot(configFile, fileAfter);
+    requirePluginConfigEnabled(stateAfter);
     return {
       installed: true,
       hermes,
@@ -459,7 +481,7 @@ export async function installHermesPlugin({
       }
     }
     removeDirectory(staging);
-    removeDirectory(target);
+    if (targetInstalled) removeDirectory(target);
     if (entry(backup)) fs.renameSync(backup, target);
     if (rollbackError) {
       throw new AggregateError(
