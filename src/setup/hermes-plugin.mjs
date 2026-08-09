@@ -345,6 +345,34 @@ async function applyPluginConfigState(
   }
 }
 
+async function applyAndVerifyPluginConfigState(
+  hermes,
+  current,
+  desired,
+  run,
+  hermesHome,
+  configFile,
+  expectedFile,
+) {
+  await applyPluginConfigState(
+    hermes,
+    current,
+    desired,
+    run,
+    hermesHome,
+    configFile,
+    expectedFile,
+  );
+  const appliedFile = configFileSnapshot(configFile);
+  const appliedState = await pluginConfigSnapshot(hermes, run, hermesHome);
+  requireConfigSnapshot(configFile, appliedFile);
+  if (!pluginConfigStatesMatch(appliedState, desired)) {
+    throw new Error(
+      "Hermes plugin settings changed during rollback, so Louder Bridge left the plugin in place.",
+    );
+  }
+}
+
 async function rollbackPluginConfig({
   hermes,
   run,
@@ -361,7 +389,7 @@ async function rollbackPluginConfig({
       "Hermes plugin settings changed during setup, so Louder Bridge left them untouched.",
     );
   }
-  await applyPluginConfigState(
+  await applyAndVerifyPluginConfigState(
     hermes,
     currentState,
     stateBefore,
@@ -467,6 +495,7 @@ export async function installHermesPlugin({
     const rollbackErrors = [];
     if (enableStarted) {
       try {
+        if (entry(target)) requireExistingOwnedPlugin(target);
         const currentFile = configFileSnapshot(configFile);
         const currentState = await pluginConfigSnapshot(
           hermes,
@@ -474,7 +503,7 @@ export async function installHermesPlugin({
           hermesHome,
         );
         requireConfigSnapshot(configFile, currentFile);
-        await applyPluginConfigState(
+        await applyAndVerifyPluginConfigState(
           hermes,
           currentState,
           stateBefore,
@@ -630,7 +659,7 @@ async function removeHermesPluginLocation(location, hermes, run) {
       const currentFile = configFileSnapshot(configFile);
       const currentState = await pluginConfigSnapshot(hermes, run, hermesHome);
       requireConfigSnapshot(configFile, currentFile);
-      await applyPluginConfigState(
+      await applyAndVerifyPluginConfigState(
         hermes,
         currentState,
         stateBefore,
