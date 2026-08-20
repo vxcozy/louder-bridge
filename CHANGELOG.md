@@ -7,6 +7,17 @@ have not shipped appear under "Unreleased."
 
 There are no unreleased changes.
 
+## 0.3.4 - 2026-08-19
+
+### Fixed
+
+- Failed Hermes setup and rollback preserve a complete managed plugin until
+  Louder Bridge verifies its matching configuration.
+- Uninstall asks Hermes to disable the plugin by name instead of removing a
+  numeric list entry that may have moved.
+- Reinstall uses Hermes's normal enable command to clear the disabled plugin
+  entry.
+
 ## 0.3.3 - 2026-08-09
 
 ### Fixed

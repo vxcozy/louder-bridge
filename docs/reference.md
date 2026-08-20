@@ -301,7 +301,7 @@ Returns bridge status and the six current slot states:
     "activeSurface": "claude",
     "inputMonitoring": "granted",
     "accessibility": "granted",
-    "version": "0.3.3",
+    "version": "0.3.4",
     "buildRevision": "0123456789abcdef0123456789abcdef01234567",
     "nodeVersion": "v24.8.0",
     "navigator": {
